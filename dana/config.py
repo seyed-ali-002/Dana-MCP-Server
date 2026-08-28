@@ -1,4 +1,3 @@
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +7,7 @@ class Settings(BaseSettings):
     log_level: str = "info"
     mcp_path: str = "/mcp"
     auth_token: str = ""
+    public_host: str = ""
 
     def require_auth_token(self) -> str:
         if not self.auth_token:
