@@ -18,7 +18,7 @@ Windows:
 run.bat
 ```
 
-The launcher creates `.venv` when needed, installs dependencies, creates the persistent token, starts Dana, starts Tailscale Funnel, discovers the public Funnel hostname, and prints the exact MCP Connector URL and bearer token. Keep the terminal open while the server is running.
+The launcher creates `.venv` when needed, installs dependencies, creates the persistent token, starts Dana, adds Dana to Tailscale Funnel under the token-specific path, discovers the public Funnel hostname, and prints the exact MCP Connector URL. It does not replace an existing Tailscale Funnel root route, so another service on the same machine can remain connected.
 
 ## Connector
 
@@ -28,9 +28,9 @@ Use the printed `MCP Connector URL` as the Custom Connector URL:
 https://<machine>.<tailnet>.ts.net/mcp
 ```
 
-The launcher also prints the bearer token required by Dana authentication.
+The token is embedded in the URL and acts as the connection credential. The Custom Connector must use the generated URL directly; no Authorization header is required for MCP requests.
 
-An authenticated `GET /connector` endpoint returns the current connector URL and authorization value.
+An authenticated `GET /connector` endpoint returns the current connector URL.
 
 ## Token regeneration
 

@@ -31,14 +31,15 @@ def main():
                 time.sleep(.5)
         if not healthy:
             raise RuntimeError("Dana health check failed")
-        run(["tailscale", "funnel", "--bg", f"http://127.0.0.1:{PORT}"])
+        # Add Dana under its own Funnel path so an existing Funnel root route is untouched.
+        run(["tailscale", "funnel", "--set-path", f"/{token}", "--bg", f"http://127.0.0.1:{PORT}"])
         status = subprocess.check_output(["tailscale", "funnel", "status"], text=True)
         m = re.search(r"https://[^\s]+", status)
         if not m:
             raise RuntimeError("Could not determine Tailscale Funnel URL")
-        url = m.group(0).rstrip("/") + "/mcp"
-        print(f"\nMCP Connector URL: {url}", flush=True)
-        print(f"Bearer Token: {token}", flush=True)
+        url = m.group(0).rstrip("/")
+        print(f"\nChatbot Connection Link: {url}/{token}/mcp", flush=True)
+        print(f"MCP Connector URL: {url}/{token}/mcp", flush=True)
         print("\nPress Ctrl+C to stop.", flush=True)
         server.wait()
     except KeyboardInterrupt:
