@@ -10,5 +10,6 @@ mcp = FastMCP(
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=False,
     ),
+    stateless_http=True,
 )
 register_tools(mcp)

@@ -1,8 +1,30 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import settings
 from .server import mcp
+
+
+
+
+class MCPCompatibilityMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.method == "GET" and request.url.path.rstrip("/").endswith("/mcp"):
+            accept = request.headers.get("accept", "")
+            if "text/event-stream" not in accept.lower():
+                raw_headers = list(request.scope.get("headers", []))
+                accept_value = accept.encode("latin-1")
+                replaced = False
+                for index, (key, value) in enumerate(raw_headers):
+                    if key.lower() == b"accept":
+                        raw_headers[index] = (key, value.rstrip(b" ,") + b", text/event-stream")
+                        replaced = True
+                        break
+                if not replaced:
+                    raw_headers.append((b"accept", accept_value + b", text/event-stream" if accept_value else b"text/event-stream"))
+                request.scope["headers"] = raw_headers
+        return await call_next(request)
 
 
 mcp_app = mcp.streamable_http_app()
@@ -38,4 +60,5 @@ settings.require_auth_token()
 # Tailscale Funnel mounts /<token> and forwards that mount to this local service.
 # Funnel strips the mount prefix before proxying, so the local app must expose /mcp.
 # Keep /health and /connector above this catch-all mount.
+app.add_middleware(MCPCompatibilityMiddleware)
 app.mount("/", mcp_app)
