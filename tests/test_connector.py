@@ -13,7 +13,8 @@ def test_connector_requires_auth(monkeypatch):
         data = response.json()
         assert data["title"] == "Chatbot Connection Link"
         assert data["url"] == f"https://example.ts.net/{settings.auth_token}/mcp"
-        mcp_response = client.get(f"/{settings.auth_token}/mcp", follow_redirects=False)
+        mcp_response = client.get("/mcp", follow_redirects=False)
+        assert mcp_response.status_code != 404
         assert mcp_response.status_code != 401
 
 

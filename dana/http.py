@@ -34,5 +34,8 @@ async def connector(request: Request):
 
 # The token is part of the MCP URL itself. The MCP app is mounted only below
 # that secret prefix, so the connection URL authenticates without a header.
-token = settings.require_auth_token()
-app.mount(f"/{token}", mcp_app)
+settings.require_auth_token()
+# Tailscale Funnel mounts /<token> and forwards that mount to this local service.
+# Funnel strips the mount prefix before proxying, so the local app must expose /mcp.
+# Keep /health and /connector above this catch-all mount.
+app.mount("/", mcp_app)
