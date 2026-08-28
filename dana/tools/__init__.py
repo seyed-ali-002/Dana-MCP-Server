@@ -4,6 +4,7 @@ from .filesystem import register_filesystem_tools
 from .system import register_system_tools
 from .agent import register_agent_tools
 from .web_quality_debug_docs import register_web_quality_debug_docs_tools
+from .documents import register_document_tools
 
 
 def register_tools(mcp: FastMCP) -> None:
@@ -12,3 +13,4 @@ def register_tools(mcp: FastMCP) -> None:
     register_filesystem_tools(mcp)
     register_agent_tools(mcp)
     register_web_quality_debug_docs_tools(mcp)
+    register_document_tools(mcp)
