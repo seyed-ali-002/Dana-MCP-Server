@@ -1,3 +1,5 @@
+from dana.server import mcp
+
 from fastapi.testclient import TestClient
 
 from dana.config import settings
