@@ -34,4 +34,5 @@ async def connector(request: Request):
 
 # The token is part of the MCP URL itself. The MCP app is mounted only below
 # that secret prefix, so the connection URL authenticates without a header.
-app.mount(f"/{settings.auth_token}", mcp_app)
+token = settings.require_auth_token()
+app.mount(f"/{token}", mcp_app)
