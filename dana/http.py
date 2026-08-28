@@ -8,11 +8,11 @@ from .server import mcp
 
 class TokenMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        if request.url.path == "/health" or not settings.auth_token:
+        if request.url.path == "/health" or request.url.path.startswith("/docs") or request.url.path in {"/openapi.json", "/redoc"}:
             return await call_next(request)
 
         authorization = request.headers.get("authorization", "")
-        expected = f"Bearer {settings.auth_token}"
+        expected = f"Bearer {settings.require_auth_token()}"
         if authorization != expected:
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
         return await call_next(request)

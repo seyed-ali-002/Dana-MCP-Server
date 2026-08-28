@@ -1,132 +1,116 @@
 # Dana MCP Server
 
-Cross-platform Python MCP server designed to run independently from PHP, Apache, and Nginx. Tailscale Funnel is used only as the public HTTPS transport; Dana itself listens on localhost.
+Cross-platform Python MCP server, completely independent from PHP, Apache, and Nginx. Dana listens on localhost; Tailscale Funnel provides the public HTTPS endpoint.
 
-## Architecture
+## Run
 
-```text
-Internet
-   |
-   v
-Tailscale Funnel (HTTPS)
-   |
-   v
-127.0.0.1:8765
-   |
-   v
-Dana / Python / FastAPI
-   |
-   +--> MCP endpoint: /mcp
-   +--> health endpoint: /health
-   +--> platform-aware tools
-```
-
-The same architecture works on Linux and Windows. No PHP integration is required.
-
-## Requirements
-
-- Python 3.11+
-- Tailscale installed and authenticated on the host
-- Tailscale Funnel enabled for the tailnet/account
-
-## Install
+From the repository root:
 
 ```bash
 python -m venv .venv
-# Linux/macOS
 source .venv/bin/activate
-# Windows PowerShell
-# .\.venv\Scripts\Activate.ps1
-
-python -m pip install --upgrade pip
 pip install -e ".[dev]"
-cp .env.example .env  # Linux/macOS
-```
-
-On Windows, copy `.env.example` to `.env` manually or with PowerShell.
-
-Set a real token in `.env`:
-
-```text
-DANA_AUTH_TOKEN=replace-with-a-long-random-token
-```
-
-If `DANA_AUTH_TOKEN` is empty, authentication is disabled. Keep it set for any public Funnel deployment.
-
-## Run Dana
-
-```bash
+python scripts/init_token.py
 python -m dana.main
 ```
 
-Default listener:
+Windows PowerShell:
 
-```text
-http://127.0.0.1:8765
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+python scripts/init_token.py
+python -m dana.main
 ```
 
-Health check:
+Dana listens on `http://127.0.0.1:8765`.
 
-```text
-http://127.0.0.1:8765/health
+## Fixed authentication token
+
+`python scripts/init_token.py` creates one persistent token on first setup and does not replace it on normal restarts. The token is stored in `.env`, which is ignored by Git.
+
+Regenerate it explicitly:
+
+```bash
+python scripts/regenerate_token.py
 ```
 
-MCP endpoint:
+Linux/macOS shortcut:
 
-```text
-http://127.0.0.1:8765/mcp
+```bash
+./scripts/regenerate_token.sh
 ```
 
-## Enable Tailscale Funnel
+Windows PowerShell:
 
-With Dana already running:
+```powershell
+.\scripts\regenerate_token.ps1
+```
 
-### Linux
+Windows CMD:
+
+```bat
+scripts\regenerate_token.bat
+```
+
+Restart Dana after regeneration. Clients authenticate with `Authorization: Bearer <DANA_AUTH_TOKEN>`.
+
+## Tailscale Funnel
+
+Start Dana first, then expose it through Tailscale Funnel:
+
+Linux/macOS:
 
 ```bash
 ./scripts/tailscale_linux.sh
 ```
 
-### Windows PowerShell
+Windows PowerShell:
 
 ```powershell
 .\scripts\tailscale_windows.ps1
 ```
 
-Or run Tailscale directly:
+Or directly:
 
 ```bash
 tailscale funnel --bg http://127.0.0.1:8765
 tailscale funnel status
 ```
 
-Tailscale provides the public HTTPS hostname. Do not make Uvicorn listen on `0.0.0.0` unless there is a specific need; keeping Dana on `127.0.0.1` prevents accidental direct exposure.
+The public MCP URL is the HTTPS hostname shown by `tailscale funnel status`, followed by `/mcp`:
 
-## Authentication
-
-Dana uses a bearer token middleware for HTTP requests except `/health`.
-
-Clients must send:
-
-```http
-Authorization: Bearer <DANA_AUTH_TOKEN>
+```text
+https://<machine>.<tailnet>.ts.net/mcp
 ```
 
-The token is deliberately kept outside source control in `.env`.
+Tailscale handles public HTTPS. Dana remains bound to localhost, so PHP and other web servers are not involved.
 
-## Tools
+## Endpoints
 
-The initial implementation includes:
+```text
+GET  /health
+POST /mcp
+```
 
-- `system_info` — host OS, architecture, Python version, and hostname.
-- `list_directory` — list entries in a directory using the native host filesystem.
+## Initial tools
 
-Platform-specific tools should be added behind the platform abstraction rather than hard-coding Linux commands into MCP handlers.
+- `system_info` — OS, architecture, Python version, and hostname.
+- `list_directory` — native host filesystem directory listing.
 
-## Development
+## Tests
 
 ```bash
 pytest -q
 ```
 
-The project is intentionally independent from PHP. Do not add Composer, Laravel, Apache, or Nginx runtime dependencies to this repository.
+## Configuration
+
+```text
+DANA_HOST=127.0.0.1
+DANA_PORT=8765
+DANA_LOG_LEVEL=info
+DANA_MCP_PATH=/mcp
+DANA_AUTH_TOKEN=GENERATE_WITH_SCRIPT
+```
