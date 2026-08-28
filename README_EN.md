@@ -59,6 +59,55 @@ The launcher handles Python environment setup, dependency installation, persiste
 
 > ⚠️ Tailscale must be installed and authenticated on the machine.
 
+### 🔐 Installing and Logging in to Tailscale
+
+If Tailscale is not installed or you are not signed in yet, follow the steps for your platform below.
+
+#### 🐧 Linux
+
+1. Download and install Tailscale from:
+   https://tailscale.com/download/linux
+2. Enable and start the service:
+
+```bash
+sudo systemctl enable --now tailscaled
+```
+
+3. Log in:
+
+```bash
+sudo tailscale up
+```
+
+4. The command displays an authentication URL. Open it in a browser, sign in to your Tailscale account, and approve the device.
+5. Verify the connection:
+
+```bash
+tailscale status
+```
+
+#### 🪟 Windows
+
+1. Download Tailscale from:
+   https://tailscale.com/download/windows
+2. Install and launch the application.
+3. Click **Log in**.
+4. Your browser will open. Sign in to Tailscale and approve the device.
+5. Confirm that Tailscale shows **Connected**.
+
+#### 🍎 macOS
+
+1. Download Tailscale from:
+   https://tailscale.com/download/mac
+2. Install and launch the application.
+3. Open Tailscale from the menu bar and select **Log in**.
+4. Sign in through the browser and approve the device.
+5. Confirm that Tailscale shows **Connected**.
+
+> 💡 **Note:** Dana uses Tailscale Funnel to expose the MCP endpoint publicly. The signed-in Tailscale account must therefore be allowed to use Funnel.
+
+🔗 Official documentation: https://tailscale.com/kb/start
+
 ### 3. Connector URL
 
 The launcher prints a URL similar to:

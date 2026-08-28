@@ -61,6 +61,55 @@ run.bat
 
 > ⚠️ اگر Tailscale روی سیستم نصب یا Login نشده باشد، ابتدا آن را نصب و وارد حساب خود شوید.
 
+### 🔐 راه‌اندازی و Login در Tailscale
+
+اگر Tailscale روی سیستم نصب نیست یا هنوز وارد حساب نشده‌اید، مراحل زیر را انجام دهید.
+
+#### 🐧 Linux
+
+1. Tailscale را از صفحه رسمی دانلود و نصب کنید:
+   https://tailscale.com/download/linux
+2. سپس سرویس را فعال کنید:
+
+```bash
+sudo systemctl enable --now tailscaled
+```
+
+3. Login را انجام دهید:
+
+```bash
+sudo tailscale up
+```
+
+4. دستور یک لینک احراز هویت نمایش می‌دهد. لینک را در مرورگر باز کنید و وارد حساب Tailscale شوید.
+5. برای بررسی وضعیت:
+
+```bash
+tailscale status
+```
+
+#### 🪟 Windows
+
+1. Tailscale را از صفحه رسمی دانلود کنید:
+   https://tailscale.com/download/windows
+2. برنامه را نصب و اجرا کنید.
+3. روی **Log in** کلیک کنید.
+4. مرورگر باز می‌شود؛ وارد حساب Tailscale شوید و دسترسی را تأیید کنید.
+5. پس از ورود، مطمئن شوید Tailscale در حالت **Connected** قرار دارد.
+
+#### 🍎 macOS
+
+1. Tailscale را از صفحه رسمی دانلود کنید:
+   https://tailscale.com/download/mac
+2. برنامه را نصب و اجرا کنید.
+3. Tailscale را از نوار منو باز کنید و **Log in** را انتخاب کنید.
+4. در مرورگر وارد حساب Tailscale شوید و دسترسی را تأیید کنید.
+5. پس از ورود، وضعیت Tailscale باید **Connected** باشد.
+
+> 💡 **نکته:** Dana برای ایجاد لینک عمومی MCP به Tailscale Funnel نیاز دارد؛ بنابراین همان حسابی که روی سیستم Login کرده‌اید باید اجازه استفاده از Funnel را داشته باشد.
+
+🔗 مستندات رسمی: https://tailscale.com/kb/start
+
 ### 3. لینک اتصال
 
 پس از اجرا، Launcher لینک زیر را نمایش می‌دهد:
