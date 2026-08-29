@@ -29,6 +29,13 @@ dev = [
 browser = [
   "playwright>=1.45,<2",
 ]
+security = [
+  "pip-audit>=2.7,<3",
+]
+full = [
+  "playwright>=1.45,<2",
+  "pip-audit>=2.7,<3",
+]
 
 [project.scripts]
 dana-mcp = "dana.main:run"

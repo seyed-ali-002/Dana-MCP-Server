@@ -121,9 +121,16 @@ def register_advanced_tools(mcp: FastMCP)->None:
     return {'hits':hits[:500],'count':len(hits)}
  @mcp.tool()
  def dependency_security_scan(path:str='.') -> dict[str,Any]:
-    root=Path(path).expanduser().resolve()
-    if (root/'package.json').exists() and shutil.which('npm'): return run(['npm','audit','--json'],str(root))
-    return {'skipped':True,'reason':'No supported audit tool detected'}
+    """Audit Python and Node.js dependencies when the corresponding audit tool is available."""
+    root=Path(path).expanduser().resolve(); results={}
+    if (root/'package.json').exists() and shutil.which('npm'):
+      results['npm']=run(['npm','audit','--json'],str(root))
+    if (root/'pyproject.toml').exists() or (root/'requirements.txt').exists():
+      audit=shutil.which('pip-audit')
+      if audit: results['python']=run([audit],str(root))
+      else: results['python']={'skipped':True,'reason':'pip-audit not installed; install Dana security extra'}
+    if not results:return {'skipped':True,'reason':'No supported dependency manifest detected'}
+    return {'results':results}
  @mcp.tool()
  def dependency_outdated(path:str='.') -> dict[str,Any]:
     root=Path(path).expanduser().resolve()

@@ -132,6 +132,24 @@ python scripts/regenerate_token.py
 
 سپس Dana را restart کنید. Token قبلی دیگر نباید برای اتصال جدید استفاده شود.
 
+## 🌐 فعال‌سازی کامل ابزارهای Browser و Security
+
+برای فعال شدن کامل قابلیت‌های پیشرفته Dana، می‌توانید وابستگی‌های اختیاری را نصب کنید:
+
+```bash
+pip install -e ".[full]"
+playwright install chromium
+```
+
+یا فقط Browser را نصب کنید:
+
+```bash
+pip install -e ".[browser]"
+playwright install chromium
+```
+
+این کار ابزارهای Playwright و بررسی امنیت وابستگی‌ها را فعال می‌کند.
+
 ## 🤖 اتصال به ChatGPT، Grok و Claude
 
 ### ChatGPT

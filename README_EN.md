@@ -130,6 +130,24 @@ python scripts/regenerate_token.py
 
 Restart Dana after regeneration.
 
+## 🌐 Enabling Browser and Security Tools
+
+Install Dana's optional advanced dependencies:
+
+```bash
+pip install -e ".[full]"
+playwright install chromium
+```
+
+Or install browser support only:
+
+```bash
+pip install -e ".[browser]"
+playwright install chromium
+```
+
+This enables Playwright browser capabilities and Python dependency security auditing.
+
 ## 🤖 Connecting ChatGPT, Grok, and Claude
 
 ### ChatGPT
