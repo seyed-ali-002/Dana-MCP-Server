@@ -10,8 +10,16 @@ from .server import mcp
 
 class MCPCompatibilityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        if settings.normalized_mode() == "server" and request.url.path.rstrip("/") == settings.mcp_path.rstrip("/"):
-            if request.headers.get("authorization", "") != f"Bearer {settings.require_auth_token()}":
+        if settings.normalized_mode() == "server":
+            token = settings.require_auth_token()
+            expected_path = f"/{token}{settings.mcp_path}"
+            path = request.scope["path"].rstrip("/")
+            if path == expected_path.rstrip("/"):
+                # The public server exposes the same tokenized URL shape as
+                # Local Mode, but FastMCP itself is mounted at /mcp internally.
+                request.scope["path"] = settings.mcp_path
+                request.scope["raw_path"] = settings.mcp_path.encode("utf-8")
+            elif path == settings.mcp_path.rstrip("/"):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
         if request.method == "GET" and request.url.path.rstrip("/").endswith("/mcp"):
             accept = request.headers.get("accept", "")
@@ -56,15 +64,15 @@ async def connector(request: Request):
     if not host:
         host = "127.0.0.1:" + str(settings.port)
     scheme = "http" if server_mode or not settings.public_host else "https"
-    prefix = "" if settings.normalized_mode() == "server" else f"/{token}"
+    prefix = f"/{token}"
     return {
         "title": "Chatbot Connection Link",
         "url": f"{scheme}://{host}{prefix}{settings.mcp_path}",
     }
 
 
-# Local mode keeps the token in the public Funnel path; server mode uses
-# Authorization at the reverse-proxy/client boundary and exposes the canonical /mcp path.
+# Both deployment modes expose a tokenized public MCP path. In Server Mode
+# the middleware strips that tokenized prefix before forwarding to FastMCP.
 settings.require_auth_token()
 # Tailscale Funnel mounts /<token> and forwards that mount to this local service.
 # Funnel strips the mount prefix before proxying, so the local app must expose /mcp.

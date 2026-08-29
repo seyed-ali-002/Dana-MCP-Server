@@ -201,16 +201,16 @@ def install_server() -> None:
     table.add_row("MODE", "[bold cyan]SERVER[/bold cyan]")
     scheme = "http"
     public_base = f"{scheme}://{host}:{public_port}"
-    table.add_row("MCP URL", f"[bold green]{public_base}/mcp[/bold green]")
-    table.add_row("AUTH TOKEN", "[yellow]Saved in .env[/yellow]")
+    connector_url = f"{public_base}/{token}/mcp"
+    table.add_row("MCP URL", f"[bold green]{connector_url}[/bold green]")
+    table.add_row("AUTH TOKEN", "[yellow]Embedded in the connection URL[/yellow]")
     table.add_row("SERVICE", "[green]systemd enabled[/green]")
     table.add_row("PUBLIC PORT", str(public_port))
     table.add_row("TRANSPORT", "[yellow]HTTP on isolated public port[/yellow]")
     console.print(Panel(table, border_style="green"))
-    connector_url = f"{public_base}/mcp"
     console.print(f"\n[bold cyan]Connector URL:[/bold cyan] {connector_url}")
     console.print("[dim]The URL above is printed as one uninterrupted line for easy copying.[/dim]")
-    console.print(f"[dim]Bearer token generated and stored securely in {ROOT / '.env'}[/dim]")
+    console.print(f"[dim]Connection token generated and stored securely in {ROOT / '.env'}[/dim]")
     _ = token
 
 
