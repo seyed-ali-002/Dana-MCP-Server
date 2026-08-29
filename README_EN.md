@@ -4,11 +4,42 @@
 
 🇮🇷 **Persian documentation:** [README.md](README.md)
 
+---
+
 Dana is a cross-platform Python MCP Server, independent from PHP. For initial setup, use the Installer; Dana can then run in Local Mode on a personal computer or Server Mode on a Linux server.
 
-## 🙏 Special Thanks
+## 📚 Table of Contents
 
-[svg](https://github.com/seyed-ali-002/python-mcp-server#%D8%AA%D8%B4%DA%A9%D8%B1-%D9%88%DB%8C%DA%98%D9%87)
+- [Features](#-features)
+- [Deployment Modes](#deployment-modes)
+  - [Interactive Installer](#interactive-installer)
+  - [Local Mode](#local-mode)
+  - [Server Mode](#server-mode)
+  - [Terminal UI](#terminal-ui)
+- [Quick Start](#-quick-start)
+  - [Clone](#1-clone)
+  - [Install and Setup](#2-install-and-setup)
+  - [Connector URL](#3-connector-url)
+- [Installing and Logging in to Tailscale](#-installing-and-logging-in-to-tailscale)
+- [Managing Dana in Server Mode](#️-managing-dana-in-server-mode)
+- [Token Management](#-token-management)
+- [Browser and Security Tools](#-enabling-browser-and-security-tools)
+- [Connecting ChatGPT, Grok, and Claude](#-connecting-chatgpt-grok-and-claude)
+- [Filesystem Access Restrictions](#-dana-filesystem-access-restrictions)
+- [Basic Usage](#️-basic-usage)
+- [Architecture](#-architecture)
+- [Tests](#-tests)
+- [Contributing](#-contributing)
+- [License](#-license)
+- [Special Thanks](#-special-thanks)
+
+---
+
+> For the fastest setup, start with **Quick Start** and then follow either **Local Mode** or **Server Mode** for your environment.
+
+---
+
+## 🙏 Special Thanks
 
 Special thanks to **Mohsen Samadinejad**. The core execution idea, initial architecture, and implementation direction of this tool originated from that idea.
 
@@ -322,10 +353,7 @@ Dana can be restricted to paths explicitly chosen by the user. Settings are stor
 
 ```json
 {
-  "allowed_paths": [
-    "/home/user/projects",
-    "/mnt/workspace"
-  ],
+  "allowed_paths": ["/home/user/projects", "/mnt/workspace"],
   "deny_paths": []
 }
 ```
