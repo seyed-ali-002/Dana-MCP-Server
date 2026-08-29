@@ -10,6 +10,9 @@ from .server import mcp
 
 class MCPCompatibilityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
+        if settings.normalized_mode() == "server" and request.url.path.rstrip("/") == settings.mcp_path.rstrip("/"):
+            if request.headers.get("authorization", "") != f"Bearer {settings.require_auth_token()}":
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
         if request.method == "GET" and request.url.path.rstrip("/").endswith("/mcp"):
             accept = request.headers.get("accept", "")
             if "text/event-stream" not in accept.lower():
@@ -37,7 +40,7 @@ app = FastAPI(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "dana-mcp"}
+    return {"status": "ok", "service": "dana-mcp", "mode": settings.normalized_mode()}
 
 
 @app.get("/connector")
@@ -48,14 +51,15 @@ async def connector(request: Request):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     host = settings.public_host or ("127.0.0.1:" + str(settings.port))
     scheme = "https" if settings.public_host else "http"
+    prefix = "" if settings.normalized_mode() == "server" else f"/{token}"
     return {
         "title": "Chatbot Connection Link",
-        "url": f"{scheme}://{host}/{token}{settings.mcp_path}",
+        "url": f"{scheme}://{host}{prefix}{settings.mcp_path}",
     }
 
 
-# The token is part of the MCP URL itself. The MCP app is mounted only below
-# that secret prefix, so the connection URL authenticates without a header.
+# Local mode keeps the token in the public Funnel path; server mode uses
+# Authorization at the reverse-proxy/client boundary and exposes the canonical /mcp path.
 settings.require_auth_token()
 # Tailscale Funnel mounts /<token> and forwards that mount to this local service.
 # Funnel strips the mount prefix before proxying, so the local app must expose /mcp.

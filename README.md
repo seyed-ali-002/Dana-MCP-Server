@@ -33,6 +33,70 @@ Dana یک MCP Server کراس‌پلتفرم و مستقل از PHP است که 
 - 📄 ساخت Word و PDF با پشتیبانی RTL و فارسی
 - 📝 تولید README، Changelog، گزارش و مستندات
 
+## 🚀 حالت‌های استقرار
+
+دانا یک هسته مشترک با دو حالت کاملاً مجزا دارد:
+
+- **Local Mode**: اجرای دانا روی کامپیوتر شخصی و اتصال عمومی از طریق Tailscale.
+- **Server Mode**: اجرای دانا روی VPS یا سرور اختصاصی، بدون وابستگی به Tailscale، با Domain/IP، HTTPS و systemd.
+
+حالت فعال با `DANA_DEPLOYMENT_MODE=local` یا `DANA_DEPLOYMENT_MODE=server` مشخص می‌شود.
+
+### نصب تعاملی
+
+برای اجرای Installer:
+
+```bash
+python3 install.py
+```
+
+یا پس از نصب پکیج:
+
+```bash
+dana
+```
+
+Installer ابتدا حالت استقرار را می‌پرسد و سپس مراحل موردنیاز همان حالت را انجام می‌دهد. بعد از بررسی و نصب وابستگی‌ها، صفحه ترمینال پاک می‌شود و فقط اطلاعات نهایی اتصال نمایش داده می‌شود.
+
+### Server Mode
+
+در Server Mode، Installer به‌صورت خودکار وابستگی‌های Linux، Caddy و systemd را تنظیم می‌کند، یک Bearer Token تولید می‌کند و Dana را روی `127.0.0.1:8765` اجرا می‌کند. Caddy به‌عنوان reverse proxy جلوی Dana قرار می‌گیرد و برای Domain، HTTPS را مدیریت می‌کند.
+
+نمونه تنظیمات:
+
+```env
+DANA_DEPLOYMENT_MODE=server
+DANA_HOST=127.0.0.1
+DANA_PUBLIC_HOST=mcp.example.com
+DANA_AUTH_TOKEN=<generated-token>
+```
+
+پس از نصب، Endpoint استاندارد MCP به شکل زیر خواهد بود:
+
+```text
+https://mcp.example.com/mcp
+```
+
+در Server Mode درخواست MCP باید Header زیر را داشته باشد:
+
+```text
+Authorization: Bearer <DANA_AUTH_TOKEN>
+```
+
+### Local Mode
+
+Local Mode جریان فعلی Tailscale را حفظ می‌کند و URL شامل token path است. برای اجرای آن:
+
+```bash
+python3 scripts/run.py
+```
+
+Installer و Runtime به‌صورت mode-aware هستند و تنظیمات شبکه Local و Server با یکدیگر مخلوط نمی‌شوند.
+
+### ظاهر ترمینال
+
+CLI و Runtime از Rich استفاده می‌کنند و وضعیت را در پنل‌های خوانا نمایش می‌دهند. URL اتصال همیشه در یک خط کامل چاپ می‌شود تا کپی کردن آن بدون شکستن لینک امکان‌پذیر باشد. پس از مرحله نصب و بررسی وابستگی‌ها نیز ترمینال پاک می‌شود.
+
 ## 🚀 اجرای سریع
 
 ### 1. دریافت پروژه

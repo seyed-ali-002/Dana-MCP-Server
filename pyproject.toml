@@ -19,6 +19,7 @@ dependencies = [
   "python-bidi>=0.4,<1",
   "ruff>=0.6,<1",
   "mypy>=1.11,<2",
+  "rich>=13,<15",
 ]
 
 [project.optional-dependencies]
@@ -39,6 +40,7 @@ full = [
 
 [project.scripts]
 dana-mcp = "dana.main:run"
+dana = "dana.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["dana*"]

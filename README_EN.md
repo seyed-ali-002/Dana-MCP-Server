@@ -32,6 +32,70 @@ His **PHP MCP Server** implementation was the primary behavioral reference for t
 - 📄 Persian/RTL Word and PDF generation
 - 📝 README, changelog, reports, and documentation generation
 
+## Deployment Modes
+
+Dana has one shared core with two isolated deployment modes:
+
+- **Local Mode**: runs on a personal computer and uses the existing Tailscale workflow.
+- **Server Mode**: runs on a Linux VPS or dedicated server without Tailscale, using a domain/IP, HTTPS and systemd.
+
+The active mode is selected with `DANA_DEPLOYMENT_MODE=local` or `DANA_DEPLOYMENT_MODE=server`.
+
+### Interactive Installer
+
+Run the installer with:
+
+```bash
+python3 install.py
+```
+
+or, after package installation:
+
+```bash
+dana
+```
+
+The installer asks for the deployment mode first and then performs only the setup required for that mode. After dependency checks and installation, the terminal is cleared and the final connection information is displayed cleanly.
+
+### Server Mode
+
+Server Mode automatically configures supported Linux dependencies, Caddy and systemd, generates a Bearer Token, and runs Dana on `127.0.0.1:8765`. Caddy acts as the reverse proxy and manages HTTPS for the configured domain.
+
+Example configuration:
+
+```env
+DANA_DEPLOYMENT_MODE=server
+DANA_HOST=127.0.0.1
+DANA_PUBLIC_HOST=mcp.example.com
+DANA_AUTH_TOKEN=<generated-token>
+```
+
+The canonical MCP endpoint is:
+
+```text
+https://mcp.example.com/mcp
+```
+
+Server Mode MCP requests require:
+
+```text
+Authorization: Bearer <DANA_AUTH_TOKEN>
+```
+
+### Local Mode
+
+Local Mode keeps the existing Tailscale workflow. Start it with:
+
+```bash
+python3 scripts/run.py
+```
+
+The installer and runtime are mode-aware, so Local and Server networking configuration remains isolated.
+
+### Terminal UI
+
+The CLI and runtime use Rich panels for readable status output. Connection URLs are always printed on one uninterrupted line so they can be copied safely. The terminal is also cleared after dependency setup so the final screen stays clean.
+
 ## 🚀 Quick Start
 
 ### 1. Clone
