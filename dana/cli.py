@@ -90,8 +90,13 @@ def ensure_venv() -> Path:
 def install_python_dependencies() -> Path:
     console.print("[cyan]Checking Python dependencies...[/cyan]")
     python = ensure_venv()
+    # Never install the local project through its PEP 517 build backend during
+    # bootstrap: some minimal Python 3.12 venvs do not contain setuptools.
+    # Installing the runtime requirements directly is sufficient because Dana
+    # is launched from the repository root and this avoids build-backend errors.
+    requirements = ROOT / "requirements.txt"
     run_command([str(python), "-m", "pip", "install", "--upgrade", "pip"], check=True)
-    run_command([str(python), "-m", "pip", "install", "--no-build-isolation", str(ROOT)], check=True)
+    run_command([str(python), "-m", "pip", "install", "-r", str(requirements)], check=True)
     return python
 
 
