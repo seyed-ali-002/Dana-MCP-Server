@@ -39,26 +39,29 @@ def test_mcp_get_accept_header_compatibility():
 
 
 
-def test_server_mode_connector_uses_tokenized_path(monkeypatch):
+def test_server_mode_connector_uses_canonical_https_url(monkeypatch):
     monkeypatch.setattr("dana.http.settings.deployment_mode", "server")
     monkeypatch.setattr("dana.http.settings.public_host", "mcp.example.com")
-    monkeypatch.setattr("dana.http.settings.public_port", 18080)
-    with TestClient(app) as client:
-        response = client.get("/connector", headers={"Authorization": f"Bearer {settings.auth_token}"})
-        assert response.status_code == 200
-        assert response.json()["url"] == f"http://mcp.example.com:18080/{settings.auth_token}/mcp"
+    monkeypatch.setattr("dana.http.settings.public_port", 0)
+    try:
+        with TestClient(app) as client:
+            response = client.get("/connector", headers={"Authorization": f"Bearer {settings.auth_token}"})
+            assert response.status_code == 200
+            assert response.json()["url"] == "https://mcp.example.com/mcp"
+    finally:
+        monkeypatch.setattr("dana.http.settings.deployment_mode", "local")
 
 
 
-def test_server_mode_mcp_requires_tokenized_path(monkeypatch):
+def test_server_mode_mcp_uses_canonical_path(monkeypatch):
     monkeypatch.setattr("dana.http.settings.deployment_mode", "server")
     try:
         with TestClient(app) as client:
             response = client.get("/mcp", follow_redirects=False)
-            assert response.status_code == 401
-            tokenized = client.get(f"/{settings.auth_token}/mcp", follow_redirects=False)
-            assert tokenized.status_code != 401
-            assert tokenized.status_code != 404
+            assert response.status_code != 401
+            assert response.status_code != 404
+            legacy = client.get(f"/{settings.auth_token}/mcp", follow_redirects=False)
+            assert legacy.status_code == 401
     finally:
         monkeypatch.setattr("dana.http.settings.deployment_mode", "local")
 

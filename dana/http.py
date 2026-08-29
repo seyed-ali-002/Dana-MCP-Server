@@ -11,16 +11,14 @@ from .server import mcp
 class MCPCompatibilityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         if settings.normalized_mode() == "server":
-            token = settings.require_auth_token()
-            expected_path = f"/{token}{settings.mcp_path}"
+            # Server Mode is published by an HTTPS reverse proxy as the canonical
+            # /mcp endpoint. Do not put the secret token in the public URL.
             path = request.scope["path"].rstrip("/")
-            if path == expected_path.rstrip("/"):
-                # The public server exposes the same tokenized URL shape as
-                # Local Mode, but FastMCP itself is mounted at /mcp internally.
-                request.scope["path"] = settings.mcp_path
-                request.scope["raw_path"] = settings.mcp_path.encode("utf-8")
-            elif path == settings.mcp_path.rstrip("/"):
-                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            if path.startswith("/") and path.endswith(settings.mcp_path.rstrip("/")):
+                token = settings.require_auth_token()
+                legacy_prefix = f"/{token}{settings.mcp_path}".rstrip("/")
+                if path == legacy_prefix:
+                    return JSONResponse({"error": "Unauthorized"}, status_code=401)
         if request.method == "GET" and request.url.path.rstrip("/").endswith("/mcp"):
             accept = request.headers.get("accept", "")
             if "text/event-stream" not in accept.lower():
@@ -59,12 +57,14 @@ async def connector(request: Request):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
     host = settings.public_host
     server_mode = settings.normalized_mode() == "server"
-    if server_mode and settings.public_host and settings.public_port:
-        host = f"{settings.public_host}:{settings.public_port}"
     if not host:
         host = "127.0.0.1:" + str(settings.port)
-    scheme = "http" if server_mode or not settings.public_host else "https"
-    prefix = f"/{token}"
+    if server_mode:
+        scheme = "https"
+        prefix = ""
+    else:
+        scheme = "https" if settings.public_host else "http"
+        prefix = f"/{token}"
     return {
         "title": "Chatbot Connection Link",
         "url": f"{scheme}://{host}{prefix}{settings.mcp_path}",

@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     auth_token: str = ""
     public_host: str = ""
     public_port: int = 0
+    public_scheme: str = ""
     deployment_mode: str = "local"
 
     def normalized_mode(self) -> str:

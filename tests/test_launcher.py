@@ -71,9 +71,10 @@ def test_server_uses_public_port_in_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "ROOT", tmp_path)
     cli.write_env("server", "mcp.example.com", 18080)
     text = (tmp_path / ".env").read_text()
-    assert "DANA_HOST=0.0.0.0" in text
+    assert "DANA_HOST=127.0.0.1" in text
     assert "DANA_PORT=18080" in text
-    assert "DANA_PUBLIC_PORT=18080" in text
+    assert "DANA_PUBLIC_PORT=0" in text
+    assert "DANA_PUBLIC_SCHEME=https" in text
 
 
 def test_port_is_listening_can_be_mocked_for_selection(monkeypatch):
@@ -82,3 +83,21 @@ def test_port_is_listening_can_be_mocked_for_selection(monkeypatch):
     monkeypatch.setattr(cli, "port_is_listening", lambda port: port == 18080)
     assert cli.port_is_listening(18080)
     assert not cli.port_is_listening(18081)
+
+
+
+def test_server_proxy_is_loopback_only():
+    from dana import cli
+    import inspect
+
+    source = inspect.getsource(cli.write_env)
+    assert 'values["DANA_HOST"] = "127.0.0.1"' in source
+
+
+def test_server_connector_uses_https_proxy_url():
+    from dana import cli
+    import inspect
+
+    source = inspect.getsource(cli.install_server)
+    assert 'connector_url = f"https://{host}/mcp"' in source
+    assert "configure_reverse_proxy(host, public_port)" in source

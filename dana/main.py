@@ -16,14 +16,17 @@ def _banner() -> None:
     table.add_row("STATUS", "[bold green]ONLINE[/bold green]")
     table.add_row("MODE", f"[bold cyan]{_mode().upper()}[/bold cyan]")
     table.add_row("TRANSPORT", "HTTP Streamable MCP")
-    table.add_row("AUTH", "Tokenized Connection Path")
+    table.add_row("AUTH", "HTTPS MCP endpoint" if _mode() == "server" else "Tokenized Connection Path")
     table.add_row("ENDPOINT", f"http://{settings.host}:{settings.port}{settings.mcp_path}")
     if settings.public_host:
-        authority = settings.public_host
-        if settings.public_port:
-            authority = f"{authority}:{settings.public_port}"
-        token_path = "/" + settings.require_auth_token()
-        public_url = f"http://{authority}{token_path}{settings.mcp_path}"
+        if _mode() == "server":
+            public_url = f"https://{settings.public_host}{settings.mcp_path}"
+        else:
+            authority = settings.public_host
+            if settings.public_port:
+                authority = f"{authority}:{settings.public_port}"
+            token_path = "/" + settings.require_auth_token()
+            public_url = f"https://{authority}{token_path}{settings.mcp_path}"
         table.add_row("PUBLIC", public_url)
     console.print(Panel(table, title="[bold cyan]DANA MCP SERVER[/bold cyan]", subtitle="[dim]ready for connections[/dim]", border_style="cyan"))
 
