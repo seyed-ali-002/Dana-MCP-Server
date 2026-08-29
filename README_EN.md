@@ -168,6 +168,22 @@ Open **Custom Connectors** in Claude, add an MCP connection, and enter the same 
 
 If a connector was created against an older Dana version, delete/recreate it when necessary so the client performs a fresh `tools/list` discovery.
 
+## 🔒 Dana Filesystem Access Restrictions
+
+Dana can be restricted to paths explicitly chosen by the user. Settings are stored in `config/access_policy.json`.
+
+```json
+{
+  "allowed_paths": [
+    "/home/user/projects",
+    "/mnt/workspace"
+  ],
+  "deny_paths": []
+}
+```
+
+An empty `allowed_paths` list means unrestricted access, while `deny_paths` can still block sensitive locations. Paths are resolved before checking to defend against traversal and common symlink bypasses. Policy-aware tools include filesystem, project analysis, logs, databases, build paths, and browser screenshot output. MCP management tools are also provided: `get_allowed_paths`, `set_allowed_paths_tool`, `add_allowed_path_tool`, `remove_allowed_path_tool`, and `validate_path_access`.
+
 ## 🛠️ Basic Usage
 
 Once connected, the chatbot can discover and use Dana's MCP tools. For example, it can create or edit files, search code, run tests, manage Git, inspect APIs, debug applications, or create Persian Word/PDF documents.

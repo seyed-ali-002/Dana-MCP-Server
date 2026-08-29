@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "allowed_paths": [],
+  "deny_paths": [],
+  "shell": {
+    "restricted": true
+  },
+  "audit_log": true
+}

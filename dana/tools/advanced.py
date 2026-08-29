@@ -3,9 +3,11 @@ import ast, json, os, re, shutil, subprocess, sys, time
 from pathlib import Path
 from typing import Any
 from mcp.server.fastmcp import FastMCP
+from dana.security.path_policy import require_path, require_output_path
 
 IGNORE={'.git','.venv','venv','node_modules','__pycache__','.mypy_cache','.ruff_cache'}
 def files(root: Path, suffixes: set[str]|None=None):
+    root=require_path(root, purpose="scan")
     for p in root.rglob('*'):
         if any(x in IGNORE for x in p.parts) or not p.is_file(): continue
         if suffixes is None or p.suffix in suffixes: yield p
@@ -29,21 +31,21 @@ def register_advanced_tools(mcp: FastMCP)->None:
     with sync_playwright() as pw:
       b=pw.chromium.launch(headless=True); page=b.new_page(); page.goto(url,wait_until='domcontentloaded',timeout=30000)
       title=page.title(); text=page.locator('body').inner_text()[:10000]
-      if screenshot_path: page.screenshot(path=str(Path(screenshot_path).expanduser().resolve()),full_page=True)
+      if screenshot_path: page.screenshot(path=str(require_output_path(screenshot_path)),full_page=True)
       b.close()
     return {"url":url,"title":title,"text":text,"screenshot":screenshot_path}
  @mcp.tool()
  def database_schema(database:str) -> dict[str,Any]:
     """Inspect SQLite database tables and columns."""
     import sqlite3
-    db=Path(database).expanduser().resolve(); con=sqlite3.connect(db)
+    db=require_path(database, purpose='database access'); con=sqlite3.connect(db)
     tables=[x[0] for x in con.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
     schema={t:[{'name':r[1],'type':r[2],'notnull':bool(r[3]),'pk':bool(r[5])} for r in con.execute(f'PRAGMA table_info("{t}")')] for t in tables}; con.close()
     return {"database":str(db),"tables":schema}
  @mcp.tool()
  def database_health_check(database:str) -> dict[str,Any]:
     import sqlite3
-    db=Path(database).expanduser().resolve(); con=sqlite3.connect(db); rows=list(con.execute('PRAGMA integrity_check')); con.close()
+    db=require_path(database, purpose='database access'); con=sqlite3.connect(db); rows=list(con.execute('PRAGMA integrity_check')); con.close()
     return {"database":str(db),"integrity":rows,"ok":all(r[0]=='ok' for r in rows)}
  @mcp.tool()
  def docker_status() -> dict[str,Any]:
@@ -60,7 +62,7 @@ def register_advanced_tools(mcp: FastMCP)->None:
  @mcp.tool()
  def analyze_project(path:str='.') -> dict[str,Any]:
     """Analyze project structure, languages, manifests and likely framework."""
-    root=Path(path).expanduser().resolve(); counts={}; manifests=[]
+    root=require_path(path, purpose='project access'); counts={}; manifests=[]
     for p in files(root):
       counts[p.suffix or '[no extension]']=counts.get(p.suffix or '[no extension]',0)+1
       if p.name in {'pyproject.toml','package.json','requirements.txt','Dockerfile','docker-compose.yml','composer.json','Cargo.toml','go.mod'}: manifests.append(safe_rel(p,root))
@@ -72,7 +74,7 @@ def register_advanced_tools(mcp: FastMCP)->None:
     return {'root':str(root),'file_types':counts,'manifests':manifests,'hints':hints}
  @mcp.tool()
  def find_entry_points(path:str='.') -> dict[str,Any]:
-    root=Path(path).expanduser().resolve(); out=[]
+    root=require_path(path, purpose='project access'); out=[]
     for p in files(root,{'.py','.js','.ts','.sh'}):
       try:t=p.read_text(errors='ignore')
       except:continue
@@ -80,14 +82,14 @@ def register_advanced_tools(mcp: FastMCP)->None:
     return {'entry_points':out}
  @mcp.tool()
  def project_health_check(path:str='.') -> dict[str,Any]:
-    root=Path(path).expanduser().resolve(); analysis=analyze_project(str(root)); issues=[]
+    root=require_path(path, purpose='project access'); analysis=analyze_project(str(root)); issues=[]
     if not (root/'.git').exists(): issues.append('Git repository not detected')
     if not (root/'README.md').exists(): issues.append('README.md missing')
     if not any(p.name in {'pyproject.toml','package.json','requirements.txt','composer.json'} for p in root.iterdir()): issues.append('Dependency manifest not detected')
     return {'ok':not issues,'issues':issues,'analysis':analysis}
  @mcp.tool()
  def find_duplicate_code(path:str='.', min_lines:int=6) -> dict[str,Any]:
-    root=Path(path).expanduser().resolve(); seen={}; dup=[]
+    root=require_path(path, purpose='project access'); seen={}; dup=[]
     for p in files(root,{'.py','.js','.ts','.php'}):
       lines=p.read_text(errors='ignore').splitlines()
       for i in range(max(0,len(lines)-min_lines+1)):
@@ -103,15 +105,15 @@ def register_advanced_tools(mcp: FastMCP)->None:
     return {'frames':frames,'errors':errors[-10:],'raw_tail':lines[-30:]}
  @mcp.tool()
  def tail_logs(path:str, lines:int=100) -> dict[str,Any]:
-    p=Path(path).expanduser().resolve(); data=p.read_text(errors='ignore').splitlines()[-max(1,min(lines,5000)):]
+    p=require_path(path, purpose='log access'); data=p.read_text(errors='ignore').splitlines()[-max(1,min(lines,5000)):]
     return {'path':str(p),'lines':data}
  @mcp.tool()
  def search_logs(path:str, pattern:str, limit:int=200) -> dict[str,Any]:
-    rx=re.compile(pattern,re.I); p=Path(path).expanduser().resolve(); matches=[{'line':i+1,'text':x} for i,x in enumerate(p.read_text(errors='ignore').splitlines()) if rx.search(x)]
+    rx=re.compile(pattern,re.I); p=require_path(path, purpose='log access'); matches=[{'line':i+1,'text':x} for i,x in enumerate(p.read_text(errors='ignore').splitlines()) if rx.search(x)]
     return {'matches':matches[:limit],'count':len(matches)}
  @mcp.tool()
  def secret_scan(path:str='.') -> dict[str,Any]:
-    root=Path(path).expanduser().resolve(); patterns={'aws_key':r'AKIA[0-9A-Z]{16}','private_key':r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----','generic_secret':r'(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*["\']?[^\s"\']{8,}'}; hits=[]
+    root=require_path(path, purpose='project access'); patterns={'aws_key':r'AKIA[0-9A-Z]{16}','private_key':r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----','generic_secret':r'(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*["\']?[^\s"\']{8,}'}; hits=[]
     for p in files(root):
       if p.stat().st_size>2_000_000: continue
       try:t=p.read_text(errors='ignore')
@@ -122,7 +124,7 @@ def register_advanced_tools(mcp: FastMCP)->None:
  @mcp.tool()
  def dependency_security_scan(path:str='.') -> dict[str,Any]:
     """Audit Python and Node.js dependencies when the corresponding audit tool is available."""
-    root=Path(path).expanduser().resolve(); results={}
+    root=require_path(path, purpose='project access'); results={}
     if (root/'package.json').exists() and shutil.which('npm'):
       results['npm']=run(['npm','audit','--json'],str(root))
     if (root/'pyproject.toml').exists() or (root/'requirements.txt').exists():
@@ -133,7 +135,7 @@ def register_advanced_tools(mcp: FastMCP)->None:
     return {'results':results}
  @mcp.tool()
  def dependency_outdated(path:str='.') -> dict[str,Any]:
-    root=Path(path).expanduser().resolve()
+    root=require_path(path, purpose='project access')
     if (root/'package.json').exists() and shutil.which('npm'): return run(['npm','outdated','--json'],str(root))
     if (root/'pyproject.toml').exists(): return run([sys.executable,'-m','pip','list','--outdated','--format=json'],str(root))
     return {'skipped':True,'reason':'No supported dependency manifest detected'}
@@ -152,21 +154,21 @@ def register_advanced_tools(mcp: FastMCP)->None:
     return {'host':host,'port':port,'open':ok,'error':err}
  @mcp.tool()
  def find_symbol(path:str, symbol:str) -> dict[str,Any]:
-    root=Path(path).expanduser().resolve(); found=[]; rx=re.compile(r'\b(?:def|class|function|const|let|var)\s+'+re.escape(symbol)+r'\b')
+    root=require_path(path, purpose='project access'); found=[]; rx=re.compile(r'\b(?:def|class|function|const|let|var)\s+'+re.escape(symbol)+r'\b')
     for p in files(root,{'.py','.js','.ts','.tsx','.jsx'}):
       for i,l in enumerate(p.read_text(errors='ignore').splitlines(),1):
        if rx.search(l): found.append({'file':safe_rel(p,root),'line':i,'text':l.strip()})
     return {'matches':found}
  @mcp.tool()
  def find_references(path:str, symbol:str, limit:int=500) -> dict[str,Any]:
-    root=Path(path).expanduser().resolve(); rx=re.compile(r'\b'+re.escape(symbol)+r'\b'); out=[]
+    root=require_path(path, purpose='project access'); rx=re.compile(r'\b'+re.escape(symbol)+r'\b'); out=[]
     for p in files(root,{'.py','.js','.ts','.tsx','.jsx'}):
       for i,l in enumerate(p.read_text(errors='ignore').splitlines(),1):
        if rx.search(l): out.append({'file':safe_rel(p,root),'line':i,'text':l.strip()})
     return {'references':out[:limit],'count':len(out)}
  @mcp.tool()
  def code_complexity(path:str='.') -> dict[str,Any]:
-    root=Path(path).expanduser().resolve(); out=[]
+    root=require_path(path, purpose='project access'); out=[]
     for p in files(root,{'.py'}):
       try:tree=ast.parse(p.read_text(errors='ignore'))
       except:continue
