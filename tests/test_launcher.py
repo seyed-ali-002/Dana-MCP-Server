@@ -101,3 +101,21 @@ def test_server_connector_uses_https_proxy_url():
     source = inspect.getsource(cli.install_server)
     assert 'connector_url = f"https://{host}/mcp"' in source
     assert "configure_reverse_proxy(host, public_port)" in source
+
+
+def test_reverse_proxy_uses_automatic_deployment_module():
+    from dana import cli
+    import inspect
+
+    source = inspect.getsource(cli.configure_reverse_proxy)
+    assert "detect_proxy" in source
+    assert "apply_proxy" in source
+
+
+def test_deployment_supports_all_detected_proxy_kinds():
+    from dana import deployment
+    import inspect
+
+    source = inspect.getsource(deployment.apply_proxy)
+    for kind in ("nginx", "caddy", "apache"):
+        assert f'target.kind == "{kind}"' in source

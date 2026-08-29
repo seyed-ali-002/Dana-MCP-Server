@@ -139,8 +139,10 @@ def port_is_listening(port: int) -> bool:
 
 def choose_public_port() -> int:
     default_port = 18080
+    while port_is_listening(default_port):
+        default_port += 1
     while True:
-        raw = Prompt.ask("[bold cyan]Public port[/bold cyan]", default=str(default_port)).strip()
+        raw = Prompt.ask("[bold cyan]Dana backend port[/bold cyan]", default=str(default_port)).strip()
         try:
             port = int(raw)
         except ValueError:
@@ -189,15 +191,13 @@ def configure_caddy_proxy(public_host: str, backend_port: int) -> None:
 
 
 def configure_reverse_proxy(public_host: str, backend_port: int) -> None:
-    if command_exists("nginx"):
-        configure_nginx_proxy(public_host, backend_port)
-        return
-    if command_exists("caddy"):
-        configure_caddy_proxy(public_host, backend_port)
-        return
-    raise RuntimeError(
-        "No supported HTTPS reverse proxy was detected. Install/configure Nginx or Caddy for the public domain, then forward /mcp to Dana's loopback port."
-    )
+    from dana.deployment import apply_proxy, detect_proxy
+
+    target = detect_proxy(public_host)
+    console.print(f"[cyan]Detected {target.kind} configuration:[/cyan] {target.config}")
+    backup_path = apply_proxy(target, backend_port)
+    console.print(f"[green]✓ /mcp route configured automatically[/green]")
+    console.print(f"[dim]Backup: {backup_path}[/dim]")
 
 
 
@@ -220,7 +220,7 @@ def install_server() -> None:
     if hasattr(os, "geteuid") and os.geteuid() != 0 and not command_exists("sudo"):
         raise RuntimeError("Server Mode requires root privileges or sudo.")
     banner("SERVER MODE SETUP")
-    console.print("[dim]Dana will configure a public MCP server on an isolated high port with systemd.[/dim]\n")
+    console.print("[dim]Dana will use an isolated localhost backend and automatically integrate /mcp with your existing HTTPS reverse proxy.[/dim]\n")
     host = Prompt.ask("[bold cyan]Public domain or IP[/bold cyan]").strip().lower()
     if not host:
         raise RuntimeError("A public domain or IP address is required.")
@@ -251,7 +251,7 @@ def install_server() -> None:
     console.print(Panel(table, border_style="green"))
     console.print(f"\n[bold cyan]Connector URL:[/bold cyan] {connector_url}")
     console.print("[dim]The URL above is printed as one uninterrupted line for easy copying.[/dim]")
-    console.print(f"[dim]Backend listens only on 127.0.0.1:{public_port}; configure your existing HTTPS reverse proxy to forward /mcp to it.[/dim]")
+    console.print(f"[dim]Backend listens only on 127.0.0.1:{public_port}; the existing HTTPS reverse proxy was configured automatically.[/dim]")
 
 
 def main() -> None:
