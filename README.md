@@ -8,7 +8,6 @@ Dana یک MCP Server کراس‌پلتفرم و مستقل از PHP است که 
 
 ## 🙏 تشکر ویژه
 
-[svg](https://github.com/seyed-ali-002/python-mcp-server#%D8%AA%D8%B4%DA%A9%D8%B1-%D9%88%DB%8C%DA%98%D9%87)
 
 تشکر ویژه از **محسن صمدی‌نژاد (Mohsen Samadinejad)** که ایده اجرایی اصلی این ابزار با ایشان بود و معماری و مسیر اجرایی اولیه پروژه از آن ایده شکل گرفت.
 
