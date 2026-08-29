@@ -61,3 +61,11 @@ def test_install_script_does_not_install_into_system_python():
     from pathlib import Path
     text = (Path(__file__).resolve().parents[1] / "install.py").read_text()
     assert "pip install" not in text
+
+
+def test_root_run_wrappers_use_runner_not_installer():
+    root = Path(__file__).resolve().parents[1]
+    for name in ("run", "run.sh", "run.bat", "run.cmd", "START", "START.bat"):
+        text = (root / name).read_text()
+        assert "scripts/run.py" in text
+        assert "install.py" not in text
