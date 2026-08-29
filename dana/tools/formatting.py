@@ -74,6 +74,80 @@ def register_formatting_tools(mcp: FastMCP) -> None:
         return result
 
     @mcp.tool()
+    def format_python_check(path: str = ".") -> dict[str, Any]:
+        """Run Ruff lint, import-order and formatting checks without modifying files."""
+        target = str(Path(path).expanduser().resolve())
+        cwd = str(Path(target).parent if Path(target).is_file() else target)
+        checks = {
+            "lint": _python_tool("ruff", ["check", target], cwd),
+            "imports": _python_tool("ruff", ["check", "--select", "I", target], cwd),
+            "format": _python_tool("ruff", ["format", "--check", target], cwd),
+        }
+        checks["ok"] = all(v.get("returncode") == 0 for v in checks.values())
+        return checks
+
+    @mcp.tool()
+    def fix_python_code(path: str = ".", unsafe_fixes: bool = False) -> dict[str, Any]:
+        """Apply Ruff lint/import fixes and then format Python code."""
+        target = str(Path(path).expanduser().resolve())
+        cwd = str(Path(target).parent if Path(target).is_file() else target)
+        args = ["check", "--fix"]
+        if unsafe_fixes:
+            args.append("--unsafe-fixes")
+        args.append(target)
+        lint = _python_tool("ruff", args, cwd)
+        fmt = _python_tool("ruff", ["format", target], cwd)
+        return {"ruff_fix": lint, "ruff_format": fmt, "ok": lint.get("returncode") == 0 and fmt.get("returncode") == 0}
+
+    @mcp.tool()
+    def check_prettier(path: str = ".") -> dict[str, Any]:
+        """Check JS/TS/JSON/HTML/CSS/Markdown/YAML formatting without changing files."""
+        target = str(Path(path).expanduser().resolve())
+        if not shutil.which("npx"):
+            return {"skipped": True, "reason": "npx is not available", "ok": False}
+        return _run(["npx", "--yes", "prettier", "--check", target], str(Path(target).parent if Path(target).is_file() else target))
+
+    @mcp.tool()
+    def lint_javascript(path: str = ".", fix: bool = False) -> dict[str, Any]:
+        """Run ESLint for JavaScript/TypeScript when available through npx."""
+        target = str(Path(path).expanduser().resolve())
+        if not shutil.which("npx"):
+            return {"skipped": True, "reason": "npx is not available", "ok": False}
+        args = ["npx", "--yes", "eslint"]
+        if fix:
+            args.append("--fix")
+        args.append(target)
+        return _run(args, str(Path(target).parent if Path(target).is_file() else target))
+
+    @mcp.tool()
+    def format_project(path: str = ".", check_only: bool = False) -> dict[str, Any]:
+        """Run a project-wide formatter/check pipeline for Python and supported web/text files."""
+        root = Path(path).expanduser().resolve()
+        result: dict[str, Any] = {}
+        has_py = root.suffix == ".py" if root.is_file() else any(root.rglob("*.py"))
+        if has_py:
+            result["python"] = format_python(str(root), check=check_only)
+            result["python_imports"] = sort_python_imports(str(root), check=check_only)
+        web_ext = {".js", ".jsx", ".ts", ".tsx", ".json", ".css", ".html", ".md", ".yaml", ".yml"}
+        has_web = root.suffix in web_ext if root.is_file() else any(f.suffix in web_ext for f in root.rglob("*") if f.is_file() and "node_modules" not in f.parts)
+        if has_web:
+            result["prettier"] = check_prettier(str(root)) if check_only else format_code(str(root)).get("prettier", {"skipped": True})
+        result["ok"] = all(v.get("returncode", 0) == 0 for v in result.values() if isinstance(v, dict) and "returncode" in v)
+        return result
+
+    @mcp.tool()
+    def toolchain_status() -> dict[str, Any]:
+        """Report availability of Dana formatting and quality toolchains."""
+        import importlib.util
+        return {
+            "ruff": importlib.util.find_spec("ruff") is not None,
+            "mypy": importlib.util.find_spec("mypy") is not None,
+            "npx": shutil.which("npx") is not None,
+            "prettier": shutil.which("prettier") is not None,
+            "eslint": shutil.which("eslint") is not None,
+        }
+
+    @mcp.tool()
     def format_code(path: str = ".") -> dict[str, Any]:
         """Format a project based on detected files: Ruff for Python and Prettier for web/text files when available."""
         root = Path(path).expanduser().resolve()
