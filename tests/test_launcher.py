@@ -16,13 +16,6 @@ def test_install_entrypoints_are_present():
 
 
 
-def test_run_wrappers_point_to_installer():
-    root = Path(__file__).resolve().parents[1]
-    assert "install.py" in (root / "run.sh").read_text()
-    assert "install.py" in (root / "run.bat").read_text()
-    assert "install.py" in (root / "run.cmd").read_text()
-    assert "install.py" in (root / "START").read_text()
-    assert "install.py" in (root / "START.bat").read_text()
 
 
 
@@ -69,3 +62,33 @@ def test_root_run_wrappers_use_runner_not_installer():
         text = (root / name).read_text()
         assert "scripts/run.py" in text
         assert "install.py" not in text
+
+
+
+def test_caddy_rejects_occupied_ports_when_service_is_inactive(monkeypatch):
+    from dana import cli
+
+    monkeypatch.setattr(cli, "service_is_active", lambda _name: False)
+    monkeypatch.setattr(cli, "listening_ports", lambda: {443: "LISTEN 0 4096 0.0.0.0:443"})
+
+    try:
+        cli.configure_caddy("mcp.example.com")
+    except RuntimeError as exc:
+        assert "443" in str(exc)
+        assert "already in use" in str(exc)
+    else:
+        raise AssertionError("Expected an occupied-port error")
+
+
+def test_caddy_uses_reload_only_when_active(monkeypatch):
+    from dana import cli
+
+    commands = []
+    monkeypatch.setattr(cli, "service_is_active", lambda _name: True)
+    monkeypatch.setattr(cli, "listening_ports", lambda: {443: "LISTEN"})
+    monkeypatch.setattr(cli, "run_command", lambda command, check=True: commands.append(command))
+
+    cli.configure_caddy("mcp.example.com")
+
+    assert ["sudo", "systemctl", "reload", "caddy"] in commands
+    assert ["sudo", "systemctl", "start", "caddy"] not in commands

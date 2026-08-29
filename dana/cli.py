@@ -119,13 +119,50 @@ def is_ip_address(host: str) -> bool:
         return False
 
 
+def service_is_active(name: str) -> bool:
+    result = run_command(["sudo", "systemctl", "is-active", "--quiet", name], check=False)
+    return result.returncode == 0
+
+
+def listening_ports() -> dict[int, str]:
+    result = subprocess.run(
+        ["sudo", "ss", "-ltnp"],
+        text=True,
+        capture_output=True,
+        cwd=ROOT,
+    )
+    output = result.stdout
+    listeners: dict[int, str] = {}
+    for port in (80, 443):
+        if f":{port} " in output or f":{port}\n" in output:
+            listeners[port] = output
+    return listeners
+
+
 def configure_caddy(host: str) -> None:
+    caddy_active = service_is_active("caddy")
+    occupied = listening_ports()
+    if occupied and not caddy_active:
+        ports = ", ".join(str(port) for port in sorted(occupied))
+        details = "\n".join(occupied.values())
+        raise RuntimeError(
+            f"Port(s) {ports} are already in use by another service. "
+            "Caddy cannot start until those ports are released. "
+            "Stop/reconfigure the existing web server or use a reverse-proxy configuration that shares it.\n\n"
+            f"Listening services:\n{details}"
+        )
+
     caddyfile = f"{host} {{\n    reverse_proxy 127.0.0.1:8765\n}}\n"
     tmp = Path("/tmp/dana.Caddyfile")
     tmp.write_text(caddyfile, encoding="utf-8")
+    run_command(["sudo", "caddy", "fmt", "--overwrite", str(tmp)])
+    run_command(["sudo", "caddy", "validate", "--config", str(tmp), "--adapter", "caddyfile"])
     run_command(["sudo", "cp", str(tmp), "/etc/caddy/Caddyfile"])
-    run_command(["sudo", "systemctl", "enable", "--now", "caddy"])
-    run_command(["sudo", "systemctl", "reload", "caddy"])
+    run_command(["sudo", "systemctl", "enable", "caddy"])
+    if caddy_active:
+        run_command(["sudo", "systemctl", "reload", "caddy"])
+    else:
+        run_command(["sudo", "systemctl", "start", "caddy"])
 
 
 def configure_service(python: Path) -> None:
