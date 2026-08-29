@@ -22,8 +22,8 @@ His **PHP MCP Server** implementation was the primary behavioral reference for t
 - 🖥️ Linux, Windows, and macOS support
 - 🚀 Interactive installer with automatic isolated `.venv` setup
 - 🌐 Local Mode with Tailscale Funnel
-- 🌐 Server Mode with domain/IP, Caddy, and systemd
-- 🔐 Persistent token-based connector URL
+- 🌐 Server Mode with domain, HTTPS, existing reverse-proxy integration, and systemd
+- 🔐 Tokenized Local Mode URLs and a standard HTTPS endpoint for Server Mode
 - 📁 File, directory, and code editing tools
 - 💻 Shell and process management
 - 🌿 Git, testing, linting, building, and package management
@@ -39,7 +39,7 @@ His **PHP MCP Server** implementation was the primary behavioral reference for t
 Dana has one shared core with two isolated deployment modes:
 
 - **Local Mode**: runs on a personal computer and uses the existing Tailscale workflow.
-- **Server Mode**: runs on a Linux VPS or dedicated server without Tailscale, using a domain or IP, HTTPS (for domains), and systemd.
+- **Server Mode**: runs on a Linux VPS or dedicated server without Tailscale, using a domain and HTTPS, an isolated localhost backend, automatic reverse-proxy integration, and systemd.
 
 The active mode is selected with `DANA_DEPLOYMENT_MODE=local` or `DANA_DEPLOYMENT_MODE=server`.
 
@@ -59,15 +59,47 @@ The installer asks for the deployment mode first and then performs only the setu
 
 ### Server Mode
 
-Server Mode automatically configures supported Linux dependencies, Caddy and systemd, generates a Bearer Token, and runs Dana on `127.0.0.1:8765`. When the input is a domain, Caddy acts as the reverse proxy and manages HTTPS; for a direct IP, the installer displays an HTTP endpoint.
+Server Mode is designed for VPS and dedicated servers that may already host one or more web projects. Dana runs on an **isolated free internal port** and listens only on `127.0.0.1`, so it does not directly conflict with public ports `80` and `443` or existing web services.
+
+The installer automatically:
+
+1. Selects a free backend port for Dana.
+2. Runs Dana through systemd on `127.0.0.1:<PORT>`.
+3. Detects the existing reverse proxy:
+   - Nginx
+   - Caddy
+   - Apache
+4. Finds the Virtual Host configuration for the selected domain.
+5. Creates a backup before changing the configuration.
+6. Adds the `/mcp` route to the Dana backend.
+7. Validates the proxy configuration.
+8. Rolls back automatically if validation or configuration fails.
+9. Reloads the proxy only after successful validation.
+
+Architecture:
+
+```text
+Internet
+   │
+   ▼
+https://mcp.example.com
+   │
+   ▼
+Existing Nginx / Caddy / Apache
+   ├── /     → Existing Web Project
+   └── /mcp  → 127.0.0.1:<DANA_PORT>
+                    │
+                    ▼
+                 Dana MCP
+```
 
 Example configuration:
 
 ```env
 DANA_DEPLOYMENT_MODE=server
 DANA_HOST=127.0.0.1
+DANA_PORT=<auto-selected-port>
 DANA_PUBLIC_HOST=mcp.example.com
-DANA_AUTH_TOKEN=<generated-token>
 ```
 
 The canonical MCP endpoint is:
@@ -76,11 +108,7 @@ The canonical MCP endpoint is:
 https://mcp.example.com/mcp
 ```
 
-Server Mode MCP requests require:
-
-```text
-Authorization: Bearer <DANA_AUTH_TOKEN>
-```
+> Server Mode does not put the token inside the public URL, keeping the connector endpoint a standard HTTPS URL.
 
 ### Local Mode
 
@@ -174,6 +202,54 @@ tailscale status
 
 🔗 Official documentation: https://tailscale.com/kb/start
 
+## ⏹️ Managing Dana in Server Mode
+
+Dana runs as a systemd service named `dana` in Server Mode.
+
+### Stop the service
+
+```bash
+sudo systemctl stop dana
+```
+
+### Start the service
+
+```bash
+sudo systemctl start dana
+```
+
+### Restart the service
+
+```bash
+sudo systemctl restart dana
+```
+
+### Check service status
+
+```bash
+sudo systemctl status dana --no-pager
+```
+
+### Follow live logs
+
+```bash
+sudo journalctl -u dana -f
+```
+
+### Disable automatic startup
+
+```bash
+sudo systemctl disable dana
+```
+
+### Enable automatic startup again
+
+```bash
+sudo systemctl enable dana
+```
+
+> Dana normally listens only on `127.0.0.1` in Server Mode. Its backend port is therefore not publicly exposed; public access is provided through the HTTPS reverse proxy and the `/mcp` route.
+
 ### 3. Connector URL
 
 The launcher prints a URL similar to:
@@ -182,7 +258,13 @@ The launcher prints a URL similar to:
 https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
 ```
 
-Use this URL directly as the MCP Custom Connector URL. **No separate Authorization header is required.**
+Use this URL directly as the MCP Custom Connector URL. **No separate Authorization header is required in Local Mode.**
+
+For Server Mode, use the standard endpoint:
+
+```text
+https://<your-domain>/mcp
+```
 
 ## 🔑 Token Management
 
@@ -258,6 +340,8 @@ Dana executes tools on the **same machine where the server is running**, so oper
 
 ## 🧩 Architecture
 
+### Local Mode
+
 ```text
 ChatGPT / Grok / Claude
           │
@@ -273,7 +357,25 @@ ChatGPT / Grok / Claude
  Files  Shell  Git ...
 ```
 
-Dana is independent from the PHP service and uses its own server configuration so it can coexist with existing services.
+### Server Mode
+
+```text
+ChatGPT / Grok / Claude
+          │
+          │ MCP over HTTPS
+          ▼
+ Existing Reverse Proxy :443
+ Nginx / Caddy / Apache
+          │
+          ├── /     → Existing Web Projects
+          │
+          └── /mcp  → 127.0.0.1:<DANA_PORT>
+                           │
+                           ▼
+                        Dana MCP
+```
+
+In Server Mode, Dana uses its own internal backend port and automatically integrates the `/mcp` route with the existing reverse proxy, preserving other web projects hosted on the same server.
 
 ## 🧪 Tests
 
