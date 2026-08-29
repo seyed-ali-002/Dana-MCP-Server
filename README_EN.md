@@ -4,7 +4,7 @@
 
 🇮🇷 **Persian documentation:** [README.md](README.md)
 
-Dana is a cross-platform Python MCP Server, independent from PHP, that runs on your computer and exposes a public HTTPS MCP endpoint through Tailscale Funnel.
+Dana is a cross-platform Python MCP Server, independent from PHP. For initial setup, use the Installer; Dana can then run in Local Mode on a personal computer or Server Mode on a Linux server.
 
 ## 🙏 Special Thanks
 
@@ -20,7 +20,9 @@ His **PHP MCP Server** implementation was the primary behavioral reference for t
 
 - 🐍 Python implementation, independent from PHP
 - 🖥️ Linux, Windows, and macOS support
-- 🌐 HTTPS exposure through Tailscale Funnel
+- 🚀 Interactive installer with automatic isolated `.venv` setup
+- 🌐 Local Mode with Tailscale Funnel
+- 🌐 Server Mode with domain/IP, Caddy, and systemd
 - 🔐 Persistent token-based connector URL
 - 📁 File, directory, and code editing tools
 - 💻 Shell and process management
@@ -37,29 +39,27 @@ His **PHP MCP Server** implementation was the primary behavioral reference for t
 Dana has one shared core with two isolated deployment modes:
 
 - **Local Mode**: runs on a personal computer and uses the existing Tailscale workflow.
-- **Server Mode**: runs on a Linux VPS or dedicated server without Tailscale, using a domain/IP, HTTPS and systemd.
+- **Server Mode**: runs on a Linux VPS or dedicated server without Tailscale, using a domain or IP, HTTPS (for domains), and systemd.
 
 The active mode is selected with `DANA_DEPLOYMENT_MODE=local` or `DANA_DEPLOYMENT_MODE=server`.
 
 ### Interactive Installer
 
-Run the installer with:
+For normal installation and setup, run only the Installer:
 
 ```bash
 python3 install.py
 ```
 
-or, after package installation:
+The Installer creates the project `.venv` and installs all Python dependencies inside it, so it does not modify the system-managed Python environment and avoids PEP 668 errors.
 
-```bash
-dana
-```
+After installation, Dana is run from the created environment. `scripts/run.py` and the `run*` files are direct/compatibility runners, not the primary installation path.
 
 The installer asks for the deployment mode first and then performs only the setup required for that mode. After dependency checks and installation, the terminal is cleared and the final connection information is displayed cleanly.
 
 ### Server Mode
 
-Server Mode automatically configures supported Linux dependencies, Caddy and systemd, generates a Bearer Token, and runs Dana on `127.0.0.1:8765`. Caddy acts as the reverse proxy and manages HTTPS for the configured domain.
+Server Mode automatically configures supported Linux dependencies, Caddy and systemd, generates a Bearer Token, and runs Dana on `127.0.0.1:8765`. When the input is a domain, Caddy acts as the reverse proxy and manages HTTPS; for a direct IP, the installer displays an HTTP endpoint.
 
 Example configuration:
 
@@ -84,11 +84,9 @@ Authorization: Bearer <DANA_AUTH_TOKEN>
 
 ### Local Mode
 
-Local Mode keeps the existing Tailscale workflow. Start it with:
+Local Mode keeps the existing Tailscale workflow. **For normal installation and setup, run only `python3 install.py`.** The installer creates the project `.venv`, installs dependencies there, and configures Local Mode.
 
-```bash
-python3 scripts/run.py
-```
+`./run.sh`, `run.bat`, and `scripts/run.py` are direct/compatibility runners for subsequent launches; they are not the primary installation path.
 
 The installer and runtime are mode-aware, so Local and Server networking configuration remains isolated.
 
@@ -98,6 +96,8 @@ The CLI and runtime use Rich panels for readable status output. Connection URLs 
 
 ## 🚀 Quick Start
 
+**Recommended path for all users: run the Installer only.**
+
 ### 1. Clone
 
 ```bash
@@ -105,21 +105,23 @@ git clone git@github.com:seyed-ali-002/Dana-MCP-Server.git
 cd Dana-MCP-Server
 ```
 
-### 2. Run
+### 2. Install and setup
 
 **Linux / macOS:**
 
 ```bash
-./run.sh
+python3 install.py
 ```
 
 **Windows:**
 
 ```bat
-run.bat
+python install.py
 ```
 
-The launcher handles Python environment setup, dependency installation, persistent token creation, Dana startup, Tailscale Funnel setup, hostname discovery, and printing the MCP connector URL.
+The Installer is the only recommended initial setup path. It creates the project `.venv`, installs dependencies into the isolated environment, asks for Local or Server Mode, and configures only the selected deployment mode.
+
+`./run.sh`, `run.bat`, and `scripts/run.py` are direct/compatibility runners for starting Dana after installation; they are not installation commands.
 
 > ⚠️ Tailscale must be installed and authenticated on the machine.
 

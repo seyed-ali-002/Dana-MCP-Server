@@ -4,7 +4,7 @@
 
 🇬🇧 **English documentation:** [README_EN.md](README_EN.md)
 
-Dana یک MCP Server کراس‌پلتفرم و مستقل از PHP است که روی سیستم شما اجرا می‌شود و از طریق Tailscale Funnel یک endpoint امن HTTPS در اختیار Chatbotها و Agentهای سازگار با MCP قرار می‌دهد.
+Dana یک MCP Server کراس‌پلتفرم و مستقل از PHP است. برای نصب اولیه فقط از Installer استفاده کنید؛ سپس می‌توانید آن را در Local Mode روی کامپیوتر شخصی یا در Server Mode روی Linux server اجرا کنید.
 
 ## 🙏 تشکر ویژه
 
@@ -21,7 +21,9 @@ Dana یک MCP Server کراس‌پلتفرم و مستقل از PHP است که 
 
 - 🐍 پیاده‌سازی کامل با Python و مستقل از PHP
 - 🖥️ پشتیبانی از Linux، Windows و macOS
-- 🌐 اتصال عمومی HTTPS با Tailscale Funnel
+- 🚀 Installer تعاملی با ساخت خودکار `.venv` و نصب ایزوله وابستگی‌ها
+- 🌐 Local Mode با Tailscale Funnel
+- 🌐 Server Mode با Domain/IP، Caddy و systemd
 - 🔐 لینک اتصال دارای Token ثابت و اختصاصی
 - 📁 مدیریت فایل و پوشه و ویرایش کد
 - 💻 اجرای دستورات و مدیریت Process
@@ -38,29 +40,27 @@ Dana یک MCP Server کراس‌پلتفرم و مستقل از PHP است که 
 دانا یک هسته مشترک با دو حالت کاملاً مجزا دارد:
 
 - **Local Mode**: اجرای دانا روی کامپیوتر شخصی و اتصال عمومی از طریق Tailscale.
-- **Server Mode**: اجرای دانا روی VPS یا سرور اختصاصی، بدون وابستگی به Tailscale، با Domain/IP، HTTPS و systemd.
+- **Server Mode**: اجرای دانا روی VPS یا سرور اختصاصی، بدون وابستگی به Tailscale، با Domain یا IP، HTTPS (برای Domain) و systemd.
 
 حالت فعال با `DANA_DEPLOYMENT_MODE=local` یا `DANA_DEPLOYMENT_MODE=server` مشخص می‌شود.
 
 ### نصب تعاملی
 
-برای اجرای Installer:
+برای نصب و راه‌اندازی معمولی، فقط Installer را اجرا کنید:
 
 ```bash
 python3 install.py
 ```
 
-یا پس از نصب پکیج:
+Installer خودش محیط `.venv` را می‌سازد و تمام وابستگی‌ها را داخل آن نصب می‌کند؛ بنابراین با PEP 668 و Python مدیریت‌شده سیستم تداخلی ندارد.
 
-```bash
-dana
-```
+پس از نصب، برای اجرای مستقیم Dana از محیط ایجادشده استفاده می‌شود. `scripts/run.py` و فایل‌های `run*` Runnerهای مستقیم/سازگاری هستند و مسیر نصب اصلی نیستند.
 
 Installer ابتدا حالت استقرار را می‌پرسد و سپس مراحل موردنیاز همان حالت را انجام می‌دهد. بعد از بررسی و نصب وابستگی‌ها، صفحه ترمینال پاک می‌شود و فقط اطلاعات نهایی اتصال نمایش داده می‌شود.
 
 ### Server Mode
 
-در Server Mode، Installer به‌صورت خودکار وابستگی‌های Linux، Caddy و systemd را تنظیم می‌کند، یک Bearer Token تولید می‌کند و Dana را روی `127.0.0.1:8765` اجرا می‌کند. Caddy به‌عنوان reverse proxy جلوی Dana قرار می‌گیرد و برای Domain، HTTPS را مدیریت می‌کند.
+در Server Mode، Installer به‌صورت خودکار وابستگی‌های Linux، Caddy و systemd را تنظیم می‌کند، یک Bearer Token تولید می‌کند و Dana را روی `127.0.0.1:8765` اجرا می‌کند. اگر ورودی یک Domain باشد، Caddy به‌عنوان reverse proxy جلوی Dana قرار می‌گیرد و HTTPS را مدیریت می‌کند؛ برای IP مستقیم، Endpoint با HTTP نمایش داده می‌شود.
 
 نمونه تنظیمات:
 
@@ -85,11 +85,9 @@ Authorization: Bearer <DANA_AUTH_TOKEN>
 
 ### Local Mode
 
-Local Mode جریان فعلی Tailscale را حفظ می‌کند و URL شامل token path است. برای اجرای آن:
+Local Mode جریان فعلی Tailscale را حفظ می‌کند و URL شامل token path است. **برای نصب و راه‌اندازی معمولی فقط `python3 install.py` را اجرا کنید.** Installer محیط `.venv` را می‌سازد، وابستگی‌ها را نصب می‌کند و حالت Local را تنظیم می‌کند.
 
-```bash
-python3 scripts/run.py
-```
+`./run.sh`، `run.bat` و `scripts/run.py` فقط Runnerهای مستقیم/سازگاری برای اجرای بعدی هستند و جایگزین Installer نیستند.
 
 Installer و Runtime به‌صورت mode-aware هستند و تنظیمات شبکه Local و Server با یکدیگر مخلوط نمی‌شوند.
 
@@ -99,6 +97,8 @@ CLI و Runtime از Rich استفاده می‌کنند و وضعیت را در 
 
 ## 🚀 اجرای سریع
 
+**مسیر پیشنهادی برای همه کاربران: فقط Installer را اجرا کنید.**
+
 ### 1. دریافت پروژه
 
 ```bash
@@ -106,21 +106,19 @@ git clone git@github.com:seyed-ali-002/Dana-MCP-Server.git
 cd Dana-MCP-Server
 ```
 
-### 2. اجرا
+### 2. نصب و راه‌اندازی
 
-**Linux / macOS:**
+**Linux / macOS / Windows:**
 
 ```bash
-./run.sh
+python3 install.py
 ```
 
-**Windows:**
+در Windows در صورت نبودن `python3` از `python install.py` استفاده کنید.
 
-```bat
-run.bat
-```
+Installer تنها مسیر پیشنهادی نصب است و ساخت `.venv`، نصب وابستگی‌ها، انتخاب Local/Server و تنظیمات مربوط به همان Mode را مدیریت می‌کند.
 
-همه مراحل توسط Launcher انجام می‌شود: ساخت محیط Python، نصب وابستگی‌ها، ایجاد Token پایدار، اجرای Dana، اتصال Dana به Tailscale Funnel، پیدا کردن hostname و نمایش لینک اتصال MCP.
+`./run.sh`، `run.bat` و `scripts/run.py` فقط Runnerهای مستقیم/سازگاری برای اجرای Dana پس از نصب هستند و نباید برای نصب اولیه استفاده شوند.
 
 > ⚠️ اگر Tailscale روی سیستم نصب یا Login نشده باشد، ابتدا آن را نصب و وارد حساب خود شوید.
 

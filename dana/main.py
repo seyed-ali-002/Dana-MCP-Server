@@ -19,7 +19,8 @@ def _banner() -> None:
     table.add_row("AUTH", "Bearer Token" if _mode() == "server" else "Tokenized Funnel Path")
     table.add_row("ENDPOINT", f"http://{settings.host}:{settings.port}{settings.mcp_path}")
     if settings.public_host:
-        public_url = f"https://{settings.public_host}{settings.mcp_path}"
+        scheme = "http" if settings.public_host.replace(".", "").isdigit() else "https"
+        public_url = f"{scheme}://{settings.public_host}{settings.mcp_path}"
         table.add_row("PUBLIC", public_url)
     console.print(Panel(table, title="[bold cyan]DANA MCP SERVER[/bold cyan]", subtitle="[dim]ready for connections[/dim]", border_style="cyan"))
 

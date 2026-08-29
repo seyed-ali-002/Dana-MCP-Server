@@ -29,6 +29,7 @@ def main():
     if not py.exists():
         run([sys.executable, "-m", "venv", ".venv"])
         py = ROOT / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
+    run([str(py), "-m", "pip", "install", "--upgrade", "pip"])
     run([str(py), "-m", "pip", "install", "-e", ".[dev]"])
     token = subprocess.check_output([str(py), "scripts/init_token.py"], cwd=ROOT, text=True).strip().splitlines()[-1]
     server = subprocess.Popen([str(py), "-m", "dana.main"], cwd=ROOT)

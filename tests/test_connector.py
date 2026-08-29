@@ -51,8 +51,23 @@ def test_server_mode_connector_uses_canonical_path(monkeypatch):
 
 def test_server_mode_mcp_requires_bearer_token(monkeypatch):
     monkeypatch.setattr("dana.http.settings.deployment_mode", "server")
-    with TestClient(app) as client:
-        response = client.get("/mcp", follow_redirects=False)
-        assert response.status_code == 401
-        authorized = client.get("/mcp", headers={"Authorization": f"Bearer {settings.auth_token}"}, follow_redirects=False)
-        assert authorized.status_code != 401
+    try:
+        with TestClient(app) as client:
+            response = client.get("/mcp", follow_redirects=False)
+            assert response.status_code == 401
+            authorized = client.get("/mcp", headers={"Authorization": f"Bearer {settings.auth_token}"}, follow_redirects=False)
+            assert authorized.status_code != 401
+    finally:
+        monkeypatch.setattr("dana.http.settings.deployment_mode", "local")
+
+
+
+def test_server_mode_connector_is_single_canonical_url(monkeypatch):
+    monkeypatch.setattr("dana.http.settings.deployment_mode", "server")
+    monkeypatch.setattr("dana.http.settings.public_host", "mcp.example.com")
+    try:
+        with TestClient(app) as client:
+            response = client.get("/connector", headers={"Authorization": f"Bearer {settings.auth_token}"})
+            assert response.json()["url"] == "https://mcp.example.com/mcp"
+    finally:
+        monkeypatch.setattr("dana.http.settings.deployment_mode", "local")
