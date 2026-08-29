@@ -17,6 +17,8 @@ dependencies = [
   "reportlab>=4,<5",
   "arabic-reshaper>=3,<4",
   "python-bidi>=0.4,<1",
+  "ruff>=0.6,<1",
+  "mypy>=1.11,<2",
 ]
 
 [project.optional-dependencies]
