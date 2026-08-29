@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     mcp_path: str = "/mcp"
     auth_token: str = ""
     public_host: str = ""
+    public_port: int = 0
     deployment_mode: str = "local"
 
     def normalized_mode(self) -> str:

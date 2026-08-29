@@ -49,8 +49,13 @@ async def connector(request: Request):
     authorization = request.headers.get("authorization", "")
     if authorization != f"Bearer {token}":
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    host = settings.public_host or ("127.0.0.1:" + str(settings.port))
-    scheme = "https" if settings.public_host else "http"
+    host = settings.public_host
+    server_mode = settings.normalized_mode() == "server"
+    if server_mode and settings.public_host and settings.public_port:
+        host = f"{settings.public_host}:{settings.public_port}"
+    if not host:
+        host = "127.0.0.1:" + str(settings.port)
+    scheme = "http" if server_mode or not settings.public_host else "https"
     prefix = "" if settings.normalized_mode() == "server" else f"/{token}"
     return {
         "title": "Chatbot Connection Link",

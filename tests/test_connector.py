@@ -42,10 +42,11 @@ def test_mcp_get_accept_header_compatibility():
 def test_server_mode_connector_uses_canonical_path(monkeypatch):
     monkeypatch.setattr("dana.http.settings.deployment_mode", "server")
     monkeypatch.setattr("dana.http.settings.public_host", "mcp.example.com")
+    monkeypatch.setattr("dana.http.settings.public_port", 18080)
     with TestClient(app) as client:
         response = client.get("/connector", headers={"Authorization": f"Bearer {settings.auth_token}"})
         assert response.status_code == 200
-        assert response.json()["url"] == "https://mcp.example.com/mcp"
+        assert response.json()["url"] == "http://mcp.example.com:18080/mcp"
 
 
 
@@ -68,6 +69,6 @@ def test_server_mode_connector_is_single_canonical_url(monkeypatch):
     try:
         with TestClient(app) as client:
             response = client.get("/connector", headers={"Authorization": f"Bearer {settings.auth_token}"})
-            assert response.json()["url"] == "https://mcp.example.com/mcp"
+            assert response.json()["url"] == "http://mcp.example.com/mcp"
     finally:
         monkeypatch.setattr("dana.http.settings.deployment_mode", "local")

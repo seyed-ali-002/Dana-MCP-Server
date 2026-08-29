@@ -65,30 +65,20 @@ def test_root_run_wrappers_use_runner_not_installer():
 
 
 
-def test_caddy_rejects_occupied_ports_when_service_is_inactive(monkeypatch):
+def test_server_uses_public_port_in_environment(tmp_path, monkeypatch):
     from dana import cli
 
-    monkeypatch.setattr(cli, "service_is_active", lambda _name: False)
-    monkeypatch.setattr(cli, "listening_ports", lambda: {443: "LISTEN 0 4096 0.0.0.0:443"})
-
-    try:
-        cli.configure_caddy("mcp.example.com")
-    except RuntimeError as exc:
-        assert "443" in str(exc)
-        assert "already in use" in str(exc)
-    else:
-        raise AssertionError("Expected an occupied-port error")
+    monkeypatch.setattr(cli, "ROOT", tmp_path)
+    cli.write_env("server", "mcp.example.com", 18080)
+    text = (tmp_path / ".env").read_text()
+    assert "DANA_HOST=0.0.0.0" in text
+    assert "DANA_PORT=18080" in text
+    assert "DANA_PUBLIC_PORT=18080" in text
 
 
-def test_caddy_uses_reload_only_when_active(monkeypatch):
+def test_port_is_listening_can_be_mocked_for_selection(monkeypatch):
     from dana import cli
 
-    commands = []
-    monkeypatch.setattr(cli, "service_is_active", lambda _name: True)
-    monkeypatch.setattr(cli, "listening_ports", lambda: {443: "LISTEN"})
-    monkeypatch.setattr(cli, "run_command", lambda command, check=True: commands.append(command))
-
-    cli.configure_caddy("mcp.example.com")
-
-    assert ["sudo", "systemctl", "reload", "caddy"] in commands
-    assert ["sudo", "systemctl", "start", "caddy"] not in commands
+    monkeypatch.setattr(cli, "port_is_listening", lambda port: port == 18080)
+    assert cli.port_is_listening(18080)
+    assert not cli.port_is_listening(18081)

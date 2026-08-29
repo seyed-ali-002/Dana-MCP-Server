@@ -39,7 +39,7 @@ def command_exists(name: str) -> bool:
     return shutil.which(name) is not None
 
 
-def write_env(mode: str, public_host: str = "") -> str:
+def write_env(mode: str, public_host: str = "", public_port: int = 0) -> str:
     env_path = ROOT / ".env"
     values: dict[str, str] = {}
     if env_path.exists():
@@ -50,11 +50,14 @@ def write_env(mode: str, public_host: str = "") -> str:
     values["DANA_DEPLOYMENT_MODE"] = mode
     if mode == "local":
         values.pop("DANA_PUBLIC_HOST", None)
+        values.pop("DANA_PUBLIC_PORT", None)
     if not values.get("DANA_AUTH_TOKEN") or values.get("DANA_AUTH_TOKEN") == "GENERATE_WITH_SCRIPT":
         values["DANA_AUTH_TOKEN"] = secrets.token_urlsafe(32)
     if mode == "server":
-        values["DANA_HOST"] = "127.0.0.1"
+        values["DANA_HOST"] = "0.0.0.0"
+        values["DANA_PORT"] = str(public_port)
         values["DANA_PUBLIC_HOST"] = public_host
+        values["DANA_PUBLIC_PORT"] = str(public_port)
     else:
         values["DANA_HOST"] = values.get("DANA_HOST") or "127.0.0.1"
     env_path.write_text("\n".join(f"{key}={value}" for key, value in values.items()) + "\n", encoding="utf-8")
@@ -107,7 +110,7 @@ def install_server_dependencies() -> None:
         raise RuntimeError("Automatic server installation currently supports apt-based Linux distributions.")
     console.print("[cyan]Installing system dependencies...[/cyan]")
     run_command(["sudo", "apt-get", "update"])
-    run_command(["sudo", "apt-get", "install", "-y", "caddy", "python3", "python3-venv", "python3-full", "ca-certificates"])
+    run_command(["sudo", "apt-get", "install", "-y", "python3", "python3-venv", "python3-full", "ca-certificates"])
 
 
 def is_ip_address(host: str) -> bool:
@@ -119,50 +122,33 @@ def is_ip_address(host: str) -> bool:
         return False
 
 
-def service_is_active(name: str) -> bool:
-    result = run_command(["sudo", "systemctl", "is-active", "--quiet", name], check=False)
-    return result.returncode == 0
-
-
-def listening_ports() -> dict[int, str]:
+def port_is_listening(port: int) -> bool:
     result = subprocess.run(
-        ["sudo", "ss", "-ltnp"],
+        ["sudo", "ss", "-ltn"],
         text=True,
         capture_output=True,
         cwd=ROOT,
     )
     output = result.stdout
-    listeners: dict[int, str] = {}
-    for port in (80, 443):
-        if f":{port} " in output or f":{port}\n" in output:
-            listeners[port] = output
-    return listeners
+    return f":{port} " in output or f":{port}\n" in output
 
 
-def configure_caddy(host: str) -> None:
-    caddy_active = service_is_active("caddy")
-    occupied = listening_ports()
-    if occupied and not caddy_active:
-        ports = ", ".join(str(port) for port in sorted(occupied))
-        details = "\n".join(occupied.values())
-        raise RuntimeError(
-            f"Port(s) {ports} are already in use by another service. "
-            "Caddy cannot start until those ports are released. "
-            "Stop/reconfigure the existing web server or use a reverse-proxy configuration that shares it.\n\n"
-            f"Listening services:\n{details}"
-        )
-
-    caddyfile = f"{host} {{\n    reverse_proxy 127.0.0.1:8765\n}}\n"
-    tmp = Path("/tmp/dana.Caddyfile")
-    tmp.write_text(caddyfile, encoding="utf-8")
-    run_command(["sudo", "caddy", "fmt", "--overwrite", str(tmp)])
-    run_command(["sudo", "caddy", "validate", "--config", str(tmp), "--adapter", "caddyfile"])
-    run_command(["sudo", "cp", str(tmp), "/etc/caddy/Caddyfile"])
-    run_command(["sudo", "systemctl", "enable", "caddy"])
-    if caddy_active:
-        run_command(["sudo", "systemctl", "reload", "caddy"])
-    else:
-        run_command(["sudo", "systemctl", "start", "caddy"])
+def choose_public_port() -> int:
+    default_port = 18080
+    while True:
+        raw = Prompt.ask("[bold cyan]Public port[/bold cyan]", default=str(default_port)).strip()
+        try:
+            port = int(raw)
+        except ValueError:
+            console.print("[yellow]Enter a valid numeric port.[/yellow]")
+            continue
+        if not 1024 <= port <= 65535:
+            console.print("[yellow]Use a port between 1024 and 65535.[/yellow]")
+            continue
+        if port_is_listening(port):
+            console.print(f"[yellow]Port {port} is already in use. Choose another port.[/yellow]")
+            continue
+        return port
 
 
 def configure_service(python: Path) -> None:
@@ -172,6 +158,9 @@ def configure_service(python: Path) -> None:
     run_command(["sudo", "cp", str(tmp), "/etc/systemd/system/dana.service"])
     run_command(["sudo", "systemctl", "daemon-reload"])
     run_command(["sudo", "systemctl", "enable", "--now", "dana"])
+
+
+
 
 
 def install_local() -> None:
@@ -190,18 +179,18 @@ def install_server() -> None:
     if hasattr(os, "geteuid") and os.geteuid() != 0 and not command_exists("sudo"):
         raise RuntimeError("Server Mode requires root privileges or sudo.")
     banner("SERVER MODE SETUP")
-    console.print("[dim]Dana will configure a public MCP server with Caddy, HTTPS and systemd.[/dim]\n")
+    console.print("[dim]Dana will configure a public MCP server on an isolated high port with systemd.[/dim]\n")
     host = Prompt.ask("[bold cyan]Public domain or IP[/bold cyan]").strip().lower()
     if not host:
         raise RuntimeError("A public domain or IP address is required.")
     if " " in host or "/" in host:
         raise RuntimeError("Enter only a domain or IP address, without protocol or path.")
+    public_port = choose_public_port()
     console.print("\n[cyan]Starting server checks and installation...[/cyan]")
     install_server_dependencies()
     python = install_python_dependencies()
     console.print("[cyan]Configuring Dana Server Mode...[/cyan]")
-    token = write_env("server", host)
-    configure_caddy(host) if not is_ip_address(host) else None
+    token = write_env("server", host, public_port)
     configure_service(python)
     console.print("[cyan]Verifying service configuration...[/cyan]")
     run_command(["sudo", "systemctl", "is-active", "--quiet", "dana"])
@@ -210,13 +199,15 @@ def install_server() -> None:
     table = Table.grid(padding=(0, 2))
     table.add_row("STATUS", "[bold green]ONLINE[/bold green]")
     table.add_row("MODE", "[bold cyan]SERVER[/bold cyan]")
-    scheme = "http" if is_ip_address(host) else "https"
-    table.add_row("MCP URL", f"[bold green]{scheme}://{host}/mcp[/bold green]")
+    scheme = "http"
+    public_base = f"{scheme}://{host}:{public_port}"
+    table.add_row("MCP URL", f"[bold green]{public_base}/mcp[/bold green]")
     table.add_row("AUTH TOKEN", "[yellow]Saved in .env[/yellow]")
     table.add_row("SERVICE", "[green]systemd enabled[/green]")
-    table.add_row("HTTPS", "[green]Managed by Caddy[/green]" if scheme == "https" else "[yellow]Not configured for direct IP[/yellow]")
+    table.add_row("PUBLIC PORT", str(public_port))
+    table.add_row("TRANSPORT", "[yellow]HTTP on isolated public port[/yellow]")
     console.print(Panel(table, border_style="green"))
-    connector_url = f"{scheme}://{host}/mcp"
+    connector_url = f"{public_base}/mcp"
     console.print(f"\n[bold cyan]Connector URL:[/bold cyan] {connector_url}")
     console.print("[dim]The URL above is printed as one uninterrupted line for easy copying.[/dim]")
     console.print(f"[dim]Bearer token generated and stored securely in {ROOT / '.env'}[/dim]")
@@ -228,7 +219,7 @@ def main() -> None:
     banner("INSTALLER")
     console.print("[bold]Select deployment mode[/bold]\n")
     console.print("[cyan]1[/cyan]  Local Device  [dim]Tailscale / personal computer[/dim]")
-    console.print("[cyan]2[/cyan]  Public Server [dim]Domain + HTTPS + systemd[/dim]\n")
+    console.print("[cyan]2[/cyan]  Public Server [dim]Custom port + systemd[/dim]\n")
     choice = Prompt.ask("Choice", choices=["1", "2"], default="1")
     try:
         if choice == "1":
