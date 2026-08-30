@@ -9,6 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PID_FILE = ROOT / ".dana.pid"
 PORT = 8765
+ENV_FILE = ROOT / ".env"
+
 
 def is_dana_process(pid: int) -> bool:
     try:
