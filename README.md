@@ -441,3 +441,6 @@ Pull Request و Issue کاملاً استقبال می‌شود. اگر باگ،
 ---
 
 ⭐ اگر Dana برای شما مفید است، با Star کردن پروژه و مشارکت در توسعه آن از پروژه حمایت کنید.
+
+## 🧠 Codebase Memory و Context Optimization
+Dana پروژه را با SQLite + FTS5 به‌صورت افزایشی ایندکس می‌کند. با `index_codebase` ایندکس بسازید و با `search_codebase_memory` فقط Context مرتبط را با بودجه مشخص دریافت کنید. `get_library_docs` مستندات URLهای عمومی را Cache می‌کند و `context_compress` متن‌های تکراری را فشرده می‌کند.
