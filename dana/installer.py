@@ -303,7 +303,7 @@ def set_local_public_host(host: str) -> None:
             lines.append(line)
     if not found:
         lines.append(f"DANA_PUBLIC_HOST={host}")
-    env_path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 
@@ -328,7 +328,6 @@ def install_local() -> None:
     table.add_row("PUBLIC HOST", public_host)
     table.add_row("TRANSPORT", "[green]Tailscale Funnel + MCP[/green]")
     console.print(Panel(table, title="[bold green]DANA READY[/bold green]", border_style="green", padding=(1, 2)))
-    console.print("\n[dim]Run [bold]./run.sh[/bold] or [bold]python start.py[/bold] to launch Dana.[/bold]")
 
 
 def install_server() -> None:
