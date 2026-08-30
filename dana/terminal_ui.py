@@ -49,4 +49,4 @@ def worker_ready(worker_name: str, worker_number: int) -> None:
 
 
 def startup_error(message: str) -> None:
-    console.print(Panel(f"[bold red]{message}[/bold red]", title="DANA ERROR", border_style="red"))
+    console.print(Panel(message, title="[bold red]DANA ERROR[/bold red]", border_style="red", padding=(1, 2)))
