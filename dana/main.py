@@ -61,7 +61,9 @@ def run() -> None:
         log_level="error",
         access_log=False,
         reload=False,
-        workers=settings.normalized_workers(),
+        # Uvicorn must not create a separate supervisor/worker process tree here.
+        # Dana manages its worker pool at the application level.
+        workers=1,
     )
     _write_pid()
     try:
