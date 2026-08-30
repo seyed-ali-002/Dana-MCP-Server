@@ -16,6 +16,8 @@ Dana is a cross-platform Python MCP Server, independent from PHP. For initial se
   - [Local Mode](#local-mode)
   - [Server Mode](#server-mode)
   - [Terminal UI](#terminal-ui)
+  - [Installer and Runtime Architecture](#installer-and-runtime-architecture)
+  - [Worker Logs](#worker-logs)
 - [Quick Start](#-quick-start)
   - [Clone](#1-clone)
   - [Install and Setup](#2-install-and-setup)
@@ -82,7 +84,7 @@ For normal installation and setup, run only the Installer:
 python3 install.py
 ```
 
-The Installer creates the project `.venv` and installs all Python dependencies inside it, so it does not modify the system-managed Python environment and avoids PEP 668 errors.
+The Installer creates the project `.venv` and installs all Python dependencies inside it, so it does not modify the system-managed Python environment and avoids PEP 668 errors. It also provides a dedicated setup UI for deployment mode, Worker count, authentication configuration, and networking.
 
 After installation, Dana is run from the created environment. `scripts/run.py` and the `run*` files are direct/compatibility runners, not the primary installation path.
 
@@ -151,7 +153,51 @@ The installer and runtime are mode-aware, so Local and Server networking configu
 
 ### Terminal UI
 
-The CLI and runtime use Rich panels for readable status output. Connection URLs are always printed on one uninterrupted line so they can be copied safely. The terminal is also cleared after dependency setup so the final screen stays clean.
+Installer and Runtime have separate responsibilities. The Installer provides a polished setup interface for installation and configuration. Runtime only displays the live Dana dashboard, Worker status, and Worker job logs. Runtime does not install dependencies, ask installation questions, or print raw Tailscale command output.
+
+## Installer and Runtime Architecture
+
+```text
+python install.py
+      │
+      ├── create/update .venv
+      ├── install dependencies
+      ├── select deployment mode
+      ├── configure workers
+      ├── generate persistent token
+      └── configure networking / Tailscale
+
+run / run.sh / run.bat
+      │
+      ▼
+Dana Runtime
+      │
+      ├── Dashboard
+      ├── Worker status
+      └── Worker job logs
+```
+
+`install.py` and `dana/installer.py` are responsible for installation and configuration. Runtime is intentionally kept separate from installation.
+
+### Tailscale in Local Mode
+
+In Local Mode, the Installer configures Tailscale Funnel and keeps raw Tailscale command output out of the normal UI. Runtime reads the resulting configuration and displays only the final MCP connection URL.
+
+### Worker Logs
+
+Each Worker receives a random name from Dana's internal name pool and keeps its Worker number stable. After each completed operation, Dana records the Worker name and number, operation name, execution time, and token information.
+
+Example:
+
+```text
+DONE Atlas #1  read_file
+     tokens 1,284 in / 4,912 out  time 184ms
+
+DONE Orion #3  edit_file
+     tokens 2,031 in / 1,447 out  time 921ms
+```
+
+Internal transport messages such as `Terminating session: None` are not shown in the normal Runtime output.
 
 ## 🚀 Quick Start
 
@@ -283,7 +329,9 @@ sudo systemctl enable dana
 
 ### 👷 Worker Count
 
-During Dana installation or launch, you will be asked for the number of workers. The default is **5**. This is suitable for most use cases; increase it when multiple clients or concurrent tool operations require more capacity. The supported range is **1 to 128**.
+The number of Workers is selected during the **Installer** phase, not during normal Runtime startup. The default is **5**, with a supported range of **1 to 128**.
+
+After installation, Runtime starts directly without installation prompts. Each Worker also receives a random name from Dana's internal name pool.
 
 The selected value is stored in `.env` as:
 
@@ -293,7 +341,7 @@ DANA_WORKERS=5
 
 ### 3. Connector URL
 
-The launcher prints a URL similar to:
+After installation and startup, the Runtime dashboard displays the connection URL. In Local Mode it looks like:
 
 ```text
 https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp

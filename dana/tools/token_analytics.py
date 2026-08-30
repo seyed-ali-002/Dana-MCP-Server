@@ -31,7 +31,7 @@ def register_token_analytics_tools(mcp:FastMCP)->None:
 
  @mcp.tool()
  def record_token_usage(name:str,input_tokens:int=0,output_tokens:int=0,duration_seconds:float=0.0,path:str='.',session_id:str='default',exact:bool=True,source:str='client_reported')->dict[str,Any]:
-    root=require_path(path,purpose='token analytics'); _session(root,session_id); total=max(0,input_tokens)+max(0,output_tokens); c=_db(root); c.execute('INSERT INTO events(ts,name,input_tokens,output_tokens,total_tokens,duration,exact,source) VALUES(?,?,?,?,?,?,?,?,?)',(time.time(),name,max(0,input_tokens),max(0,output_tokens),total,max(0.0,duration_seconds),int(exact),source,session_id)); c.commit(); c.close(); return {'recorded':True,'total_tokens':total,'exact':exact,'duration_seconds':max(0.0,duration_seconds)}
+    root=require_path(path,purpose='token analytics'); _session(root,session_id); total=max(0,input_tokens)+max(0,output_tokens); c=_db(root); c.execute('INSERT INTO events(ts,name,input_tokens,output_tokens,total_tokens,duration,exact,source,session_id) VALUES(?,?,?,?,?,?,?,?,?)',(time.time(),name,max(0,input_tokens),max(0,output_tokens),total,max(0.0,duration_seconds),int(exact),source,session_id)); c.commit(); c.close(); return {'recorded':True,'total_tokens':total,'exact':exact,'duration_seconds':max(0.0,duration_seconds)}
 
  @mcp.tool()
  def start_work_session(path:str='.',session_id:str='default')->dict[str,Any]:

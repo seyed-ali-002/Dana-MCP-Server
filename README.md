@@ -11,6 +11,8 @@ Dana یک MCP Server کراس‌پلتفرم و مستقل از PHP است. بر
 ## 📚 فهرست مطالب
 
 - [امکانات](#-امکانات)
+- [ساختار Installer و Runtime](#-ساختار-installer-و-runtime)
+- [رابط ترمینال و Worker Logs](#-رابط-ترمینال-و-worker-logs)
 - [حالت‌های استقرار](#-حالتهای-استقرار)
   - [نصب تعاملی](#نصب-تعاملی)
   - [Local Mode](#local-mode)
@@ -84,7 +86,7 @@ Dana یک MCP Server کراس‌پلتفرم و مستقل از PHP است. بر
 python3 install.py
 ```
 
-Installer خودش محیط `.venv` را می‌سازد و تمام وابستگی‌ها را داخل آن نصب می‌کند؛ بنابراین با PEP 668 و Python مدیریت‌شده سیستم تداخلی ندارد.
+Installer خودش محیط `.venv` را می‌سازد و تمام وابستگی‌ها را داخل آن نصب می‌کند؛ بنابراین با PEP 668 و Python مدیریت‌شده سیستم تداخلی ندارد. رابط Installer برای انتخاب Mode، تعداد Worker، احراز هویت و تنظیمات شبکه نیز به‌صورت اختصاصی طراحی شده است.
 
 پس از نصب، برای اجرای مستقیم Dana از محیط ایجادشده استفاده می‌شود. `scripts/run.py` و فایل‌های `run*` Runnerهای مستقیم/سازگاری هستند و مسیر نصب اصلی نیستند.
 
@@ -153,7 +155,53 @@ Installer و Runtime به‌صورت mode-aware هستند و تنظیمات ش�
 
 ### ظاهر ترمینال
 
-CLI و Runtime از Rich استفاده می‌کنند و وضعیت را در پنل‌های خوانا نمایش می‌دهند. URL اتصال همیشه در یک خط کامل چاپ می‌شود تا کپی کردن آن بدون شکستن لینک امکان‌پذیر باشد. پس از مرحله نصب و بررسی وابستگی‌ها نیز ترمینال پاک می‌شود.
+Installer و Runtime دو رابط جدا دارند. Installer برای نمایش مراحل نصب و تنظیمات طراحی شده و Runtime فقط Dashboard زنده Dana و لاگ‌های Workerها را نمایش می‌دهد. Runtime دیگر مراحل نصب، `pip install` یا خروجی خام Tailscale را نشان نمی‌دهد.
+
+## 🧱 ساختار Installer و Runtime
+
+مسیر اجرای پیشنهادی به این شکل است:
+
+```text
+python install.py
+      │
+      ├── create/update .venv
+      ├── install dependencies
+      ├── select deployment mode
+      ├── configure workers
+      ├── generate persistent token
+      └── configure networking / Tailscale
+
+run / run.sh / run.bat
+      │
+      ▼
+Dana Runtime
+      │
+      ├── Dashboard
+      ├── Worker status
+      └── Worker job logs
+```
+
+`install.py` و `dana/installer.py` مسئول نصب و پیکربندی هستند. Runtime نباید برای نصب وابستگی یا آماده‌سازی محیط استفاده شود.
+
+### Tailscale در Local Mode
+
+در Local Mode، Installer پیکربندی Tailscale Funnel را انجام می‌دهد و خروجی خام فرمان‌های Tailscale را به کاربر نمایش نمی‌دهد. Runtime فقط URL نهایی MCP را از تنظیمات خوانده و نمایش می‌دهد.
+
+### Worker Logs
+
+هر Worker یک نام تصادفی از فهرست داخلی Dana دریافت می‌کند و شماره ثابت خود را حفظ می‌کند. بعد از پایان هر عملیات، لاگ شامل نام و شماره Worker، نام عملیات، زمان اجرا و اطلاعات Token ثبت می‌شود.
+
+نمونه:
+
+```text
+DONE Atlas #1  read_file
+     tokens 1,284 in / 4,912 out  time 184ms
+
+DONE Orion #3  edit_file
+     tokens 2,031 in / 1,447 out  time 921ms
+```
+
+پیام‌های داخلی Transport مانند `Terminating session: None` برای خروجی معمول Runtime نمایش داده نمی‌شوند.
 
 ## 🚀 اجرای سریع
 
@@ -281,7 +329,9 @@ sudo systemctl enable dana
 
 ### 👷 تعداد Workerها
 
-هنگام نصب یا اجرای Dana از شما تعداد Workerها پرسیده می‌شود. مقدار پیش‌فرض **5** است. برای اکثر استفاده‌ها همان مقدار پیش‌فرض مناسب است؛ در صورت اتصال هم‌زمان چند Client یا اجرای ابزارهای متعدد می‌توانید مقدار بیشتری انتخاب کنید. بازه مجاز **1 تا 128** است.
+تعداد Workerها در مرحله **Installer** انتخاب می‌شود، نه هنگام اجرای معمول Runtime. مقدار پیش‌فرض **5** است و بازه مجاز **1 تا 128** است.
+
+پس از نصب، Runtime بدون پرسیدن سؤال‌های نصب مستقیماً Dashboard را اجرا می‌کند. نام هر Worker نیز به‌صورت تصادفی از فهرست نام‌های داخلی Dana انتخاب می‌شود.
 
 مقدار انتخاب‌شده در `.env` با نام زیر ذخیره می‌شود:
 
@@ -291,7 +341,7 @@ DANA_WORKERS=5
 
 ### 3. لینک اتصال
 
-پس از اجرا، Launcher لینک زیر را نمایش می‌دهد:
+پس از نصب و اجرای Runtime، Dashboard لینک اتصال را نمایش می‌دهد. در Local Mode URL به شکل زیر است:
 
 ```text
 https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp

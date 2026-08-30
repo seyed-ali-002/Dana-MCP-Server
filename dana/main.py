@@ -23,14 +23,19 @@ def run() -> None:
     mode = _mode()
     public_url = _public_url()
     server_dashboard(settings, mode, public_url)
-    # Keep terminal output focused on Dana's dashboard and real errors only.
-    for name in ("uvicorn.access", "uvicorn.error"):
-        logging.getLogger(name).setLevel(logging.WARNING)
+
+    # Worker names are deterministic and derived from DANA_AUTH_TOKEN.
+
+    # Keep routine HTTP/session/access logging out of the terminal. Real server
+    # errors remain available at ERROR level.
+    for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "mcp", "mcp.server", "mcp.server.streamable_http"):
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.ERROR)
     config = uvicorn.Config(
         "dana.http:app",
         host=settings.host,
         port=settings.port,
-        log_level="warning",
+        log_level="error",
         access_log=False,
         reload=False,
         workers=settings.normalized_workers(),
