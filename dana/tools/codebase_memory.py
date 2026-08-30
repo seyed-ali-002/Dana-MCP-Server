@@ -158,5 +158,8 @@ def register_codebase_memory_tools(mcp:FastMCP)->None:
  @mcp.tool()
  def clear_codebase_memory(path:str='.',clear_context_cache:bool=True)->dict[str,Any]:
   root=require_path(path,purpose='codebase memory'); p=root/'.dana'/'codebase_memory.db'
-  if p.exists(): p.unlink()
+  if p.exists():
+   if clear_context_cache: p.unlink()
+   else:
+    c=_db(root); c.execute('DELETE FROM files'); c.execute('DELETE FROM symbols'); c.execute('DELETE FROM imports'); c.execute('DELETE FROM search'); c.commit(); c.close()
   return {'cleared':str(p),'context_cache_cleared':clear_context_cache}
