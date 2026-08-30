@@ -447,3 +447,8 @@ Dana incrementally indexes projects with SQLite + FTS5. Use `index_codebase`, th
 
 Dana retrieves relevant project context without applying an artificial default token cap. Deduplication, Context IDs and caching, delta context, progressive loading, symbol and dependency analysis, and structural compression reduce repeated or unnecessary context while keeping relevant information available.
 
+
+## 📊 Token and Time Analytics
+
+Dana can record token usage and execution time for every operation. Analytics include per-operation, per-session, and all-time project totals. Exact model usage requires the client/API to report real `input_tokens` and `output_tokens`; otherwise Dana can provide context estimates.
+
