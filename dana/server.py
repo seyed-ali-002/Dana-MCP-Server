@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import json
 import os
 import time
@@ -14,14 +15,47 @@ from .terminal_ui import worker_event, worker_ready
 from .tools import register_tools
 
 
-_WORKER_NAMES = [
+# Keep internal MCP lifecycle/tool-registration messages out of Dana's user-facing
+# terminal. Worker completion events are emitted through terminal_ui instead.
+for _logger_name in (
+    "mcp.server.fastmcp.tools.tool_manager",
+    "mcp.server.streamable_http_manager",
+    "mcp.server.streamable_http",
+):
+    _logger = logging.getLogger(_logger_name)
+    _logger.setLevel(logging.ERROR)
+    _logger.propagate = False
+
+
+_DEFAULT_WORKER_NAMES = [
     "Atlas", "Nova", "Orion", "Vega", "Echo", "Luna", "Pixel", "Nexus",
     "Iris", "Argo", "Cobalt", "Milo", "Astra", "Onyx", "Raven", "Sol",
     "Kairo", "Zephyr", "Axiom", "Ember", "Sage", "Bolt", "Lyra", "Quill",
+    "Phoenix", "Cosmo", "Drift", "Halo", "Indigo", "Juno", "Mars", "River",
+    "Storm", "Titan", "Willow", "Zen", "Orbit", "Comet", "Frost", "Dawn",
 ]
 
 
+def _worker_names() -> list[str]:
+    config = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".dana_workers.json")
+    try:
+        with open(config, encoding="utf-8") as handle:
+            names = json.load(handle).get("workers", [])
+        if isinstance(names, list) and names and all(isinstance(n, str) and n.strip() for n in names):
+            return names
+    except (OSError, ValueError, TypeError):
+        pass
+    return _DEFAULT_WORKER_NAMES
+
+
+
 def _worker_number() -> int:
+    configured = os.getenv("DANA_WORKER_NUMBER")
+    if configured:
+        try:
+            return max(1, int(configured))
+        except ValueError:
+            pass
     identity = current_process()._identity
     return identity[0] if identity else 1
 
@@ -39,8 +73,12 @@ def _worker_name(number: int) -> str:
     except Exception:
         seed = os.getenv("DANA_AUTH_TOKEN", "dana")
 
+    names = _worker_names()
+    if number <= len(names):
+        return names[number - 1]
+
     ranked = sorted(
-        _WORKER_NAMES,
+        names,
         key=lambda name: hashlib.sha256(f"{seed}:worker:{name}".encode()).hexdigest(),
     )
     return ranked[(number - 1) % len(ranked)]
