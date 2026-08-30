@@ -41,7 +41,6 @@ full = [
 [project.scripts]
 dana-mcp = "dana.main:run"
 dana = "dana.cli:main"
-dana-gui = "dana.gui_launcher:main"
 
 [tool.setuptools.packages.find]
 include = ["dana*"]
