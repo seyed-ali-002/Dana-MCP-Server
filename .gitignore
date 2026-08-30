@@ -8,3 +8,19 @@ __pycache__/
 *.egg-info/
 
 *.log
+
+# Dana runtime state
+.dana.pid
+.dana_workers.json
+
+# Test and coverage artifacts
+.coverage
+htmlcov/
+coverage.xml
+.pytest_cache/
+
+# OS / editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
