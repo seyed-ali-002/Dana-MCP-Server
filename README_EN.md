@@ -281,6 +281,16 @@ sudo systemctl enable dana
 
 > Dana normally listens only on `127.0.0.1` in Server Mode. Its backend port is therefore not publicly exposed; public access is provided through the HTTPS reverse proxy and the `/mcp` route.
 
+### 👷 Worker Count
+
+During Dana installation or launch, you will be asked for the number of workers. The default is **5**. This is suitable for most use cases; increase it when multiple clients or concurrent tool operations require more capacity. The supported range is **1 to 128**.
+
+The selected value is stored in `.env` as:
+
+```env
+DANA_WORKERS=5
+```
+
 ### 3. Connector URL
 
 The launcher prints a URL similar to:

@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     public_port: int = 0
     public_scheme: str = ""
     deployment_mode: str = "local"
+    workers: int = 5
+
+    def normalized_workers(self) -> int:
+        if not 1 <= self.workers <= 128:
+            raise RuntimeError("DANA_WORKERS must be between 1 and 128.")
+        return self.workers
 
     def normalized_mode(self) -> str:
         mode = self.deployment_mode.lower().strip()

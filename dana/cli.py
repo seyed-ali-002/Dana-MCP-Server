@@ -39,7 +39,7 @@ def command_exists(name: str) -> bool:
     return shutil.which(name) is not None
 
 
-def write_env(mode: str, public_host: str = "", public_port: int = 0) -> str:
+def write_env(mode: str, public_host: str = "", public_port: int = 0, workers: int = 5) -> str:
     env_path = ROOT / ".env"
     values: dict[str, str] = {}
     if env_path.exists():
@@ -48,6 +48,7 @@ def write_env(mode: str, public_host: str = "", public_port: int = 0) -> str:
                 key, value = line.split("=", 1)
                 values[key] = value
     values["DANA_DEPLOYMENT_MODE"] = mode
+    values["DANA_WORKERS"] = str(workers)
     if mode == "local":
         values.pop("DANA_PUBLIC_HOST", None)
         values.pop("DANA_PUBLIC_PORT", None)
@@ -158,7 +159,8 @@ def choose_public_port() -> int:
 
 
 def configure_service(python: Path) -> None:
-    service = f"""[Unit]\nDescription=Dana MCP Server\nAfter=network.target\n\n[Service]\nType=simple\nWorkingDirectory={ROOT}\nExecStart={python} -m dana.main\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\n"""
+    service = f"""[Unit]\nDescription=Dana MCP Server\nAfter=network.target\n\n[Service]\nType=simple\nWorkingDirectory={ROOT}\nEnvironmentFile={ROOT}/.env
+ExecStart={python} -m dana.main\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\n"""
     tmp = Path("/tmp/dana.service")
     tmp.write_text(service, encoding="utf-8")
     run_command(["sudo", "cp", str(tmp), "/etc/systemd/system/dana.service"])
@@ -204,10 +206,23 @@ def configure_reverse_proxy(public_host: str, backend_port: int) -> None:
 
 
 
+def choose_workers(default: int = 5) -> int:
+    while True:
+        raw = Prompt.ask("[bold cyan]Number of Dana workers[/bold cyan]", default=str(default)).strip()
+        try:
+            workers = int(raw)
+            if not 1 <= workers <= 128:
+                raise ValueError
+            return workers
+        except ValueError:
+            console.print("[yellow]Enter a worker count between 1 and 128.[/yellow]")
+
+
 def install_local() -> None:
     console.print("[cyan]Preparing Local Mode...[/cyan]")
     install_python_dependencies()
-    write_env("local")
+    workers = choose_workers()
+    write_env("local", workers=workers)
     clear()
     banner("LOCAL MODE READY")
     console.print("[green]✓ Dependencies checked and installed[/green]")
@@ -227,11 +242,12 @@ def install_server() -> None:
     if " " in host or "/" in host:
         raise RuntimeError("Enter only a domain or IP address, without protocol or path.")
     public_port = choose_public_port()
+    workers = choose_workers()
     console.print("\n[cyan]Starting server checks and installation...[/cyan]")
     install_server_dependencies()
     python = install_python_dependencies()
     console.print("[cyan]Configuring Dana Server Mode...[/cyan]")
-    write_env("server", host, public_port)
+    write_env("server", host, public_port, workers)
     configure_service(python)
     console.print("[cyan]Preparing HTTPS reverse-proxy integration...[/cyan]")
     configure_reverse_proxy(host, public_port)
@@ -248,6 +264,7 @@ def install_server() -> None:
     table.add_row("SERVICE", "[green]systemd enabled[/green]")
     table.add_row("BACKEND PORT", str(public_port))
     table.add_row("TRANSPORT", "[green]HTTPS via existing reverse proxy[/green]")
+    table.add_row("WORKERS", str(workers))
     console.print(Panel(table, border_style="green"))
     console.print(f"\n[bold cyan]Connector URL:[/bold cyan] {connector_url}")
     console.print("[dim]The URL above is printed as one uninterrupted line for easy copying.[/dim]")

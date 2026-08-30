@@ -16,6 +16,7 @@ def _banner() -> None:
     table.add_row("STATUS", "[bold green]ONLINE[/bold green]")
     table.add_row("MODE", f"[bold cyan]{_mode().upper()}[/bold cyan]")
     table.add_row("TRANSPORT", "HTTP Streamable MCP")
+    table.add_row("WORKERS", str(settings.normalized_workers()))
     table.add_row("AUTH", "HTTPS MCP endpoint" if _mode() == "server" else "Tokenized Connection Path")
     table.add_row("ENDPOINT", f"http://{settings.host}:{settings.port}{settings.mcp_path}")
     if settings.public_host:
@@ -40,6 +41,7 @@ def run() -> None:
         port=settings.port,
         log_level=settings.log_level,
         reload=False,
+        workers=settings.normalized_workers(),
     )
 
 

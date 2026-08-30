@@ -4,6 +4,7 @@ import os, re, shutil, subprocess, sys, time, urllib.request
 from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
+from rich.prompt import Prompt
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,8 +32,20 @@ def main():
         py = ROOT / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
     run([str(py), "-m", "pip", "install", "--upgrade", "pip"])
     run([str(py), "-m", "pip", "install", "-r", "requirements.txt"])
+    default_workers = os.getenv("DANA_WORKERS", "5")
+    while True:
+        raw_workers = Prompt.ask("[bold cyan]Number of Dana workers[/bold cyan]", default=default_workers).strip()
+        try:
+            workers = int(raw_workers)
+            if not 1 <= workers <= 128:
+                raise ValueError
+            break
+        except ValueError:
+            console.print("[yellow]Enter a worker count between 1 and 128.[/yellow]")
+    env = os.environ.copy()
+    env["DANA_WORKERS"] = str(workers)
     token = subprocess.check_output([str(py), "scripts/init_token.py"], cwd=ROOT, text=True).strip().splitlines()[-1]
-    server = subprocess.Popen([str(py), "-m", "dana.main"], cwd=ROOT)
+    server = subprocess.Popen([str(py), "-m", "dana.main"], cwd=ROOT, env=env)
     try:
         healthy = False
         for _ in range(40):
