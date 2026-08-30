@@ -97,17 +97,29 @@ Server Mode is designed for VPS and dedicated servers that may already host one 
 The installer automatically:
 
 1. Selects a free backend port for Dana.
-2. Runs Dana through systemd on `127.0.0.1:<PORT>`.
-3. Detects the existing reverse proxy:
+2. Inspects existing reverse proxies and does not install an additional service unless needed.
+3. Uses the existing Nginx installation when Nginx is already available.
+4. Explicitly asks for approval before installing Caddy when no supported reverse proxy exists.
+5. Asks whether the domain is behind a CDN and whether the CDN connects to the origin over `HTTP` or `HTTPS`.
+6. Runs Dana through systemd on `127.0.0.1:<PORT>`.
+7. Detects the existing reverse proxy:
    - Nginx
    - Caddy
    - Apache
-4. Finds the Virtual Host configuration for the selected domain.
-5. Creates a backup before changing the configuration.
-6. Adds the `/mcp` route to the Dana backend.
-7. Validates the proxy configuration.
-8. Rolls back automatically if validation or configuration fails.
-9. Reloads the proxy only after successful validation.
+8. Finds the Virtual Host configuration for the selected domain.
+9. Creates a backup before changing the configuration.
+10. Adds the `/mcp` route to the Dana backend.
+11. Validates the proxy configuration.
+12. Rolls back automatically if validation or configuration fails.
+13. Reloads the proxy only after successful validation.
+14. Displays the final deployment plan and requires explicit user approval before changing the reverse-proxy configuration.
+
+### CDN and SSL behavior
+
+- When the domain is behind a CDN and **CDN → Origin = HTTP** is selected, Dana does not install or generate an SSL certificate for the origin.
+- When **CDN → Origin = HTTPS** is selected, the origin HTTPS configuration is preserved or configured accordingly.
+- For a new Nginx HTTPS virtual host, the Installer asks for existing certificate and private-key paths and never creates an incomplete SSL configuration.
+- Caddy is installed only when no supported reverse proxy is available and the user explicitly approves the installation.
 
 Architecture:
 
@@ -489,17 +501,17 @@ See [LICENSE](LICENSE) for the project license.
 ⭐ If Dana is useful to you, consider starring the repository and contributing to its development.
 
 ## 🧠 Codebase Memory and Context Optimization
+
 Dana incrementally indexes projects with SQLite + FTS5. Use `index_codebase`, then `search_codebase_memory` to retrieve only relevant context within a budget. `get_library_docs` caches public documentation URLs and `context_compress` removes duplicate context.
 
 ## 🧠 Context Optimization Without a Token Limit
 
 Dana retrieves relevant project context without applying an artificial default token cap. Deduplication, Context IDs and caching, delta context, progressive loading, symbol and dependency analysis, and structural compression reduce repeated or unnecessary context while keeping relevant information available.
 
-
 ## 📊 Token and Time Analytics
 
 Dana can record token usage and execution time for every operation. Analytics include per-operation, per-session, and all-time project totals. Exact model usage requires the client/API to report real `input_tokens` and `output_tokens`; otherwise Dana can provide context estimates.
 
-
 ## 🖥️ Desktop GUI
+
 Dana includes a modern minimal **PySide6 (Qt)** desktop GUI (no Tkinter). Run: `python run_gui.py` or `dana-gui`.

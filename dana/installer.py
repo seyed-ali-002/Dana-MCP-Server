@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from __future__ import annotations
 
 import json
@@ -55,7 +56,9 @@ def banner(title: str = "DANA") -> None:
     )
 
 
-def run_command(command: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run_command(
+    command: list[str], *, check: bool = True
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, check=check, text=True, cwd=ROOT)
 
 
@@ -63,7 +66,9 @@ def command_exists(name: str) -> bool:
     return shutil.which(name) is not None
 
 
-def write_env(mode: str, public_host: str = "", public_port: int = 0, workers: int = 5) -> str:
+def write_env(
+    mode: str, public_host: str = "", public_port: int = 0, workers: int = 5
+) -> str:
     env_path = ROOT / ".env"
     values: dict[str, str] = {}
     if env_path.exists():
@@ -83,7 +88,10 @@ def write_env(mode: str, public_host: str = "", public_port: int = 0, workers: i
     if mode == "local":
         values.pop("DANA_PUBLIC_HOST", None)
         values.pop("DANA_PUBLIC_PORT", None)
-    if not values.get("DANA_AUTH_TOKEN") or values.get("DANA_AUTH_TOKEN") == "GENERATE_WITH_SCRIPT":
+    if (
+        not values.get("DANA_AUTH_TOKEN")
+        or values.get("DANA_AUTH_TOKEN") == "GENERATE_WITH_SCRIPT"
+    ):
         values["DANA_AUTH_TOKEN"] = secrets.token_urlsafe(32)
     if mode == "server":
         values["DANA_HOST"] = "127.0.0.1"
@@ -94,7 +102,10 @@ def write_env(mode: str, public_host: str = "", public_port: int = 0, workers: i
     else:
         values.pop("DANA_PUBLIC_SCHEME", None)
         values["DANA_HOST"] = values.get("DANA_HOST") or "127.0.0.1"
-    env_path.write_text("\n".join(f"{key}={value}" for key, value in values.items()) + "\n", encoding="utf-8")
+    env_path.write_text(
+        "\n".join(f"{key}={value}" for key, value in values.items()) + "\n",
+        encoding="utf-8",
+    )
     return values["DANA_AUTH_TOKEN"]
 
 
@@ -118,7 +129,9 @@ def ensure_venv() -> Path:
     try:
         run_command([sys.executable, "-m", "venv", str(ROOT / ".venv")])
     except subprocess.CalledProcessError as exc:
-        raise RuntimeError("Could not create .venv. On Debian/Ubuntu install python3-venv and python3-full, then rerun the installer.") from exc
+        raise RuntimeError(
+            "Could not create .venv. On Debian/Ubuntu install python3-venv and python3-full, then rerun the installer."
+        ) from exc
     if not python.exists():
         raise RuntimeError(f"Virtual environment was not created correctly: {python}")
     return python
@@ -129,7 +142,9 @@ def install_python_dependencies() -> Path:
     python = ensure_venv()
     requirements = ROOT / "requirements.txt"
     run_command([str(python), "-m", "pip", "install", "--upgrade", "pip"], check=True)
-    run_command([str(python), "-m", "pip", "install", "-r", str(requirements)], check=True)
+    run_command(
+        [str(python), "-m", "pip", "install", "-r", str(requirements)], check=True
+    )
     return python
 
 
@@ -137,14 +152,29 @@ def install_server_dependencies() -> None:
     if platform.system().lower() != "linux":
         raise RuntimeError("Server Mode is currently supported on Linux servers only.")
     if not command_exists("apt-get"):
-        raise RuntimeError("Automatic server installation currently supports apt-based Linux distributions.")
+        raise RuntimeError(
+            "Automatic server installation currently supports apt-based Linux distributions."
+        )
     console.print("[cyan]Installing system dependencies...[/cyan]")
     run_command(["sudo", "apt-get", "update"])
-    run_command(["sudo", "apt-get", "install", "-y", "python3", "python3-venv", "python3-full", "ca-certificates"])
+    run_command(
+        [
+            "sudo",
+            "apt-get",
+            "install",
+            "-y",
+            "python3",
+            "python3-venv",
+            "python3-full",
+            "ca-certificates",
+        ]
+    )
 
 
 def port_is_listening(port: int) -> bool:
-    result = subprocess.run(["sudo", "ss", "-ltn"], text=True, capture_output=True, cwd=ROOT)
+    result = subprocess.run(
+        ["sudo", "ss", "-ltn"], text=True, capture_output=True, cwd=ROOT, check=False
+    )
     output = result.stdout
     return f":{port} " in output or f":{port}\n" in output
 
@@ -154,7 +184,9 @@ def choose_public_port() -> int:
     while port_is_listening(default_port):
         default_port += 1
     while True:
-        raw = Prompt.ask("[bold cyan]Dana backend port[/bold cyan]", default=str(default_port)).strip()
+        raw = Prompt.ask(
+            "[bold cyan]Dana backend port[/bold cyan]", default=str(default_port)
+        ).strip()
         try:
             port = int(raw)
         except ValueError:
@@ -164,7 +196,9 @@ def choose_public_port() -> int:
             console.print("[yellow]Use a port between 1024 and 65535.[/yellow]")
             continue
         if port_is_listening(port):
-            console.print(f"[yellow]Port {port} is already in use. Choose another port.[/yellow]")
+            console.print(
+                f"[yellow]Port {port} is already in use. Choose another port.[/yellow]"
+            )
             continue
         return port
 
@@ -178,19 +212,64 @@ def configure_service(python: Path) -> None:
     run_command(["sudo", "systemctl", "enable", "--now", "dana"])
 
 
-def configure_reverse_proxy(public_host: str, backend_port: int) -> None:
-    from dana.deployment import apply_proxy, detect_proxy
+def configure_reverse_proxy(
+    public_host: str, backend_port: int, origin_protocol: str
+) -> None:
+    from dana.deployment import ProxyTarget, apply_proxy, detect_proxy, install_caddy
 
     target = detect_proxy(public_host)
-    console.print(f"[cyan]Detected {target.kind} configuration:[/cyan] {target.config}")
-    backup_path = apply_proxy(target, backend_port)
+    if target is None:
+        console.print("[yellow]No supported reverse proxy was detected.[/yellow]")
+        install = Prompt.ask(
+            "Install Caddy automatically?", choices=["y", "n"], default="n"
+        )
+        if install != "y":
+            raise RuntimeError(
+                "Installation cancelled: no reverse proxy is available and Caddy installation was not approved."
+            )
+        step("Installing Caddy (approved by user)")
+        install_caddy()
+        target = ProxyTarget("caddy", Path("/etc/caddy/Caddyfile"), public_host)
+    else:
+        success(
+            f"Using existing {target.kind}; no additional proxy service will be installed"
+        )
+
+    cert = key = None
+    if target.kind == "nginx" and target.created and origin_protocol == "https":
+        console.print(
+            "[yellow]A new Nginx HTTPS site needs an existing certificate; Dana will not install a certificate service without approval.[/yellow]"
+        )
+        cert = Prompt.ask("SSL certificate path").strip()
+        key = Prompt.ask("SSL private key path").strip()
+        if not cert or not key:
+            raise RuntimeError(
+                "Certificate and private-key paths are required for a new HTTPS Nginx site."
+            )
+
+    action = (
+        "create a dedicated configuration"
+        if target.created
+        else "modify the existing domain configuration"
+    )
+    console.print(f"[cyan]Deployment action:[/cyan] {action}: {target.config}")
+    console.print(f"[cyan]Origin protocol:[/cyan] {origin_protocol.upper()}")
+    confirm = Prompt.ask("Apply this deployment plan?", choices=["y", "n"], default="n")
+    if confirm != "y":
+        raise RuntimeError(
+            "Installation cancelled before changing reverse-proxy configuration."
+        )
+    backup_path = apply_proxy(target, backend_port, origin_protocol, cert, key)
     console.print("[green]✓ /mcp route configured automatically[/green]")
-    console.print(f"[dim]Backup: {backup_path}[/dim]")
+    if backup_path:
+        console.print(f"[dim]Backup: {backup_path}[/dim]")
 
 
 def choose_workers(default: int = 5) -> int:
     while True:
-        raw = Prompt.ask("[bold cyan]Number of Dana workers[/bold cyan]", default=str(default)).strip()
+        raw = Prompt.ask(
+            "[bold cyan]Number of Dana workers[/bold cyan]", default=str(default)
+        ).strip()
         try:
             workers = int(raw)
             if not 1 <= workers <= 128:
@@ -244,7 +323,9 @@ def _tailscale_hostname_from_status() -> str | None:
         ["tailscale", "funnel", "status"],
     ]
     for command in commands:
-        result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
+        result = subprocess.run(
+            command, cwd=ROOT, text=True, capture_output=True, check=False
+        )
         raw = result.stdout or result.stderr
         if not raw:
             continue
@@ -267,14 +348,24 @@ def configure_tailscale_local(token: str, port: int = 8765) -> str:
         raise RuntimeError("Tailscale is not installed or not in PATH.")
 
     result = subprocess.run(
-        ["tailscale", "funnel", "--set-path", f"/{token}", "--bg", f"http://127.0.0.1:{port}"],
+        [
+            "tailscale",
+            "funnel",
+            "--set-path",
+            f"/{token}",
+            "--bg",
+            f"http://127.0.0.1:{port}",
+        ],
         cwd=ROOT,
         text=True,
         capture_output=True,
+        check=False,
     )
     if result.returncode != 0:
         details = (result.stderr or result.stdout).strip()
-        raise RuntimeError(f"Could not configure Tailscale Funnel{': ' + details if details else ''}")
+        raise RuntimeError(
+            f"Could not configure Tailscale Funnel{': ' + details if details else ''}"
+        )
 
     # Funnel status can take a moment to become visible after --bg returns.
     # Retry instead of assuming the first status response contains the hostname.
@@ -306,9 +397,11 @@ def set_local_public_host(host: str) -> None:
     env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-
 def install_local() -> None:
-    section("LOCAL DEVICE", "Personal computer • Tailscale Funnel • isolated Python environment")
+    section(
+        "LOCAL DEVICE",
+        "Personal computer • Tailscale Funnel • isolated Python environment",
+    )
     step("Checking Python environment")
     install_python_dependencies()
     success("Python environment ready")
@@ -327,19 +420,40 @@ def install_local() -> None:
     table.add_row("WORKERS", str(workers))
     table.add_row("PUBLIC HOST", public_host)
     table.add_row("TRANSPORT", "[green]Tailscale Funnel + MCP[/green]")
-    console.print(Panel(table, title="[bold green]DANA READY[/bold green]", border_style="green", padding=(1, 2)))
+    console.print(
+        Panel(
+            table,
+            title="[bold green]DANA READY[/bold green]",
+            border_style="green",
+            padding=(1, 2),
+        )
+    )
 
 
 def install_server() -> None:
     if hasattr(os, "geteuid") and os.geteuid() != 0 and not command_exists("sudo"):
         raise RuntimeError("Server Mode requires root privileges or sudo.")
     banner("SERVER MODE SETUP")
-    console.print("[dim]Dana will use an isolated localhost backend and automatically integrate /mcp with your existing HTTPS reverse proxy.[/dim]\n")
-    host = Prompt.ask("[bold cyan]Public domain or IP[/bold cyan]").strip().lower()
+    console.print(
+        "[dim]Dana will use an isolated localhost backend and automatically integrate /mcp with your existing HTTPS reverse proxy.[/dim]\n"
+    )
+    host = Prompt.ask("[bold cyan]Public domain[/bold cyan]").strip().lower()
     if not host:
-        raise RuntimeError("A public domain or IP address is required.")
-    if " " in host or "/" in host:
-        raise RuntimeError("Enter only a domain or IP address, without protocol or path.")
+        raise RuntimeError("A public domain is required for safe Server Mode setup.")
+    if " " in host or "/" in host or re.fullmatch(r"\d+(?:\.\d+){3}", host):
+        raise RuntimeError("Enter a domain name without protocol, path, or IP address.")
+
+    cdn = (
+        Prompt.ask("Is this domain behind a CDN?", choices=["y", "n"], default="n")
+        == "y"
+    )
+    if cdn:
+        origin_protocol = Prompt.ask(
+            "CDN to origin protocol", choices=["http", "https"], default="https"
+        )
+    else:
+        origin_protocol = "https"
+
     public_port = choose_public_port()
     workers = choose_workers()
     console.print("\n[cyan]Starting server checks and installation...[/cyan]")
@@ -347,9 +461,9 @@ def install_server() -> None:
     python = install_python_dependencies()
     console.print("[cyan]Configuring Dana Server Mode...[/cyan]")
     write_env("server", host, public_port, workers)
+    console.print("[cyan]Preparing reverse-proxy integration...[/cyan]")
+    configure_reverse_proxy(host, public_port, origin_protocol)
     configure_service(python)
-    console.print("[cyan]Preparing HTTPS reverse-proxy integration...[/cyan]")
-    configure_reverse_proxy(host, public_port)
     console.print("[cyan]Verifying service configuration...[/cyan]")
     run_command(["sudo", "systemctl", "is-active", "--quiet", "dana"])
     clear()
@@ -366,21 +480,31 @@ def install_server() -> None:
     table.add_row("WORKERS", str(workers))
     console.print(Panel(table, border_style="green"))
     console.print(f"\n[bold cyan]Connector URL:[/bold cyan] {connector_url}")
-    console.print("[dim]The URL above is printed as one uninterrupted line for easy copying.[/dim]")
-    console.print(f"[dim]Backend listens only on 127.0.0.1:{public_port}; the existing HTTPS reverse proxy was configured automatically.[/dim]")
+    console.print(
+        "[dim]The URL above is printed as one uninterrupted line for easy copying.[/dim]"
+    )
+    console.print(
+        f"[dim]Backend listens only on 127.0.0.1:{public_port}; the existing HTTPS reverse proxy was configured automatically.[/dim]"
+    )
 
 
 def main() -> None:
     clear()
     banner("INSTALLER")
-    console.print(Panel(
-        "[bold white]Welcome to Dana[/bold white]\n[dim]A clean setup wizard for your MCP server.[/dim]\n\n[cyan]1[/cyan]  Local Device   [dim]Personal computer + Tailscale Funnel[/dim]\n[cyan]2[/cyan]  Public Server  [dim]Linux server + HTTPS + systemd[/dim]",
-        title="[bold bright_cyan]DEPLOYMENT[/bold bright_cyan]",
-        border_style="cyan",
-        padding=(1, 3),
-    ))
+    console.print(
+        Panel(
+            "[bold white]Welcome to Dana[/bold white]\n[dim]A clean setup wizard for your MCP server.[/dim]\n\n[cyan]1[/cyan]  Local Device   [dim]Personal computer + Tailscale Funnel[/dim]\n[cyan]2[/cyan]  Public Server  [dim]Linux server + HTTPS + systemd[/dim]",
+            title="[bold bright_cyan]DEPLOYMENT[/bold bright_cyan]",
+            border_style="cyan",
+            padding=(1, 3),
+        )
+    )
     console.print()
-    choice = Prompt.ask("[bold bright_cyan]Select deployment mode[/bold bright_cyan]", choices=["1", "2"], default="1")
+    choice = Prompt.ask(
+        "[bold bright_cyan]Select deployment mode[/bold bright_cyan]",
+        choices=["1", "2"],
+        default="1",
+    )
     try:
         if choice == "1":
             install_local()
