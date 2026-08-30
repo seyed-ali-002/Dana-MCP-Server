@@ -444,3 +444,8 @@ Pull Request و Issue کاملاً استقبال می‌شود. اگر باگ،
 
 ## 🧠 Codebase Memory و Context Optimization
 Dana پروژه را با SQLite + FTS5 به‌صورت افزایشی ایندکس می‌کند. با `index_codebase` ایندکس بسازید و با `search_codebase_memory` فقط Context مرتبط را با بودجه مشخص دریافت کنید. `get_library_docs` مستندات URLهای عمومی را Cache می‌کند و `context_compress` متن‌های تکراری را فشرده می‌کند.
+
+## 🧠 بهینه‌سازی Context بدون محدودیت Token
+
+Dana اطلاعات پروژه را بدون اعمال سقف مصنوعی Token بازیابی می‌کند و با Deduplication، Context ID و Cache، Delta Context، بارگذاری مرحله‌ای، تحلیل Symbol و Dependency، و فشرده‌سازی ساختاری، Context تکراری و غیرضروری را کاهش می‌دهد. اطلاعات مرتبط به دلیل رسیدن به یک Budget پیش‌فرض حذف نمی‌شوند.
+

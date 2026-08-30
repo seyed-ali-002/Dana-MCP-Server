@@ -442,3 +442,8 @@ See [LICENSE](LICENSE) for the project license.
 
 ## 🧠 Codebase Memory and Context Optimization
 Dana incrementally indexes projects with SQLite + FTS5. Use `index_codebase`, then `search_codebase_memory` to retrieve only relevant context within a budget. `get_library_docs` caches public documentation URLs and `context_compress` removes duplicate context.
+
+## 🧠 Context Optimization Without a Token Limit
+
+Dana retrieves relevant project context without applying an artificial default token cap. Deduplication, Context IDs and caching, delta context, progressive loading, symbol and dependency analysis, and structural compression reduce repeated or unnecessary context while keeping relevant information available.
+
