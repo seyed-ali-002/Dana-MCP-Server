@@ -7,3 +7,5 @@ reportlab>=4,<5
 arabic-reshaper>=3,<4
 python-bidi>=0.4,<1
 rich>=13,<15
+
+PySide6>=6.7,<7

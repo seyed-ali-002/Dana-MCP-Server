@@ -452,3 +452,6 @@ Dana retrieves relevant project context without applying an artificial default t
 
 Dana can record token usage and execution time for every operation. Analytics include per-operation, per-session, and all-time project totals. Exact model usage requires the client/API to report real `input_tokens` and `output_tokens`; otherwise Dana can provide context estimates.
 
+
+## 🖥️ Desktop GUI
+Dana includes a modern minimal **PySide6 (Qt)** desktop GUI (no Tkinter). Run: `python run_gui.py` or `dana-gui`.
