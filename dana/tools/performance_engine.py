@@ -7,10 +7,10 @@ import json
 import re
 import sqlite3
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from collections.abc import Awaitable, Callable
 
 ROOT = Path(__file__).resolve().parents[2]
 STATE = ROOT / ".dana"

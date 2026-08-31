@@ -183,16 +183,6 @@ def _visible_names(mcp: FastMCP) -> set[str]:
         "dana_session_compact",
         "dana_session_get",
         "dana_prompt_cache_key",
-        "dana_fast_path",
-        "dana_classify_request",
-        "dana_tool_cost",
-        "dana_plan",
-        "dana_dependency_graph",
-        "dana_result_delta",
-        "dana_project_index",
-        "dana_symbol_search",
-        "dana_semantic_cache",
-        "dana_optimization_controller",
     }
 
 
@@ -224,8 +214,6 @@ def register_optimization_tools(mcp: FastMCP) -> None:
         limit = max(1, min(limit, 12))
         ranked = []
         for tool in tools:
-            if tool.name.startswith("dana_"):
-                continue
             score = _search_score(tool.name, tool.description, query)
             if score:
                 ranked.append((score, tool))
@@ -254,8 +242,8 @@ def register_optimization_tools(mcp: FastMCP) -> None:
     async def dana_call_tool(name: str, arguments: dict[str, Any] | None = None) -> Any:
         """Execute any Dana capability by exact tool name. Use dana_search_tools when the name or arguments are unknown."""
         target = name.strip()
-        if target.startswith("dana_") and target not in _visible_names(mcp):
-            raise ValueError("Unknown Dana gateway tool")
+        if target in {"dana_call_tool", "dana_batch_call"}:
+            raise ValueError("Recursive gateway invocation is not allowed")
         if target not in mcp._tool_manager._tools:
             raise ValueError(f"Unknown Dana tool: {target}")
         args = arguments or {}
