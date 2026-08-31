@@ -53,6 +53,16 @@ VISIBLE = {
     "dana_session_compact",
     "dana_session_get",
     "dana_prompt_cache_key",
+    "dana_fast_path",
+    "dana_classify_request",
+    "dana_tool_cost",
+    "dana_plan",
+    "dana_dependency_graph",
+    "dana_result_delta",
+    "dana_project_index",
+    "dana_symbol_search",
+    "dana_semantic_cache",
+    "dana_optimization_controller",
 }
 
 
@@ -65,7 +75,7 @@ def test_progressive_surface_is_small():
     tools = asyncio.run(mcp.list_tools())
     names = {tool.name for tool in tools}
     assert names == VISIBLE
-    assert len(names) <= 16
+    assert len(names) <= 24
 
 
 def test_capability_search_and_generic_execution():

@@ -12,13 +12,22 @@ from mcp.server.fastmcp import FastMCP
 
 def _run(cmd: list[str], cwd: str | None = None, timeout: int = 300) -> dict[str, Any]:
     try:
-        p = subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout)
-        return {"returncode": p.returncode, "stdout": p.stdout[-30000:], "stderr": p.stderr[-30000:], "command": cmd}
+        p = subprocess.run(
+            cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout
+        )
+        return {
+            "returncode": p.returncode,
+            "stdout": p.stdout[-30000:],
+            "stderr": p.stderr[-30000:],
+            "command": cmd,
+        }
     except Exception as exc:
         return {"returncode": -1, "stdout": "", "stderr": str(exc), "command": cmd}
 
 
-def _python_tool(module: str, args: list[str], cwd: str | None = None) -> dict[str, Any]:
+def _python_tool(
+    module: str, args: list[str], cwd: str | None = None
+) -> dict[str, Any]:
     return _run([sys.executable, "-m", module, *args], cwd)
 
 
@@ -29,7 +38,9 @@ def register_formatting_tools(mcp: FastMCP) -> None:
         target = str(Path(path).expanduser().resolve())
         args = ["format", "--check"] if check else ["format"]
         args.append(target)
-        return _python_tool("ruff", args, str(Path(target).parent if Path(target).is_file() else target))
+        return _python_tool(
+            "ruff", args, str(Path(target).parent if Path(target).is_file() else target)
+        )
 
     @mcp.tool()
     def lint_python(path: str = ".", fix: bool = False) -> dict[str, Any]:
@@ -39,7 +50,9 @@ def register_formatting_tools(mcp: FastMCP) -> None:
         if fix:
             args.append("--fix")
         args.append(target)
-        return _python_tool("ruff", args, str(Path(target).parent if Path(target).is_file() else target))
+        return _python_tool(
+            "ruff", args, str(Path(target).parent if Path(target).is_file() else target)
+        )
 
     @mcp.tool()
     def sort_python_imports(path: str = ".", check: bool = False) -> dict[str, Any]:
@@ -49,13 +62,19 @@ def register_formatting_tools(mcp: FastMCP) -> None:
         if not check:
             args.append("--fix")
         args.append(target)
-        return _python_tool("ruff", args, str(Path(target).parent if Path(target).is_file() else target))
+        return _python_tool(
+            "ruff", args, str(Path(target).parent if Path(target).is_file() else target)
+        )
 
     @mcp.tool()
     def type_check_python(path: str = ".") -> dict[str, Any]:
         """Run mypy type checking when installed."""
         target = str(Path(path).expanduser().resolve())
-        return _python_tool("mypy", [target], str(Path(target).parent if Path(target).is_file() else target))
+        return _python_tool(
+            "mypy",
+            [target],
+            str(Path(target).parent if Path(target).is_file() else target),
+        )
 
     @mcp.tool()
     def check_code_quality(path: str = ".") -> dict[str, Any]:
@@ -70,7 +89,11 @@ def register_formatting_tools(mcp: FastMCP) -> None:
             result["mypy"] = _python_tool("mypy", [target], cwd)
         else:
             result["mypy"] = {"skipped": True, "reason": "mypy is not installed"}
-        result["ok"] = all(v.get("returncode", 0) == 0 for v in result.values() if isinstance(v, dict) and "returncode" in v)
+        result["ok"] = all(
+            v.get("returncode", 0) == 0
+            for v in result.values()
+            if isinstance(v, dict) and "returncode" in v
+        )
         return result
 
     @mcp.tool()
@@ -97,7 +120,11 @@ def register_formatting_tools(mcp: FastMCP) -> None:
         args.append(target)
         lint = _python_tool("ruff", args, cwd)
         fmt = _python_tool("ruff", ["format", target], cwd)
-        return {"ruff_fix": lint, "ruff_format": fmt, "ok": lint.get("returncode") == 0 and fmt.get("returncode") == 0}
+        return {
+            "ruff_fix": lint,
+            "ruff_format": fmt,
+            "ok": lint.get("returncode") == 0 and fmt.get("returncode") == 0,
+        }
 
     @mcp.tool()
     def check_prettier(path: str = ".") -> dict[str, Any]:
@@ -105,7 +132,10 @@ def register_formatting_tools(mcp: FastMCP) -> None:
         target = str(Path(path).expanduser().resolve())
         if not shutil.which("npx"):
             return {"skipped": True, "reason": "npx is not available", "ok": False}
-        return _run(["npx", "--yes", "prettier", "--check", target], str(Path(target).parent if Path(target).is_file() else target))
+        return _run(
+            ["npx", "--yes", "prettier", "--check", target],
+            str(Path(target).parent if Path(target).is_file() else target),
+        )
 
     @mcp.tool()
     def lint_javascript(path: str = ".", fix: bool = False) -> dict[str, Any]:
@@ -117,7 +147,9 @@ def register_formatting_tools(mcp: FastMCP) -> None:
         if fix:
             args.append("--fix")
         args.append(target)
-        return _run(args, str(Path(target).parent if Path(target).is_file() else target))
+        return _run(
+            args, str(Path(target).parent if Path(target).is_file() else target)
+        )
 
     @mcp.tool()
     def format_project(path: str = ".", check_only: bool = False) -> dict[str, Any]:
@@ -128,17 +160,45 @@ def register_formatting_tools(mcp: FastMCP) -> None:
         if has_py:
             result["python"] = format_python(str(root), check=check_only)
             result["python_imports"] = sort_python_imports(str(root), check=check_only)
-        web_ext = {".js", ".jsx", ".ts", ".tsx", ".json", ".css", ".html", ".md", ".yaml", ".yml"}
-        has_web = root.suffix in web_ext if root.is_file() else any(f.suffix in web_ext for f in root.rglob("*") if f.is_file() and "node_modules" not in f.parts)
+        web_ext = {
+            ".js",
+            ".jsx",
+            ".ts",
+            ".tsx",
+            ".json",
+            ".css",
+            ".html",
+            ".md",
+            ".yaml",
+            ".yml",
+        }
+        has_web = (
+            root.suffix in web_ext
+            if root.is_file()
+            else any(
+                f.suffix in web_ext
+                for f in root.rglob("*")
+                if f.is_file() and "node_modules" not in f.parts
+            )
+        )
         if has_web:
-            result["prettier"] = check_prettier(str(root)) if check_only else format_code(str(root)).get("prettier", {"skipped": True})
-        result["ok"] = all(v.get("returncode", 0) == 0 for v in result.values() if isinstance(v, dict) and "returncode" in v)
+            result["prettier"] = (
+                check_prettier(str(root))
+                if check_only
+                else format_code(str(root)).get("prettier", {"skipped": True})
+            )
+        result["ok"] = all(
+            v.get("returncode", 0) == 0
+            for v in result.values()
+            if isinstance(v, dict) and "returncode" in v
+        )
         return result
 
     @mcp.tool()
     def toolchain_status() -> dict[str, Any]:
         """Report availability of Dana formatting and quality toolchains."""
         import importlib.util
+
         return {
             "ruff": importlib.util.find_spec("ruff") is not None,
             "mypy": importlib.util.find_spec("mypy") is not None,
@@ -152,17 +212,60 @@ def register_formatting_tools(mcp: FastMCP) -> None:
         """Format a project based on detected files: Ruff for Python and Prettier for web/text files when available."""
         root = Path(path).expanduser().resolve()
         result: dict[str, Any] = {}
-        if root.is_file() and root.suffix == ".py" or root.is_dir() and any(root.rglob("*.py")):
+        if (
+            root.is_file()
+            and root.suffix == ".py"
+            or root.is_dir()
+            and any(root.rglob("*.py"))
+        ):
             result["python"] = format_python(str(root))
         prettier_files = []
-        patterns = ("*.js", "*.jsx", "*.ts", "*.tsx", "*.json", "*.css", "*.html", "*.md", "*.yaml", "*.yml")
-        if root.is_file() and root.suffix in {".js", ".jsx", ".ts", ".tsx", ".json", ".css", ".html", ".md", ".yaml", ".yml"}: prettier_files = [str(root)]
+        patterns = (
+            "*.js",
+            "*.jsx",
+            "*.ts",
+            "*.tsx",
+            "*.json",
+            "*.css",
+            "*.html",
+            "*.md",
+            "*.yaml",
+            "*.yml",
+        )
+        if root.is_file() and root.suffix in {
+            ".js",
+            ".jsx",
+            ".ts",
+            ".tsx",
+            ".json",
+            ".css",
+            ".html",
+            ".md",
+            ".yaml",
+            ".yml",
+        }:
+            prettier_files = [str(root)]
         elif root.is_dir():
-            for pattern in patterns: prettier_files.extend(str(f) for f in root.rglob(pattern) if "node_modules" not in f.parts and ".git" not in f.parts)
+            for pattern in patterns:
+                prettier_files.extend(
+                    str(f)
+                    for f in root.rglob(pattern)
+                    if "node_modules" not in f.parts and ".git" not in f.parts
+                )
         if prettier_files:
             if shutil.which("npx"):
-                result["prettier"] = _run(["npx", "--yes", "prettier", "--write", *prettier_files], str(root.parent if root.is_file() else root))
+                result["prettier"] = _run(
+                    ["npx", "--yes", "prettier", "--write", *prettier_files],
+                    str(root.parent if root.is_file() else root),
+                )
             else:
-                result["prettier"] = {"skipped": True, "reason": "npx/Prettier is not available"}
-        result["ok"] = all(v.get("returncode", 0) == 0 for v in result.values() if isinstance(v, dict) and "returncode" in v)
+                result["prettier"] = {
+                    "skipped": True,
+                    "reason": "npx/Prettier is not available",
+                }
+        result["ok"] = all(
+            v.get("returncode", 0) == 0
+            for v in result.values()
+            if isinstance(v, dict) and "returncode" in v
+        )
         return result

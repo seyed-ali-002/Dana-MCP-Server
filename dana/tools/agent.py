@@ -24,7 +24,12 @@ def _path(path: str) -> Path:
     return Path(path).expanduser().resolve()
 
 
-def _run(command: str | list[str], cwd: str | None = None, timeout: int = 120, shell: bool = False) -> dict[str, Any]:
+def _run(
+    command: str | list[str],
+    cwd: str | None = None,
+    timeout: int = 120,
+    shell: bool = False,
+) -> dict[str, Any]:
     try:
         result = subprocess.run(
             command,
@@ -34,9 +39,17 @@ def _run(command: str | list[str], cwd: str | None = None, timeout: int = 120, s
             capture_output=True,
             timeout=timeout,
         )
-        return {"returncode": result.returncode, "stdout": result.stdout[-20000:], "stderr": result.stderr[-20000:]}
+        return {
+            "returncode": result.returncode,
+            "stdout": result.stdout[-20000:],
+            "stderr": result.stderr[-20000:],
+        }
     except subprocess.TimeoutExpired as exc:
-        return {"returncode": -1, "stdout": (exc.stdout or "")[-20000:], "stderr": "timeout"}
+        return {
+            "returncode": -1,
+            "stdout": (exc.stdout or "")[-20000:],
+            "stderr": "timeout",
+        }
 
 
 def register_agent_tools(mcp: FastMCP) -> None:
@@ -57,14 +70,19 @@ def register_agent_tools(mcp: FastMCP) -> None:
         return str(target)
 
     @mcp.tool()
-    def edit_file(path: str, old: str, new: str, replace_all: bool = False) -> dict[str, Any]:
+    def edit_file(
+        path: str, old: str, new: str, replace_all: bool = False
+    ) -> dict[str, Any]:
         """Replace exact text inside an existing file."""
         target = _path(path)
         text = target.read_text(encoding="utf-8")
         count = text.count(old)
         if not count:
             raise ValueError("Target text not found")
-        target.write_text(text.replace(old, new) if replace_all else text.replace(old, new, 1), encoding="utf-8")
+        target.write_text(
+            text.replace(old, new) if replace_all else text.replace(old, new, 1),
+            encoding="utf-8",
+        )
         return {"path": str(target), "matches": count}
 
     @mcp.tool()
@@ -81,18 +99,27 @@ def register_agent_tools(mcp: FastMCP) -> None:
         return str(target)
 
     @mcp.tool()
-    def search_code(path: str, pattern: str, file_glob: str = "*") -> list[dict[str, Any]]:
+    def search_code(
+        path: str, pattern: str, file_glob: str = "*"
+    ) -> list[dict[str, Any]]:
         """Search source files using a regular expression."""
         root = _path(path)
         regex = re.compile(pattern)
         results = []
         for file in root.rglob(file_glob):
-            if not file.is_file() or any(part in {".git", ".venv", "node_modules", "__pycache__"} for part in file.parts):
+            if not file.is_file() or any(
+                part in {".git", ".venv", "node_modules", "__pycache__"}
+                for part in file.parts
+            ):
                 continue
             try:
-                for i, line in enumerate(file.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+                for i, line in enumerate(
+                    file.read_text(encoding="utf-8", errors="ignore").splitlines(), 1
+                ):
                     if regex.search(line):
-                        results.append({"path": str(file), "line": i, "text": line[:500]})
+                        results.append(
+                            {"path": str(file), "line": i, "text": line[:500]}
+                        )
                         if len(results) >= 500:
                             return results
             except OSError:
@@ -101,12 +128,16 @@ def register_agent_tools(mcp: FastMCP) -> None:
 
     # Shell, processes, runtimes and logs
     @mcp.tool()
-    def run_command(command: str, cwd: str | None = None, timeout: int = 120) -> dict[str, Any]:
+    def run_command(
+        command: str, cwd: str | None = None, timeout: int = 120
+    ) -> dict[str, Any]:
         """Run a shell command for coding, tests, builds and diagnostics."""
         return _run(command, cwd, timeout, shell=True)
 
     @mcp.tool()
-    def run_process(command: list[str], cwd: str | None = None, timeout: int = 120) -> dict[str, Any]:
+    def run_process(
+        command: list[str], cwd: str | None = None, timeout: int = 120
+    ) -> dict[str, Any]:
         """Run a process without a shell."""
         return _run(command, cwd, timeout)
 
@@ -114,7 +145,7 @@ def register_agent_tools(mcp: FastMCP) -> None:
     def process_list() -> list[dict[str, str]]:
         """List running processes."""
         if os.name == "nt":
-            out = _run(["tasklist", "/FO", "CSV"]) 
+            out = _run(["tasklist", "/FO", "CSV"])
         else:
             out = _run(["ps", "-eo", "pid,ppid,comm,args"])
         return [{"output": out.get("stdout", ""), "stderr": out.get("stderr", "")}]
@@ -122,7 +153,11 @@ def register_agent_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     def process_stop(pid: int) -> dict[str, Any]:
         """Stop a process by PID."""
-        return _run(["taskkill", "/PID", str(pid), "/F"] if os.name == "nt" else ["kill", "-TERM", str(pid)])
+        return _run(
+            ["taskkill", "/PID", str(pid), "/F"]
+            if os.name == "nt"
+            else ["kill", "-TERM", str(pid)]
+        )
 
     @mcp.tool()
     def read_log(path: str, lines: int = 200) -> str:
@@ -131,7 +166,9 @@ def register_agent_tools(mcp: FastMCP) -> None:
         return "\n".join(data[-lines:])
 
     @mcp.tool()
-    def debug_trace(command: str, cwd: str | None = None, timeout: int = 120) -> dict[str, Any]:
+    def debug_trace(
+        command: str, cwd: str | None = None, timeout: int = 120
+    ) -> dict[str, Any]:
         """Execute a diagnostic command and return stdout/stderr/exit code."""
         return _run(command, cwd, timeout, shell=True)
 
@@ -142,28 +179,38 @@ def register_agent_tools(mcp: FastMCP) -> None:
         return _run(["git", *command], cwd, timeout)
 
     @mcp.tool()
-    def run_tests(command: str = "pytest -q", cwd: str = ".", timeout: int = 300) -> dict[str, Any]:
+    def run_tests(
+        command: str = "pytest -q", cwd: str = ".", timeout: int = 300
+    ) -> dict[str, Any]:
         """Run a project's test command."""
         return _run(command, cwd, timeout, shell=True)
 
     @mcp.tool()
-    def lint_or_format(command: str, cwd: str = ".", timeout: int = 300) -> dict[str, Any]:
+    def lint_or_format(
+        command: str, cwd: str = ".", timeout: int = 300
+    ) -> dict[str, Any]:
         """Run linting or formatting commands."""
         return _run(command, cwd, timeout, shell=True)
 
     @mcp.tool()
-    def package_manager(command: str, cwd: str = ".", timeout: int = 300) -> dict[str, Any]:
+    def package_manager(
+        command: str, cwd: str = ".", timeout: int = 300
+    ) -> dict[str, Any]:
         """Run package-manager commands such as pip, npm or composer."""
         return _run(command, cwd, timeout, shell=True)
 
     @mcp.tool()
-    def build_project(command: str, cwd: str = ".", timeout: int = 300) -> dict[str, Any]:
+    def build_project(
+        command: str, cwd: str = ".", timeout: int = 300
+    ) -> dict[str, Any]:
         """Run a project build command."""
         return _run(command, cwd, timeout, shell=True)
 
     # Environment and HTTP
     @mcp.tool()
-    def environment(action: str, key: str | None = None, value: str | None = None) -> dict[str, Any]:
+    def environment(
+        action: str, key: str | None = None, value: str | None = None
+    ) -> dict[str, Any]:
         """Get/list/set/unset environment variables for the Dana process."""
         action = action.lower()
         if action == "get":
@@ -179,37 +226,64 @@ def register_agent_tools(mcp: FastMCP) -> None:
         raise ValueError("Use get, list, set or unset")
 
     @mcp.tool()
-    def http_request(url: str, method: str = "GET", headers: dict[str, str] | None = None, body: str | None = None, timeout: int = 30) -> dict[str, Any]:
+    def http_request(
+        url: str,
+        method: str = "GET",
+        headers: dict[str, str] | None = None,
+        body: str | None = None,
+        timeout: int = 30,
+    ) -> dict[str, Any]:
         """Send an HTTP request for API testing."""
-        req = urllib.request.Request(url, data=body.encode() if body is not None else None, method=method.upper(), headers=headers or {})
+        req = urllib.request.Request(
+            url,
+            data=body.encode() if body is not None else None,
+            method=method.upper(),
+            headers=headers or {},
+        )
         try:
             with urllib.request.urlopen(req, timeout=timeout) as response:
-                return {"status": response.status, "headers": dict(response.headers), "body": response.read().decode("utf-8", "replace")[:50000]}
+                return {
+                    "status": response.status,
+                    "headers": dict(response.headers),
+                    "body": response.read().decode("utf-8", "replace")[:50000],
+                }
         except Exception as exc:
             return {"error": str(exc)}
 
     # Database
     @mcp.tool()
-    def sqlite_query(database: str, query: str, params: list[Any] | None = None) -> dict[str, Any]:
+    def sqlite_query(
+        database: str, query: str, params: list[Any] | None = None
+    ) -> dict[str, Any]:
         """Execute a SQLite query."""
         with sqlite3.connect(str(_path(database))) as conn:
             cur = conn.execute(query, params or [])
             if cur.description:
                 columns = [x[0] for x in cur.description]
-                return {"columns": columns, "rows": [dict(zip(columns, row)) for row in cur.fetchall()]}
+                return {
+                    "columns": columns,
+                    "rows": [dict(zip(columns, row)) for row in cur.fetchall()],
+                }
             conn.commit()
             return {"rowcount": cur.rowcount}
 
     # Docker, network and system
     @mcp.tool()
-    def docker(command: list[str], cwd: str = ".", timeout: int = 300) -> dict[str, Any]:
+    def docker(
+        command: list[str], cwd: str = ".", timeout: int = 300
+    ) -> dict[str, Any]:
         """Run a Docker command, e.g. ['ps'] or ['compose','up','-d']."""
         return _run(["docker", *command], cwd, timeout)
 
     @mcp.tool()
-    def network_check(host: str, port: int | None = None, timeout: int = 5) -> dict[str, Any]:
+    def network_check(
+        host: str, port: int | None = None, timeout: int = 5
+    ) -> dict[str, Any]:
         """Resolve a host and optionally test a TCP port."""
-        result: dict[str, Any] = {"host": host, "addresses": sorted({x[4][0] for x in socket.getaddrinfo(host, None)})}
+        result: dict[str, Any] = {
+            "host": host,
+            "addresses": sorted({x[4][0] for x in socket.getaddrinfo(host, None)}),
+        }
         if port is not None:
             try:
                 with socket.create_connection((host, port), timeout=timeout):
@@ -222,11 +296,19 @@ def register_agent_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     def system_details() -> dict[str, Any]:
         """Return host OS, Python, CPU and runtime details."""
-        return {"os": platform.platform(), "hostname": socket.gethostname(), "python": sys.version, "cpu_count": os.cpu_count(), "cwd": os.getcwd()}
+        return {
+            "os": platform.platform(),
+            "hostname": socket.gethostname(),
+            "python": sys.version,
+            "cpu_count": os.cpu_count(),
+            "cwd": os.getcwd(),
+        }
 
     # Scheduling
     @mcp.tool()
-    def schedule_command(task_id: str, command: str, delay_seconds: int, cwd: str | None = None) -> dict[str, Any]:
+    def schedule_command(
+        task_id: str, command: str, delay_seconds: int, cwd: str | None = None
+    ) -> dict[str, Any]:
         """Schedule a one-shot command in the running Dana process."""
         if task_id in _TASKS:
             _TASKS[task_id].cancel()
@@ -247,22 +329,38 @@ def register_agent_tools(mcp: FastMCP) -> None:
 
     # Browser automation (optional Playwright dependency)
     @mcp.tool()
-    def browser_automation(url: str, action: str = "text", selector: str | None = None, value: str | None = None) -> dict[str, Any]:
+    def browser_automation(
+        url: str,
+        action: str = "text",
+        selector: str | None = None,
+        value: str | None = None,
+    ) -> dict[str, Any]:
         """Automate a browser with Playwright. Actions: text, title, click, fill, screenshot."""
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
-            return {"error": "Playwright is not installed. Install playwright and run 'playwright install'."}
+            return {
+                "error": "Playwright is not installed. Install playwright and run 'playwright install'."
+            }
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             page.goto(url, wait_until="networkidle")
-            if action == "title": result: Any = page.title()
-            elif action == "text": result = page.locator(selector or "body").inner_text()
-            elif action == "click": page.locator(selector or "").click(); result = {"url": page.url}
-            elif action == "fill": page.locator(selector or "").fill(value or ""); result = True
+            if action == "title":
+                result: Any = page.title()
+            elif action == "text":
+                result = page.locator(selector or "body").inner_text()
+            elif action == "click":
+                page.locator(selector or "").click()
+                result = {"url": page.url}
+            elif action == "fill":
+                page.locator(selector or "").fill(value or "")
+                result = True
             elif action == "screenshot":
-                path = value or "dana-browser.png"; page.screenshot(path=path); result = str(_path(path))
-            else: raise ValueError("Unknown action")
+                path = value or "dana-browser.png"
+                page.screenshot(path=path)
+                result = str(_path(path))
+            else:
+                raise ValueError("Unknown action")
             browser.close()
             return {"result": result}
