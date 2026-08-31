@@ -13,6 +13,7 @@ from .codebase_memory import register_codebase_memory_tools
 from .docs_context import register_docs_context_tools
 from .token_analytics import register_token_analytics_tools
 from .optimization import register_optimization_tools
+from .context_engine import register_context_tools
 
 
 def register_tools(mcp: FastMCP) -> None:
@@ -29,4 +30,5 @@ def register_tools(mcp: FastMCP) -> None:
     register_codebase_memory_tools(mcp)
     register_docs_context_tools(mcp)
     register_token_analytics_tools(mcp)
+    register_context_tools(mcp)
     register_optimization_tools(mcp)

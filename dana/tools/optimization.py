@@ -13,6 +13,8 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from .context_engine import _hash, optimize_result
+
 _ROOT = Path(__file__).resolve().parents[2]
 _STATE_DIR = _ROOT / ".dana"
 _DB = _STATE_DIR / "optimization.db"
@@ -165,19 +167,44 @@ def _search_score(name: str, description: str, query: str) -> int:
 
 
 def _visible_names(mcp: FastMCP) -> set[str]:
-    # The progressive surface is intentionally tiny. Every other capability
-    # remains registered and executable through dana_call_tool.
+    # Keep MCP discovery tiny. These are the control-plane tools; all other
+    # capabilities remain registered and executable through dana_call_tool.
     return {
         "dana_search_tools",
         "dana_call_tool",
         "dana_batch_call",
         "dana_capabilities",
         "dana_optimization_stats",
+        "dana_context_build",
+        "dana_context_compact",
+        "dana_result_page",
+        "dana_result_optimize",
+        "dana_session_start",
+        "dana_session_compact",
+        "dana_session_get",
+        "dana_prompt_cache_key",
     }
 
 
 def register_optimization_tools(mcp: FastMCP) -> None:
-    """Install progressive discovery, batching, local result caching and telemetry."""
+    """Install progressive discovery, batching, caching, context optimization and telemetry."""
+
+    @mcp.tool()
+    def dana_prompt_cache_key(
+        static_context: Any = None, tool_registry_version: str = ""
+    ) -> dict[str, Any]:
+        """Create a stable cache key for provider prompt-caching prefixes."""
+        key = _hash(
+            {
+                "static_context": static_context,
+                "tool_registry_version": tool_registry_version,
+            }
+        )
+        return {
+            "cache_key": key,
+            "prefix_stable": True,
+            "hint": "Keep dynamic state and current user input after this prefix.",
+        }
 
     @mcp.tool()
     def dana_search_tools(query: str, limit: int = 6) -> dict[str, Any]:
@@ -232,6 +259,7 @@ def register_optimization_tools(mcp: FastMCP) -> None:
             result = await raw_call_tool(
                 target, args, context=None, convert_result=False
             )
+            result = optimize_result(result)
             _store_cache(target, args, result)
             return result
         except Exception:
