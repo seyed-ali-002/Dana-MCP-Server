@@ -512,6 +512,34 @@ Dana retrieves relevant project context without applying an artificial default t
 
 Dana can record token usage and execution time for every operation. Analytics include per-operation, per-session, and all-time project totals. Exact model usage requires the client/API to report real `input_tokens` and `output_tokens`; otherwise Dana can provide context estimates.
 
+## ⚡ Progressive Tool Discovery and Runtime Optimization
+
+Dana keeps the complete tool registry internally but, by default, exposes only five small entry points through `tools/list`:
+
+- `dana_search_tools` — discover a capability and its input schema
+- `dana_call_tool` — execute any Dana tool by exact name
+- `dana_batch_call` — execute independent operations concurrently
+- `dana_capabilities` — inspect the registry and estimated context savings
+- `dana_optimization_stats` — inspect cache, timing, and token-estimate statistics
+
+No existing Dana capability is removed. The full registry remains executable through `dana_call_tool`. In the current project this reduces the initial tool-definition context from more than 100 tools to 5 visible tools, with an estimated ~95% reduction in tool-definition tokens.
+
+Dana also provides short-lived caching for inexpensive read-oriented operations such as `system_info`, `system_metrics`, `process_list`, and `list_directory`. Mutating, network, and management operations are not cached by default. `dana_batch_call` can execute any independent capabilities in parallel; use `parallel=false` when calls depend on one another or mutate shared state.
+
+For clients that require the legacy full tool list:
+
+```env
+DANA_PROGRESSIVE_TOOLS=0
+```
+
+To disable the internal safe-read cache:
+
+```env
+DANA_TOOL_CACHE=0
+```
+
+These switches change only optimization behavior; they do not remove Dana capabilities.
+
 ## 🖥️ Desktop GUI
 
 Dana includes a modern minimal **PySide6 (Qt)** desktop GUI (no Tkinter). Run: `python run_gui.py` or `dana-gui`.
