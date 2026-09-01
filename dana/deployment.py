@@ -111,6 +111,10 @@ def _nginx_server(
     return f"server {{\n    listen 80;\n    server_name {domain};{_nginx_route(port)}\n}}\n"
 
 
+def _apache_route(port: int) -> str:
+    return f"""\n    # Dana MCP Server\n    ProxyPreserveHost On\n    ProxyPass /mcp http://127.0.0.1:{port}/mcp\n    ProxyPassReverse /mcp http://127.0.0.1:{port}/mcp\n    RequestHeader set X-Forwarded-Proto \"https\"\n"""
+
+
 def _caddy_server(domain: str, port: int, origin_protocol: str) -> str:
     if origin_protocol == "http":
         return f"http://{domain} {{\n    reverse_proxy /mcp 127.0.0.1:{port}\n}}\n"
@@ -166,6 +170,15 @@ def apply_proxy(
             _sudo_write(target.config, updated)
             _run(["sudo", "caddy", "validate", "--config", str(target.config)])
             _run(["sudo", "systemctl", "reload", "caddy"])
+        elif target.kind == "apache":
+            updated = _inject_before_closing_block(
+                original, "VirtualHost", _apache_route(backend_port)
+            )
+            _sudo_write(target.config, updated)
+            _run(["sudo", "a2enmod", "proxy", "proxy_http", "headers"], check=False)
+            cmd = "apache2ctl" if command_exists("apache2ctl") else "apachectl"
+            _run(["sudo", cmd, "-t"])
+            _run(["sudo", "systemctl", "reload", "apache2"])
         else:
             raise ProxyConfigurationError(f"Unsupported reverse proxy: {target.kind}")
     except Exception as exc:

@@ -6,10 +6,16 @@ from .config import settings
 from .server import mcp
 
 
-
-
 class MCPCompatibilityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
+        # Tailscale Funnel may expose Dana behind a tokenized path while the
+        # application itself serves the canonical /mcp endpoint. Normalize that
+        # public prefix before FastMCP routing so both forms work.
+        path = request.scope.get("path", "")
+        token = settings.auth_token
+        token_prefix = f"/{token}" if token else ""
+        if token_prefix and path.startswith(token_prefix + "/"):
+            request.scope["path"] = path[len(token_prefix):] or "/"
         if settings.normalized_mode() == "server":
             # Server Mode is published by an HTTPS reverse proxy as the canonical
             # /mcp endpoint. Do not put the secret token in the public URL.
@@ -27,11 +33,21 @@ class MCPCompatibilityMiddleware(BaseHTTPMiddleware):
                 replaced = False
                 for index, (key, value) in enumerate(raw_headers):
                     if key.lower() == b"accept":
-                        raw_headers[index] = (key, value.rstrip(b" ,") + b", text/event-stream")
+                        raw_headers[index] = (
+                            key,
+                            value.rstrip(b" ,") + b", text/event-stream",
+                        )
                         replaced = True
                         break
                 if not replaced:
-                    raw_headers.append((b"accept", accept_value + b", text/event-stream" if accept_value else b"text/event-stream"))
+                    raw_headers.append(
+                        (
+                            b"accept",
+                            accept_value + b", text/event-stream"
+                            if accept_value
+                            else b"text/event-stream",
+                        )
+                    )
                 request.scope["headers"] = raw_headers
         return await call_next(request)
 
