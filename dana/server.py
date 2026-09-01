@@ -92,7 +92,7 @@ for _logger_name in (
     "mcp.server.streamable_http",
 ):
     _logger = logging.getLogger(_logger_name)
-    _logger.setLevel(logging.ERROR)
+    _logger.setLevel(logging.CRITICAL)
     _logger.propagate = False
 
 

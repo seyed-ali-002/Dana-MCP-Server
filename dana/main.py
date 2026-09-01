@@ -10,8 +10,10 @@ from uvicorn.supervisors.multiprocess import Multiprocess, Process
 from .config import settings
 from .terminal_ui import server_dashboard
 
+
 def _mode() -> str:
     return settings.normalized_mode()
+
 
 def _public_url() -> str | None:
     if not settings.public_host:
@@ -23,16 +25,20 @@ def _public_url() -> str | None:
         authority = f"{authority}:{settings.public_port}"
     return f"https://{authority}/{settings.require_auth_token()}{settings.mcp_path}"
 
+
 PID_FILE = Path(__file__).resolve().parents[1] / ".dana.pid"
+
 
 def _write_pid() -> None:
     PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
+
 
 def _remove_pid() -> None:
     try:
         PID_FILE.unlink()
     except FileNotFoundError:
         pass
+
 
 class DanaWorkerProcess(Process):
     def __init__(self, config, sockets, worker_number: int):
@@ -81,7 +87,9 @@ class DanaMultiprocess(Multiprocess):
                 return
             worker_number = index + 1
             new_process = self._new_process(worker_number)
-            if not new_process.wait_until_ready(self.config.timeout_worker_healthcheck, self.should_exit):
+            if not new_process.wait_until_ready(
+                self.config.timeout_worker_healthcheck, self.should_exit
+            ):
                 new_process.kill()
                 new_process.join()
                 return
@@ -104,7 +112,10 @@ def run() -> None:
         probe.close()
     except OSError as exc:
         from .terminal_ui import startup_error
-        startup_error(f"Port {settings.port} is already in use. Dana may already be running. Use ./stop to stop it.")
+
+        startup_error(
+            f"Port {settings.port} is already in use. Dana may already be running. Use ./stop to stop it."
+        )
         return
     server_dashboard(settings, mode, public_url)
 
@@ -114,12 +125,17 @@ def run() -> None:
     # Keep routine HTTP/session/access logging out of the terminal. Real server
     # errors remain available at ERROR level.
     for name in (
-        "uvicorn", "uvicorn.access", "uvicorn.error",
-        "mcp", "mcp.server", "mcp.server.streamable_http",
-        "mcp.server.streamable_http_manager", "mcp.server.fastmcp.tools.tool_manager",
+        "uvicorn",
+        "uvicorn.access",
+        "uvicorn.error",
+        "mcp",
+        "mcp.server",
+        "mcp.server.streamable_http",
+        "mcp.server.streamable_http_manager",
+        "mcp.server.fastmcp.tools.tool_manager",
     ):
         logger = logging.getLogger(name)
-        logger.setLevel(logging.ERROR)
+        logger.setLevel(logging.CRITICAL)
     config = uvicorn.Config(
         "dana.http:app",
         host=settings.host,
@@ -139,6 +155,7 @@ def run() -> None:
             uvicorn.Server(config).run()
     finally:
         _remove_pid()
+
 
 if __name__ == "__main__":
     run()
