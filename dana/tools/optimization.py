@@ -251,7 +251,11 @@ def register_optimization_tools(mcp: FastMCP) -> None:
         target = name.strip()
         if target in {"dana_call_tool", "dana_batch_call"}:
             raise ValueError("Recursive gateway invocation is not allowed")
-        if target not in mcp._tool_manager._tools:
+        # Progressive discovery intentionally hides most tools from tools/list.
+        # Direct gateway calls must still resolve and validate against the full
+        # internal registry; visibility is not an execution/validation boundary.
+        internal_tool = mcp._tool_manager._tools.get(target)
+        if internal_tool is None:
             raise ValueError(f"Unknown Dana tool: {target}")
         args = arguments or {}
         hit, cached = _cached(target, args)
