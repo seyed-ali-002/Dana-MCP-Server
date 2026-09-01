@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from dana.tools.context_engine import (
     build_context,
     compact_session,
@@ -24,6 +26,7 @@ def test_context_budget():
         4000,
     )
     assert result["tokens_est"] <= 4000 or not result["within_budget"]
+    assert result["compacted"] is True
     assert "static" in result["context"]
 
 

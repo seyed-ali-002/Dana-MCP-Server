@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from __future__ import annotations
 
 import hashlib
@@ -53,6 +54,43 @@ def _compact_text(text: str, max_chars: int) -> str:
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 1].rstrip() + "…"
+
+
+def _importance_score(text: str) -> float:
+    t = text.lower()
+    score = 0.2
+    for term, weight in {
+        "must": 0.35,
+        "required": 0.35,
+        "constraint": 0.3,
+        "decision": 0.25,
+        "todo": 0.2,
+        "error": 0.2,
+        "failed": 0.2,
+        "important": 0.2,
+        "pending": 0.15,
+        "path": 0.1,
+    }.items():
+        if term in t:
+            score += weight
+    return min(1.0, score)
+
+
+def select_relevant_history(messages: list[str], budget_chars: int) -> list[str]:
+    scored = [
+        (i, _importance_score(m), m.strip())
+        for i, m in enumerate(messages)
+        if m and m.strip()
+    ]
+    scored.sort(key=lambda x: (-x[1], -x[0]))
+    selected: list[tuple[int, str]] = []
+    used = 0
+    for i, _, message in scored:
+        if used + len(message) > budget_chars:
+            continue
+        selected.append((i, message))
+        used += len(message)
+    return [m for _, m in sorted(selected)]
 
 
 def optimize_result(value: Any, max_chars: int = MAX_RESULT_CHARS) -> Any:
@@ -126,7 +164,8 @@ def compact_session(
 ) -> dict[str, Any]:
     create_session(session_id)
     unique = list(dict.fromkeys(m.strip() for m in messages if m and m.strip()))
-    summary = _compact_text("\n".join(unique), max_chars)
+    selected = select_relevant_history(unique, max_chars)
+    summary = _compact_text("\n".join(selected), max_chars)
     c = _db()
     c.execute(
         "UPDATE sessions SET summary=?,updated=? WHERE id=?",
@@ -173,23 +212,42 @@ def build_context(
         "dynamic": dynamic,
         "current": current,
     }
-    while _tokens(result) > budget and result.get("dynamic"):
-        result["dynamic"] = optimize_result(
-            result["dynamic"],
-            max(1000, len(json.dumps(result["dynamic"], default=str)) // 2),
-        )
-        if _tokens(result) > budget and result.get("history_summary"):
+    while _tokens(result) > budget:
+        before = _tokens(result)
+        if result.get("dynamic"):
+            dynamic_text = json.dumps(
+                result["dynamic"], ensure_ascii=False, default=str
+            )
+            result["dynamic"] = optimize_result(
+                result["dynamic"], max(256, len(dynamic_text) // 2)
+            )
+        elif result.get("history_summary"):
             result["history_summary"] = _compact_text(
-                result["history_summary"],
-                max(1000, len(result["history_summary"]) // 2),
+                result["history_summary"], max(256, len(result["history_summary"]) // 2)
+            )
+        elif result.get("static"):
+            result["static"] = optimize_result(
+                result["static"], max(256, _tokens(result["static"]) * 2)
             )
         else:
             break
+        if _tokens(result) >= before:
+            break
+    final_tokens = _tokens(result)
     return {
         "context": result,
-        "tokens_est": _tokens(result),
+        "tokens_est": final_tokens,
         "budget_tokens": budget,
-        "within_budget": _tokens(result) <= budget,
+        "within_budget": final_tokens <= budget,
+        "compacted": final_tokens
+        < _tokens(
+            {
+                "static": static,
+                "history_summary": history_summary,
+                "dynamic": dynamic,
+                "current": current,
+            }
+        ),
     }
 
 

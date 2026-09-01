@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from __future__ import annotations
 
 import ast
@@ -247,11 +248,34 @@ def find_symbols(query: str, limit: int = 20) -> list[dict[str, Any]]:
     return out
 
 
+def _normalize_query(query: str) -> str:
+    text = re.sub(r"[^a-zA-Z0-9_]+", " ", (query or "").lower())
+    stop = {
+        "a",
+        "an",
+        "the",
+        "please",
+        "show",
+        "me",
+        "get",
+        "give",
+        "what",
+        "is",
+        "are",
+        "can",
+        "you",
+    }
+    return " ".join(sorted(x for x in text.split() if x not in stop))
+
+
 def semantic_get(query: str, ttl: int = 30) -> Any | None:
+    normalized = _normalize_query(query)
+    if not normalized:
+        return None
     c = _db()
     row = c.execute(
         "SELECT expires,payload FROM semantic_cache WHERE key=?",
-        (fingerprint(query.lower()),),
+        (fingerprint(normalized),),
     ).fetchone()
     c.close()
     if row and row[0] > time.time():
@@ -260,16 +284,14 @@ def semantic_get(query: str, ttl: int = 30) -> Any | None:
 
 
 def semantic_put(query: str, payload: Any, ttl: int = 30) -> None:
+    normalized = _normalize_query(query)
+    if not normalized:
+        return
+    now = time.time()
     c = _db()
     c.execute(
         "INSERT OR REPLACE INTO semantic_cache(key,created,expires,query,payload) VALUES(?,?,?,?,?)",
-        (
-            fingerprint(query.lower()),
-            time.time(),
-            time.time() + ttl,
-            query,
-            _json(payload),
-        ),
+        (fingerprint(normalized), now, now + max(1, ttl), normalized, _json(payload)),
     )
     c.commit()
     c.close()
@@ -277,13 +299,35 @@ def semantic_put(query: str, payload: Any, ttl: int = 30) -> None:
 
 def plan(request: str, tools: list[str]) -> dict[str, Any]:
     selected = [t for t in tools if t]
+    fp = fast_path(request)
+    if fp:
+        selected = [fp["tool"]]
+    steps = []
+    for i, tool in enumerate(selected):
+        cost = tool_cost(tool)
+        steps.append(
+            {
+                "id": i,
+                "tool": tool,
+                "depends_on": [] if i == 0 or cost["parallelizable"] else [i - 1],
+                "cost": cost,
+            }
+        )
+    dag = (
+        build_dag(
+            [
+                {"name": s["tool"], "arguments": {}, "depends_on": s["depends_on"]}
+                for s in steps
+            ]
+        )
+        if steps
+        else {"levels": [], "nodes": []}
+    )
     return {
         "request": request,
-        "steps": [
-            {"id": i, "tool": t, "depends_on": [] if i == 0 else [i - 1]}
-            for i, t in enumerate(selected)
-        ],
-        "fast_path": fast_path(request),
+        "steps": steps,
+        "execution_levels": dag["levels"],
+        "fast_path": fp,
         "complexity": classify_complexity(request),
     }
 
@@ -301,7 +345,7 @@ async def execute_dag(
             n = dag["nodes"][i]
             try:
                 return i, True, await executor(n["name"], n["arguments"])
-            except Exception as exc:
+            except (ValueError, RuntimeError, OSError) as exc:
                 return i, False, str(exc)
 
         batch = await asyncio.gather(*(run(i) for i in level))
