@@ -1,18 +1,20 @@
+#!/usr/bin/env python3
 from __future__ import annotations
 
 import hashlib
-import logging
 import json
+import logging
 import os
 import time
-from pathlib import Path
 from multiprocessing import current_process
+from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
 from .terminal_ui import worker_event, worker_ready
+from .tools import register_tools
 
 REPORT_JSON = Path(__file__).resolve().parents[1] / ".dana" / "report.json"
 REPORT_HTML = Path(__file__).resolve().parents[1] / "report.html"
@@ -23,7 +25,7 @@ def update_report(tool, input_tokens, output_tokens, duration_ms, success):
         REPORT_JSON.parent.mkdir(exist_ok=True)
         try:
             data = json.loads(REPORT_JSON.read_text(encoding="utf-8"))
-        except Exception:
+        except (OSError, ValueError, TypeError):
             data = {
                 "start": time.time(),
                 "last": None,
@@ -54,37 +56,32 @@ def update_report(tool, input_tokens, output_tokens, duration_ms, success):
         data["events"] = data["events"][-1000:]
         REPORT_JSON.write_text(json.dumps(data), encoding="utf-8")
         rows = "".join(
-            "<tr><td>%s</td><td>%s #%s</td><td>%s</td><td>%s</td><td>%s</td><td>%.0fms</td><td>%s</td></tr>"
-            % (
-                time.ctime(e["time"]),
-                e["worker"],
-                e["number"],
-                e["tool"],
-                e["input"],
-                e["output"],
-                e["duration"],
-                "DONE" if e["success"] else "FAIL",
+            "<tr><td>{time}</td><td>{worker} #{number}</td><td>{tool}</td><td>{input}</td><td>{output}</td><td>{duration:.0f}ms</td><td>{status}</td></tr>".format(
+                time=time.ctime(e["time"]),
+                worker=e["worker"],
+                number=e["number"],
+                tool=e["tool"],
+                input=e["input"],
+                output=e["output"],
+                duration=e["duration"],
+                status="DONE" if e["success"] else "FAIL",
             )
             for e in reversed(data["events"])
         )
         REPORT_HTML.write_text(
-            "<meta http-equiv='refresh' content='5'><style>body{font:15px system-ui;background:#08111f;color:#eee;padding:30px;max-width:1200px;margin:auto}.card{display:inline-block;background:#101d30;padding:18px;margin:5px;border-radius:12px}table{width:100%;margin-top:20px}td,th{padding:8px;border-bottom:1px solid #345;text-align:left}</style><h1>DANA Usage Report</h1><p>Live local report; updated after every tool use.</p><div class='card'>TOTAL TOKENS<br><b>%s</b></div><div class='card'>INPUT<br><b>%s</b></div><div class='card'>OUTPUT<br><b>%s</b></div><div class='card'>USAGE TIME<br><b>%.2fs</b></div><div class='card'>OPERATIONS<br><b>%s</b></div><p>Last use: %s</p><table><tr><th>Time</th><th>Worker</th><th>Tool</th><th>Input</th><th>Output</th><th>Duration</th><th>Status</th></tr>%s</table>"
-            % (
-                data["input"] + data["output"],
-                data["input"],
-                data["output"],
-                data["duration"] / 1000,
-                data["operations"],
-                time.ctime(data["last"]),
-                rows,
+            "<meta http-equiv='refresh' content='5'><style>body{{font:15px system-ui;background:#08111f;color:#eee;padding:30px;max-width:1200px;margin:auto}}.card{{display:inline-block;background:#101d30;padding:18px;margin:5px;border-radius:12px}}table{{width:100%;margin-top:20px}}td,th{{padding:8px;border-bottom:1px solid #345;text-align:left}}</style><h1>DANA Usage Report</h1><p>Live local report; updated after every tool use.</p><div class='card'>TOTAL TOKENS<br><b>{total}</b></div><div class='card'>INPUT<br><b>{input}</b></div><div class='card'>OUTPUT<br><b>{output}</b></div><div class='card'>USAGE TIME<br><b>{duration:.2f}s</b></div><div class='card'>OPERATIONS<br><b>{operations}</b></div><p>Last use: {last}</p><table><tr><th>Time</th><th>Worker</th><th>Tool</th><th>Input</th><th>Output</th><th>Duration</th><th>Status</th></tr>{rows}</table>".format(
+                total=data["input"] + data["output"],
+                input=data["input"],
+                output=data["output"],
+                duration=data["duration"] / 1000,
+                operations=data["operations"],
+                last=time.ctime(data["last"]),
+                rows=rows,
             ),
             encoding="utf-8",
         )
-    except Exception:
+    except (OSError, ValueError, TypeError):
         logging.getLogger("dana").debug("usage report update failed", exc_info=True)
-
-
-from .tools import register_tools
 
 
 # Keep internal MCP lifecycle/tool-registration messages out of Dana's user-facing
@@ -183,7 +180,7 @@ def _worker_name(number: int) -> str:
         from .config import settings
 
         seed = settings.require_auth_token()
-    except Exception:
+    except (AttributeError, RuntimeError, ValueError):
         seed = os.getenv("DANA_AUTH_TOKEN", "dana")
 
     names = _worker_names()
@@ -261,7 +258,7 @@ async def _logged_call_tool(
 def _estimate_tokens(value: Any) -> int:
     try:
         text = json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
-    except Exception:
+    except (TypeError, ValueError):
         text = str(value)
     return max(0, (len(text) + 3) // 4)
 
