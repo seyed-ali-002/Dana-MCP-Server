@@ -82,6 +82,8 @@ def write_env(
                 values[key.strip()] = value.strip()
     values["DANA_DEPLOYMENT_MODE"] = mode
     values["DANA_WORKERS"] = str(workers)
+    if mode == "server" and (not values.get("DANA_PORT") or not values.get("DANA_PORT", "").isdigit()):
+        values["DANA_PORT"] = "8765"
     # Worker names are derived from DANA_AUTH_TOKEN at runtime, so no
     # per-run random seed is persisted here.
     values.pop("DANA_WORKER_SEED", None)
@@ -209,7 +211,8 @@ def configure_service(python: Path) -> None:
     tmp.write_text(service, encoding="utf-8")
     run_command(["sudo", "cp", str(tmp), "/etc/systemd/system/dana.service"])
     run_command(["sudo", "systemctl", "daemon-reload"])
-    run_command(["sudo", "systemctl", "enable", "--now", "dana"])
+    run_command(["sudo", "systemctl", "enable", "dana"])
+    run_command(["sudo", "systemctl", "restart", "dana"])
 
 
 def configure_reverse_proxy(
