@@ -157,7 +157,7 @@ async def _logged_call_tool(
     started = time.perf_counter()
     input_tokens = _estimate_tokens(arguments)
     token_exact = False
-    token_source = "cl100k_base_or_4char_estimate"
+    token_source = "tiktoken"
     success = True
     try:
         result = await _original_call_tool(
@@ -203,15 +203,30 @@ def _estimate_tokens(value: Any) -> int:
         text = str(value)
     try:
         import tiktoken  # type: ignore
-        return len(tiktoken.get_encoding(os.getenv("DANA_TOKENIZER_ENCODING", "o200k_base")).encode(text))
+        model = os.getenv("DANA_TOKENIZER_MODEL", "gpt-4o")
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+        except KeyError:
+            encoding = tiktoken.get_encoding(os.getenv("DANA_TOKENIZER_ENCODING", "o200k_base"))
+        return len(encoding.encode(text, disallowed_special=()))
     except Exception:
         return max(0, (len(text) + 3) // 4)
 
 
 def _reported_usage(value: Any) -> tuple[int, int] | None:
-    if not isinstance(value, dict):
-        return None
-    for usage in (value.get("usage"), value.get("_usage"), value.get("token_usage")):
+    """Extract provider/client usage when a tool result carries it.
+
+    MCP itself does not expose the host LLM's hidden `open call tool` metadata
+    to the server, so host-side usage is exact only when the client forwards it.
+    """
+    candidates: list[Any] = []
+    if isinstance(value, dict):
+        candidates.extend([value.get("usage"), value.get("_usage"), value.get("token_usage")])
+        for key in ("result", "data", "metadata"):
+            nested = value.get(key)
+            if isinstance(nested, dict):
+                candidates.extend([nested.get("usage"), nested.get("_usage"), nested.get("token_usage")])
+    for usage in candidates:
         if isinstance(usage, dict):
             inp = usage.get("input_tokens", usage.get("prompt_tokens"))
             out = usage.get("output_tokens", usage.get("completion_tokens"))
