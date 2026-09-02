@@ -81,9 +81,12 @@ async def connector(request: Request):
     else:
         scheme = "https" if settings.public_host else "http"
         prefix = f"/{token}"
+    port_suffix = ""
+    if settings.public_host and settings.public_port:
+        port_suffix = f":{settings.public_port}"
     return {
         "title": "Chatbot Connection Link",
-        "url": f"{scheme}://{host}{prefix}{settings.mcp_path}",
+        "url": f"{scheme}://{host}{port_suffix}{prefix}{settings.mcp_path}",
     }
 
 
