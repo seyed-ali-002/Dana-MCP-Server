@@ -19,7 +19,13 @@ from .tools import register_tools
 
 # Keep internal MCP lifecycle/tool-registration messages out of Dana's user-facing
 # terminal. Worker completion events are emitted through terminal_ui instead.
+# The MCP SDK emits request/validation messages at INFO/WARNING. Dana uses
+# its own compact worker line instead, so suppress the SDK noise completely.
 for _logger_name in (
+    "mcp",
+    "mcp.server",
+    "mcp.server.lowlevel.server",
+    "mcp.server.fastmcp",
     "mcp.server.fastmcp.tools.tool_manager",
     "mcp.server.streamable_http_manager",
     "mcp.server.streamable_http",
