@@ -14,75 +14,8 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
 from .terminal_ui import worker_event, worker_ready
+from .reporting import update_report
 from .tools import register_tools
-
-REPORT_JSON = Path(__file__).resolve().parents[1] / ".dana" / "report.json"
-REPORT_HTML = Path(__file__).resolve().parents[1] / "report.html"
-
-
-def update_report(tool, input_tokens, output_tokens, duration_ms, success):
-    try:
-        REPORT_JSON.parent.mkdir(exist_ok=True)
-        try:
-            data = json.loads(REPORT_JSON.read_text(encoding="utf-8"))
-        except (OSError, ValueError, TypeError):
-            data = {
-                "start": time.time(),
-                "last": None,
-                "input": 0,
-                "output": 0,
-                "duration": 0,
-                "operations": 0,
-                "events": [],
-            }
-        now = time.time()
-        data["last"] = now
-        data["input"] += input_tokens
-        data["output"] += output_tokens
-        data["duration"] += duration_ms
-        data["operations"] += 1
-        data["events"].append(
-            {
-                "time": now,
-                "worker": WORKER_NAME,
-                "number": WORKER_NUMBER,
-                "tool": tool,
-                "input": input_tokens,
-                "output": output_tokens,
-                "duration": duration_ms,
-                "success": success,
-            }
-        )
-        data["events"] = data["events"][-1000:]
-        REPORT_JSON.write_text(json.dumps(data), encoding="utf-8")
-        rows = "".join(
-            "<tr><td>{time}</td><td>{worker} #{number}</td><td>{tool}</td><td>{input}</td><td>{output}</td><td>{duration:.0f}ms</td><td>{status}</td></tr>".format(
-                time=time.ctime(e["time"]),
-                worker=e["worker"],
-                number=e["number"],
-                tool=e["tool"],
-                input=e["input"],
-                output=e["output"],
-                duration=e["duration"],
-                status="DONE" if e["success"] else "FAIL",
-            )
-            for e in reversed(data["events"])
-        )
-        REPORT_HTML.write_text(
-            "<meta http-equiv='refresh' content='5'><style>body{{font:15px system-ui;background:#08111f;color:#eee;padding:30px;max-width:1200px;margin:auto}}.card{{display:inline-block;background:#101d30;padding:18px;margin:5px;border-radius:12px}}table{{width:100%;margin-top:20px}}td,th{{padding:8px;border-bottom:1px solid #345;text-align:left}}</style><h1>DANA Usage Report</h1><p>Live local report; updated after every tool use.</p><div class='card'>TOTAL TOKENS<br><b>{total}</b></div><div class='card'>INPUT<br><b>{input}</b></div><div class='card'>OUTPUT<br><b>{output}</b></div><div class='card'>USAGE TIME<br><b>{duration:.2f}s</b></div><div class='card'>OPERATIONS<br><b>{operations}</b></div><p>Last use: {last}</p><table><tr><th>Time</th><th>Worker</th><th>Tool</th><th>Input</th><th>Output</th><th>Duration</th><th>Status</th></tr>{rows}</table>".format(
-                total=data["input"] + data["output"],
-                input=data["input"],
-                output=data["output"],
-                duration=data["duration"] / 1000,
-                operations=data["operations"],
-                last=time.ctime(data["last"]),
-                rows=rows,
-            ),
-            encoding="utf-8",
-        )
-    except (OSError, ValueError, TypeError):
-        logging.getLogger("dana").debug("usage report update failed", exc_info=True)
-
 
 # Keep internal MCP lifecycle/tool-registration messages out of Dana's user-facing
 # terminal. Worker completion events are emitted through terminal_ui instead.
@@ -223,12 +156,20 @@ async def _logged_call_tool(
 ) -> Any:
     started = time.perf_counter()
     input_tokens = _estimate_tokens(arguments)
+    token_exact = False
+    token_source = "cl100k_base_or_4char_estimate"
     success = True
     try:
         result = await _original_call_tool(
             name, arguments, context=context, convert_result=convert_result
         )
-        output_tokens = _estimate_tokens(result)
+        usage = _reported_usage(result)
+        if usage is not None:
+            input_tokens, output_tokens = usage
+            token_exact = True
+            token_source = "provider_reported"
+        else:
+            output_tokens = _estimate_tokens(result)
         return result
     except Exception:
         success = False
@@ -243,7 +184,7 @@ async def _logged_call_tool(
             and arguments.get("name")
         ):
             report_name = str(arguments["name"])
-        update_report(report_name, input_tokens, output_tokens, duration_ms, success)
+        update_report(report_name, WORKER_NAME, WORKER_NUMBER, input_tokens, output_tokens, duration_ms, success, token_exact, token_source)
         worker_event(
             WORKER_NAME,
             WORKER_NUMBER,
@@ -260,7 +201,23 @@ def _estimate_tokens(value: Any) -> int:
         text = json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
     except (TypeError, ValueError):
         text = str(value)
-    return max(0, (len(text) + 3) // 4)
+    try:
+        import tiktoken  # type: ignore
+        return len(tiktoken.get_encoding(os.getenv("DANA_TOKENIZER_ENCODING", "o200k_base")).encode(text))
+    except Exception:
+        return max(0, (len(text) + 3) // 4)
+
+
+def _reported_usage(value: Any) -> tuple[int, int] | None:
+    if not isinstance(value, dict):
+        return None
+    for usage in (value.get("usage"), value.get("_usage"), value.get("token_usage")):
+        if isinstance(usage, dict):
+            inp = usage.get("input_tokens", usage.get("prompt_tokens"))
+            out = usage.get("output_tokens", usage.get("completion_tokens"))
+            if isinstance(inp, int) and isinstance(out, int):
+                return max(0, inp), max(0, out)
+    return None
 
 
 mcp._tool_manager.call_tool = _logged_call_tool

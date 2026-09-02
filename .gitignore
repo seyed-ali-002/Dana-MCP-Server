@@ -10,6 +10,7 @@ __pycache__/
 *.log
 
 # Dana runtime state
+.dana/
 .dana.pid
 .dana_workers.json
 
@@ -24,3 +25,7 @@ coverage.xml
 Thumbs.db
 .vscode/
 .idea/
+
+report.html
+
+report.html

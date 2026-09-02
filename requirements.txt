@@ -8,3 +8,5 @@ arabic-reshaper>=3,<4
 python-bidi>=0.4,<1
 rich>=13,<15
 
+
+tiktoken>=0.9,<1
