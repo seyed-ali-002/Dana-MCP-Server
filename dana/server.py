@@ -13,6 +13,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+from .config import settings
 from .terminal_ui import worker_event, worker_ready
 from .reporting import update_report
 from .tools import register_tools
@@ -136,12 +137,23 @@ def _worker_name(number: int) -> str:
 WORKER_NUMBER = _worker_number()
 WORKER_NAME = _worker_name(WORKER_NUMBER)
 
+_allowed_hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+if settings.public_host:
+    _allowed_hosts.extend([settings.public_host, f"{settings.public_host}:*"])
+_allowed_origins = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+if settings.public_host:
+    _allowed_origins.append(f"https://{settings.public_host}")
+if settings.allowed_origins:
+    _allowed_origins.extend(x.strip() for x in settings.allowed_origins.split(",") if x.strip())
+
 mcp = FastMCP(
     "Dana",
     host="127.0.0.1",
     port=8765,
     transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=False,
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=_allowed_hosts,
+        allowed_origins=_allowed_origins,
     ),
     stateless_http=True,
 )
@@ -202,11 +214,53 @@ async def _logged_call_tool(
         )
 
 
-def _estimate_tokens(value: Any) -> int:
+def _token_text(value: Any) -> str:
+    """Return the payload text that a client actually receives, not its Python repr.
+
+    FastMCP wraps tool results in CallToolResult. Serializing that Pydantic model
+    with ``default=str`` turns it into a verbose Python representation containing
+    field names, ``None`` values and type wrappers. That was inflating output-token
+    estimates substantially. Prefer the MCP content blocks and only fall back to
+    structured content when there is no textual content.
+    """
+    if value is None:
+        return ""
+
+    if hasattr(value, "model_dump"):
+        try:
+            value = value.model_dump(mode="json")
+        except Exception:
+            pass
+
+    if isinstance(value, dict):
+        content = value.get("content")
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, dict) and isinstance(item.get("text"), str):
+                    parts.append(item["text"])
+                elif hasattr(item, "text") and isinstance(item.text, str):
+                    parts.append(item.text)
+            if parts:
+                return "\\n".join(parts)
+        if "structuredContent" in value and value.get("structuredContent") is not None:
+            try:
+                return json.dumps(value["structuredContent"], ensure_ascii=False, separators=(",", ":"))
+            except (TypeError, ValueError):
+                return str(value["structuredContent"])
+
+    if isinstance(value, str):
+        return value
     try:
-        text = json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
+        return json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
     except (TypeError, ValueError):
-        text = str(value)
+        return str(value)
+
+
+def _estimate_tokens(value: Any) -> int:
+    text = _token_text(value)
+    if not text:
+        return 0
     try:
         import tiktoken  # type: ignore
         model = os.getenv("DANA_TOKENIZER_MODEL", "gpt-4o")
