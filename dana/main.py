@@ -21,7 +21,7 @@ def _public_url() -> str | None:
     if _mode() == "server":
         return f"https://{settings.public_host}{settings.mcp_path}"
     authority = settings.public_host
-    if settings.public_port:
+    if settings.public_port and settings.public_port not in (80, 443):
         authority = f"{authority}:{settings.public_port}"
     return f"https://{authority}/{settings.require_auth_token()}{settings.mcp_path}"
 
@@ -136,6 +136,8 @@ def run() -> None:
     ):
         logger = logging.getLogger(name)
         logger.setLevel(logging.CRITICAL)
+        logger.handlers.clear()
+        logger.propagate = False
     config = uvicorn.Config(
         "dana.http:app",
         host=settings.host,

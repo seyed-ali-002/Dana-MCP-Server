@@ -16,6 +16,15 @@ class MCPCompatibilityMiddleware(BaseHTTPMiddleware):
         token_prefix = f"/{token}" if token else ""
         if token_prefix and path.startswith(token_prefix + "/"):
             request.scope["path"] = path[len(token_prefix):] or "/"
+            path = request.scope["path"]
+
+        # ChatGPT and other MCP clients may normalize the endpoint with a
+        # trailing slash. FastMCP's canonical route is /mcp, so normalize both
+        # /mcp and /mcp/ (including the tokenized public form) before routing.
+        canonical_mcp = settings.mcp_path.rstrip("/") or "/mcp"
+        if path.rstrip("/") == canonical_mcp:
+            request.scope["path"] = canonical_mcp
+
         if settings.normalized_mode() == "server":
             # Server Mode is published by an HTTPS reverse proxy as the canonical
             # /mcp endpoint. Do not put the secret token in the public URL.
@@ -82,7 +91,7 @@ async def connector(request: Request):
         scheme = "https" if settings.public_host else "http"
         prefix = f"/{token}"
     port_suffix = ""
-    if settings.public_host and settings.public_port:
+    if settings.public_host and settings.public_port and settings.public_port not in (80, 443):
         port_suffix = f":{settings.public_port}"
     return {
         "title": "Chatbot Connection Link",

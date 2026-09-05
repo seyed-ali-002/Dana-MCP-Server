@@ -89,7 +89,8 @@ def write_env(
     values.pop("DANA_WORKER_SEED", None)
     if mode == "local":
         values.pop("DANA_PUBLIC_HOST", None)
-        values["DANA_PUBLIC_PORT"] = "8443"
+        values["DANA_PUBLIC_PORT"] = "443"
+        values["DANA_PUBLIC_SCHEME"] = "https"
     if (
         not values.get("DANA_AUTH_TOKEN")
         or values.get("DANA_AUTH_TOKEN") == "GENERATE_WITH_SCRIPT"
@@ -345,8 +346,8 @@ def _tailscale_hostname_from_status() -> str | None:
     return None
 
 
-def configure_tailscale_local(token: str, port: int = 8765, funnel_port: int = 8443) -> str:
-    """Configure Local Mode Funnel silently and return its stable hostname."""
+def configure_tailscale_local(token: str, port: int = 8765, funnel_port: int = 443) -> str:
+    """Configure Local Mode Funnel on the standard HTTPS port and return its stable hostname."""
     if not command_exists("tailscale"):
         raise RuntimeError("Tailscale is not installed or not in PATH.")
 
@@ -357,6 +358,7 @@ def configure_tailscale_local(token: str, port: int = 8765, funnel_port: int = 8
             f"--https={funnel_port}",
             "--set-path",
             f"/{token}",
+            "--yes",
             "--bg",
             f"http://127.0.0.1:{port}",
         ],
@@ -415,7 +417,7 @@ def install_local() -> None:
     step("Configuring secure Tailscale Funnel")
     public_host = configure_tailscale_local(token)
     set_local_public_host(public_host)
-    success(f"Secure endpoint configured: https://{public_host}:8443/{token}/mcp")
+    success(f"Secure endpoint configured: https://{public_host}/{token}/mcp")
     clear()
     banner("INSTALLATION COMPLETE")
     table = Table.grid(padding=(0, 2))
