@@ -9,6 +9,7 @@ from uvicorn.supervisors.multiprocess import Multiprocess, Process
 
 from .config import settings
 from .terminal_ui import server_dashboard
+from .tailscale import DanaFunnelManager
 
 
 def _mode() -> str:
@@ -149,13 +150,19 @@ def run() -> None:
         workers=settings.normalized_workers(),
     )
     _write_pid()
+    funnel = DanaFunnelManager()
     try:
+        # Dana owns and continuously reconciles only its tokenized Funnel path.
+        # This makes Dana recover its public route even if another application
+        # clears shared Tailscale handlers while shutting down.
+        funnel.start()
         if config.workers > 1:
             sock = config.bind_socket()
             DanaMultiprocess(config, sockets=[sock]).run()
         else:
             uvicorn.Server(config).run()
     finally:
+        funnel.stop()
         _remove_pid()
 
 

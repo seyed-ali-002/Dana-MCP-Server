@@ -12,6 +12,13 @@ class Settings(BaseSettings):
     public_scheme: str = ""
     deployment_mode: str = "local"
     workers: int = 5
+    rate_limit_rpm: int = 120
+    auth_burst: int = 20
+    max_body_bytes: int = 10 * 1024 * 1024
+    allow_dangerous_tools: bool = False
+    allowed_origins: str = ""
+    tailscale_funnel_enabled: bool = True
+    tailscale_funnel_check_seconds: int = 15
 
     def normalized_workers(self) -> int:
         if not 1 <= self.workers <= 128:
@@ -26,10 +33,14 @@ class Settings(BaseSettings):
 
     def require_auth_token(self) -> str:
         if not self.auth_token:
-            raise RuntimeError("DANA_AUTH_TOKEN is not configured. Run scripts/init_token.py first.")
+            raise RuntimeError(
+                "DANA_AUTH_TOKEN is not configured. Run scripts/init_token.py first."
+            )
         return self.auth_token
 
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="DANA_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_prefix="DANA_", extra="ignore"
+    )
 
 
 settings = Settings()
