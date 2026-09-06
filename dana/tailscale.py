@@ -9,7 +9,7 @@ from .config import settings
 
 
 class DanaFunnelManager:
-    """Keeps Dana's own tokenized Funnel route present without touching other apps."""
+    """Keeps Dana's public Funnel route present independently of other apps."""
 
     def __init__(self) -> None:
         self._stop = threading.Event()
@@ -26,13 +26,13 @@ class DanaFunnelManager:
     def ensure(self) -> bool:
         if not self.enabled:
             return False
-        token = settings.require_auth_token()
+        settings.require_auth_token()
         command = [
             "tailscale",
             "funnel",
             "--https=443",
             "--set-path",
-            f"/{token}",
+            "/",  # Dana public root; tokenized MCP path is handled by Dana middleware.
             "--yes",
             "--bg",
             f"http://127.0.0.1:{settings.port}",
@@ -71,6 +71,6 @@ class DanaFunnelManager:
     def _watch(self) -> None:
         interval = max(5, settings.tailscale_funnel_check_seconds)
         while not self._stop.wait(interval):
-            # Re-add only Dana's own /<token> handler. Never reset port 443
-            # and never remove handlers belonging to other applications.
+            # Reconcile Dana's own public route so the root and MCP endpoint
+            # remain available after unrelated applications stop.
             self.ensure()
