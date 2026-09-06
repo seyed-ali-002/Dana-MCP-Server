@@ -33,6 +33,7 @@ class MCPCompatibilityMiddleware(BaseHTTPMiddleware):
         token_prefix = f"/{token}"
         canonical_mcp = settings.mcp_path.rstrip("/") or "/mcp"
         tokenized = path == token_prefix or path.startswith(token_prefix + "/")
+        authenticated_by_path = False
         if tokenized:
             # The prefix itself is the bearer secret. Constant-time comparison
             # keeps the direct HTTP form from leaking token length/content.
@@ -42,6 +43,7 @@ class MCPCompatibilityMiddleware(BaseHTTPMiddleware):
                     return JSONResponse({"error": "Too Many Requests"}, status_code=429, headers={"Retry-After": "60"})
                 audit("auth_failed", client_key, "tokenized_path")
                 return unauthorized()
+            authenticated_by_path = True
             request.scope["path"] = path[len(token_prefix):] or "/"
             path = request.scope["path"]
         elif path.rstrip("/").endswith("/mcp") and path.rstrip("/") != canonical_mcp:
@@ -56,9 +58,10 @@ class MCPCompatibilityMiddleware(BaseHTTPMiddleware):
         if path.rstrip("/") == canonical_mcp:
             request.scope["path"] = canonical_mcp
 
-        if settings.normalized_mode() == "server" and path.rstrip("/") == canonical_mcp:
+        if settings.normalized_mode() == "server" and path.rstrip("/") == canonical_mcp and not authenticated_by_path:
             expected = f"Bearer {token}"
-            if not _guard.token_matches(request.headers.get("authorization", ""), expected):
+            proxy_token = request.headers.get("x-dana-auth", "")
+            if not (_guard.token_matches(request.headers.get("authorization", ""), expected) or _guard.token_matches(proxy_token, token)):
                 if not _guard.allow_auth_attempt(client_key):
                     return JSONResponse({"error": "Too Many Requests"}, status_code=429, headers={"Retry-After": "60"})
                 audit("auth_failed", client_key, "tokenized_path")
@@ -124,11 +127,6 @@ async def root(request: Request):
         "authentication": "Tokenized endpoint. Keep the MCP URL private.",
         "protocol": "streamable-http",
     }
-
-
-@app.get("/.well-known/oauth-authorization-server")
-async def oauth_metadata():
-    return JSONResponse({"issuer": "Dana MCP Server", "authorization_endpoint": None, "token_endpoint": None, "note": "Dana uses a tokenized MCP endpoint instead of OAuth."})
 
 
 @app.get("/health")

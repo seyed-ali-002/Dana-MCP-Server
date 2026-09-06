@@ -72,8 +72,12 @@ def _sudo_write(path: Path, content: str) -> None:
     _run(["sudo", "cp", str(tmp), str(path)])
 
 
-def _nginx_route(port: int) -> str:
-    return f"""\n    # Dana MCP Server\n    location = /mcp {{\n        proxy_pass http://127.0.0.1:{port};\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_buffering off;\n        proxy_read_timeout 3600s;\n    }}\n"""
+def _nginx_route(port: int, token: str | None = None) -> str:
+    public_path = f"/{token}/mcp" if token else "/mcp"
+    upstream = f"http://127.0.0.1:{port}/mcp" if token else f"http://127.0.0.1:{port}"
+    auth = f'\n        proxy_set_header Authorization "Bearer {token}";\n        proxy_set_header X-Dana-Auth "{token}";' if token else ""
+    trailing = f"\n    location = {public_path}/ {{\n        proxy_pass {upstream};\n{auth}\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_buffering off;\n        proxy_read_timeout 3600s;\n    }}\n" if token else ""
+    return f"""\n    # Dana MCP Server\n    location = {public_path} {{\n        proxy_pass {upstream};\n{auth}\n        proxy_http_version 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_buffering off;\n        proxy_read_timeout 3600s;\n    }}\n{trailing}"""
 
 
 def _inject_before_closing_block(text: str, needle: str, route: str) -> str:
@@ -99,6 +103,7 @@ def _nginx_server(
     domain: str,
     port: int,
     origin_protocol: str,
+    token: str | None = None,
     cert: str | None = None,
     key: str | None = None,
 ) -> str:
@@ -111,14 +116,17 @@ def _nginx_server(
     return f"server {{\n    listen 80;\n    server_name {domain};{_nginx_route(port)}\n}}\n"
 
 
-def _apache_route(port: int) -> str:
-    return f"""\n    # Dana MCP Server\n    ProxyPreserveHost On\n    ProxyPass /mcp http://127.0.0.1:{port}/mcp\n    ProxyPassReverse /mcp http://127.0.0.1:{port}/mcp\n    RequestHeader set X-Forwarded-Proto \"https\"\n"""
+def _apache_route(port: int, token: str | None = None) -> str:
+    public_path = f"/{token}/mcp" if token else "/mcp"
+    return f"""\n    # Dana MCP Server\n    ProxyPreserveHost On\n    ProxyPass {public_path} http://127.0.0.1:{port}/mcp\n    ProxyPassReverse {public_path} http://127.0.0.1:{port}/mcp\n    RequestHeader set X-Forwarded-Proto \"https\"\n    RequestHeader set Authorization \"Bearer {token}\"\n""" if token else f"""\n    # Dana MCP Server\n    ProxyPreserveHost On\n    ProxyPass /mcp http://127.0.0.1:{port}/mcp\n    ProxyPassReverse /mcp http://127.0.0.1:{port}/mcp\n    RequestHeader set X-Forwarded-Proto \"https\"\n"""
 
 
-def _caddy_server(domain: str, port: int, origin_protocol: str) -> str:
-    if origin_protocol == "http":
-        return f"http://{domain} {{\n    reverse_proxy /mcp 127.0.0.1:{port}\n}}\n"
-    return f"{domain} {{\n    reverse_proxy /mcp 127.0.0.1:{port}\n}}\n"
+def _caddy_server(domain: str, port: int, origin_protocol: str, token: str | None = None) -> str:
+    public_path = f"/{token}/mcp" if token else "/mcp"
+    prefix = f"http://{domain}" if origin_protocol == "http" else domain
+    if token:
+        return f"{prefix} {{\n    @dana path {public_path} {public_path}/\n    reverse_proxy @dana 127.0.0.1:{port} {{\n        header_up Authorization \"Bearer {token}\"\n    }}\n}}\n"
+    return f"{prefix} {{\n    reverse_proxy {public_path} 127.0.0.1:{port}\n}}\n"
 
 
 def install_caddy() -> None:
@@ -136,6 +144,7 @@ def apply_proxy(
     target: ProxyTarget,
     backend_port: int,
     origin_protocol: str = "https",
+    token: str | None = None,
     cert: str | None = None,
     key: str | None = None,
 ) -> Path | None:
@@ -149,10 +158,10 @@ def apply_proxy(
     try:
         if target.kind == "nginx":
             updated = (
-                _nginx_server(target.domain, backend_port, origin_protocol, cert, key)
+                _nginx_server(target.domain, backend_port, origin_protocol, token, cert, key)
                 if target.created
                 else _inject_before_closing_block(
-                    original, "server", _nginx_route(backend_port)
+                    original, "server", _nginx_route(backend_port, token)
                 )
             )
             _sudo_write(target.config, updated)
@@ -165,14 +174,14 @@ def apply_proxy(
             updated = (
                 original
                 + "\n"
-                + _caddy_server(target.domain, backend_port, origin_protocol)
+                + _caddy_server(target.domain, backend_port, origin_protocol, token)
             )
             _sudo_write(target.config, updated)
             _run(["sudo", "caddy", "validate", "--config", str(target.config)])
             _run(["sudo", "systemctl", "reload", "caddy"])
         elif target.kind == "apache":
             updated = _inject_before_closing_block(
-                original, "VirtualHost", _apache_route(backend_port)
+                original, "VirtualHost", _apache_route(backend_port, token)
             )
             _sudo_write(target.config, updated)
             _run(["sudo", "a2enmod", "proxy", "proxy_http", "headers"], check=False)
