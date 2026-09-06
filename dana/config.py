@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     allow_dangerous_tools: bool = False
     allowed_origins: str = ""
     tailscale_funnel_enabled: bool = True
-    tailscale_funnel_check_seconds: int = 15
+    # Keep Dana's shared Tailscale path self-healing even when another local
+    # application clears all handlers on port 443 while shutting down.
+    tailscale_funnel_check_seconds: int = 2
 
     def normalized_workers(self) -> int:
         if not 1 <= self.workers <= 128:
