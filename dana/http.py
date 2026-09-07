@@ -21,6 +21,34 @@ class AcceptCompatibleASGI:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and scope.get("method") == "GET":
+            # Browser/test probes usually send */* or text/html. Keep real MCP
+            # GET requests advertising text/event-stream untouched.
+            accept = next(
+                (
+                    value.lower()
+                    for name, value in scope.get("headers", ())
+                    if name.lower() == b"accept"
+                ),
+                b"",
+            )
+            if b"text/event-stream" not in accept:
+                response = JSONResponse(
+                    {
+                        "status": "ok",
+                        "service": "Dana MCP Server",
+                        "message": (
+                            "Dana MCP endpoint is online. Connect with an MCP client "
+                            "using Streamable HTTP; this response is shown because a "
+                            "normal browser does not request the MCP event stream."
+                        ),
+                        "protocol": "streamable-http",
+                        "endpoint": scope.get("path", ""),
+                    }
+                )
+                await response(scope, receive, send)
+                return
+
         if scope.get("type") == "http" and scope.get("method") == "POST":
             headers = list(scope.get("headers", ()))
             for index, (name, value) in enumerate(headers):
@@ -32,7 +60,11 @@ class AcceptCompatibleASGI:
                 scope = {**scope, "headers": headers}
                 break
             else:
-                scope = {**scope, "headers": headers + [(b"accept", b"application/json, text/event-stream")]}
+                scope = {
+                    **scope,
+                    "headers": headers
+                    + [(b"accept", b"application/json, text/event-stream")],
+                }
         await self.app(scope, receive, send)
 
 
