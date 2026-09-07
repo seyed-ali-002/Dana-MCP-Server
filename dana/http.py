@@ -6,12 +6,42 @@ from .security.http import RequestGuard, audit, unauthorized
 from .server import mcp
 
 _guard = RequestGuard(settings.rate_limit_rpm, settings.auth_burst)
-mcp_app = mcp.streamable_http_app()
+_raw_mcp_app = mcp.streamable_http_app()
+
+
+class AcceptCompatibleASGI:
+    """Normalize MCP client Accept headers without buffering SSE responses.
+
+    This is a low-level ASGI wrapper, intentionally not BaseHTTPMiddleware: it
+    only adjusts the request scope before FastMCP sees it and passes streaming
+    responses through untouched.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") == "http" and scope.get("method") == "POST":
+            headers = list(scope.get("headers", ()))
+            for index, (name, value) in enumerate(headers):
+                if name.lower() != b"accept":
+                    continue
+                accepted = value.lower()
+                if b"text/event-stream" not in accepted:
+                    headers[index] = (name, value + b", text/event-stream")
+                scope = {**scope, "headers": headers}
+                break
+            else:
+                scope = {**scope, "headers": headers + [(b"accept", b"application/json, text/event-stream")]}
+        await self.app(scope, receive, send)
+
+
+mcp_app = AcceptCompatibleASGI(_raw_mcp_app)
 
 app = FastAPI(
     title="Dana MCP Server",
     version="0.1.0",
-    lifespan=mcp_app.router.lifespan_context,
+    lifespan=_raw_mcp_app.router.lifespan_context,
 )
 
 
