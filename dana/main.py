@@ -8,6 +8,7 @@ from pathlib import Path
 import uvicorn
 
 from .config import settings
+from .file_logging import configure_file_logging, install_terminal_mirror
 from .terminal_ui import server_dashboard
 from .tailscale import DanaFunnelManager
 
@@ -63,6 +64,8 @@ def _remove_pid() -> None:
 
 
 def run() -> None:
+    configure_file_logging()
+    install_terminal_mirror()
     mode = _mode()
     public_url = _public_url()
     server_dashboard(settings, mode, public_url)
