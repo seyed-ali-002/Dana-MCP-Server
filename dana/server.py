@@ -155,7 +155,7 @@ mcp = FastMCP(
         allowed_hosts=_allowed_hosts,
         allowed_origins=_allowed_origins,
     ),
-    stateless_http=True,
+    stateless_http=False,  # Keep normal MCP sessions; do not use compact/stateless session mode.
 )
 register_tools(mcp)
 
