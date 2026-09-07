@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import signal
+import subprocess
 import time
 from pathlib import Path
 
@@ -25,6 +26,30 @@ def is_dana_process(pid: int) -> bool:
         return False
 
 
+def listener_pids() -> set[int]:
+    try:
+        result = subprocess.run(
+            ["ss", "-ltnp", "sport = :8765"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    pids: set[int] = set()
+    for line in result.stdout.splitlines():
+        if "127.0.0.1:8765" not in line and "*:8765" not in line and "0.0.0.0:8765" not in line:
+            continue
+        for part in line.split():
+            if "pid=" in part:
+                try:
+                    pids.add(int(part.split("pid=", 1)[1].split(",", 1)[0]))
+                except ValueError:
+                    pass
+    return pids
+
+
 def main() -> int:
     pid_file = runtime_pid_file()
     candidates = [pid_file, LEGACY_PID_FILE]
@@ -36,7 +61,9 @@ def main() -> int:
         except (OSError, ValueError):
             continue
 
-    dana_pids = [pid for pid in sorted(pids) if pid > 0 and is_dana_process(pid)]
+    dana_pids = {pid for pid in pids if pid > 0 and is_dana_process(pid)}
+    dana_pids.update(pid for pid in listener_pids() if pid > 0 and is_dana_process(pid))
+    dana_pids = sorted(dana_pids)
     if not dana_pids:
         for file in candidates:
             try:
