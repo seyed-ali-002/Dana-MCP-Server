@@ -138,6 +138,29 @@ def _worker_name(number: int) -> str:
 WORKER_NUMBER = _worker_number()
 WORKER_NAME = _worker_name(WORKER_NUMBER)
 
+
+class WorkerPool:
+    """Logical execution workers inside the single stateful MCP transport.
+
+    MCP sessions stay in one process, while concurrent tool calls are assigned
+    round-robin to independent worker identities for scheduling, telemetry and
+    capacity control. This avoids cross-process session loss entirely.
+    """
+
+    def __init__(self, size: int) -> None:
+        self.size = size
+        self._next = 0
+        self._lock = threading.Lock()
+
+    def acquire(self) -> tuple[int, str]:
+        with self._lock:
+            number = self._next % self.size + 1
+            self._next += 1
+        return number, _worker_name(number)
+
+
+WORKER_POOL = WorkerPool(settings.normalized_workers())
+
 _allowed_hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
 if settings.public_host:
     _allowed_hosts.extend([settings.public_host, f"{settings.public_host}:*"])
@@ -173,6 +196,7 @@ async def _logged_call_tool(
     context: Any = None,
     convert_result: bool = False,
 ) -> Any:
+    worker_number, worker_name = WORKER_POOL.acquire()
     started = time.perf_counter()
     input_tokens = _estimate_tokens(arguments)
     token_exact = False
@@ -207,12 +231,12 @@ async def _logged_call_tool(
         # MCP response open while telemetry is being persisted.
         threading.Thread(
             target=update_report,
-            args=(report_name, WORKER_NAME, WORKER_NUMBER, input_tokens, output_tokens, duration_ms, success, token_exact, token_source),
+            args=(report_name, worker_name, worker_number, input_tokens, output_tokens, duration_ms, success, token_exact, token_source),
             daemon=True,
         ).start()
         worker_event(
-            WORKER_NAME,
-            WORKER_NUMBER,
+            worker_name,
+            worker_number,
             report_name,
             input_tokens,
             output_tokens,
@@ -303,4 +327,5 @@ def _reported_usage(value: Any) -> tuple[int, int] | None:
 
 
 mcp._tool_manager.call_tool = _logged_call_tool
-worker_ready(WORKER_NAME, WORKER_NUMBER)
+for _worker_number_value in range(1, settings.normalized_workers() + 1):
+    worker_ready(_worker_name(_worker_number_value), _worker_number_value)
