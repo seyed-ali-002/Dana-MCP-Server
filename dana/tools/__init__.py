@@ -8,6 +8,7 @@ from .codebase_memory import register_codebase_memory_tools
 from .context_engine import register_context_tools
 from .docs_context import register_docs_context_tools
 from .documents import register_document_tools
+from .engineering import register_engineering_tools
 from .filesystem import register_filesystem_tools
 from .formatting import register_formatting_tools
 from .optimization import register_optimization_tools
@@ -28,6 +29,7 @@ def register_tools(mcp: FastMCP) -> None:
     register_document_tools(mcp)
     register_formatting_tools(mcp)
     register_advanced_tools(mcp)
+    register_engineering_tools(mcp)
     register_agent_planning_tools(mcp)
     register_codebase_memory_tools(mcp)
     register_docs_context_tools(mcp)

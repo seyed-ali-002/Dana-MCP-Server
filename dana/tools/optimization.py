@@ -182,9 +182,12 @@ def _visible_names(mcp: FastMCP) -> set[str]:
         "dana_result_page",
         "dana_result_optimize",
         "dana_session_start",
-        "dana_session_compact",
         "dana_session_get",
         "dana_prompt_cache_key",
+        "dana_engineering_policy",
+        "analyze_implementation_need",
+        "review_implementation",
+        "simplify_code",
     }
 
 

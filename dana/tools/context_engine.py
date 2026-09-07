@@ -293,12 +293,6 @@ def register_context_tools(mcp: Any) -> None:
         """Create or refresh a persistent optimization session."""
         return create_session(session_id)
 
-    @mcp.tool()
-    def dana_session_compact(
-        session_id: str, messages: list[str], max_chars: int = 16000
-    ) -> dict[str, Any]:
-        """Persist a compact summary for a long-running Dana session."""
-        return compact_session(session_id, messages, max_chars)
 
     @mcp.tool()
     def dana_session_get(session_id: str) -> dict[str, Any]:
