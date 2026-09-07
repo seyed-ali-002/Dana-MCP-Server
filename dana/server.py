@@ -292,16 +292,19 @@ def _estimate_tokens(value: Any) -> int:
     text = _token_text(value)
     if not text:
         return 0
+    # Token telemetry must never block an MCP tool call on a tokenizer download.
+    # Exact tiktoken is opt-in and only used when the requested encoding is already
+    # available locally; the default path is a deterministic local estimate.
+    estimate = max(0, (len(text) + 3) // 4)
+    if os.getenv("DANA_EXACT_TOKENIZER", "0").strip().lower() not in {"1", "true", "yes", "on"}:
+        return estimate
     try:
         import tiktoken  # type: ignore
-        model = os.getenv("DANA_TOKENIZER_MODEL", "gpt-4o")
-        try:
-            encoding = tiktoken.encoding_for_model(model)
-        except KeyError:
-            encoding = tiktoken.get_encoding(os.getenv("DANA_TOKENIZER_ENCODING", "o200k_base"))
+        encoding_name = os.getenv("DANA_TOKENIZER_ENCODING", "o200k_base")
+        encoding = tiktoken.get_encoding(encoding_name)
         return len(encoding.encode(text, disallowed_special=()))
     except Exception:
-        return max(0, (len(text) + 3) // 4)
+        return estimate
 
 
 def _reported_usage(value: Any) -> tuple[int, int] | None:

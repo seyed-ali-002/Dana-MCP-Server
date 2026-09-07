@@ -351,28 +351,20 @@ def register_optimization_tools(mcp: FastMCP) -> None:
         if _CAPABILITIES_CACHE is not None:
             return _CAPABILITIES_CACHE
 
-        tools, fingerprint = _catalog(mcp)
-        # Do not serialize every full JSON schema for this control-plane probe.
-        # The exact schema cost is intentionally measured once from compact
-        # metadata, keeping capabilities fast even with hundreds of tools.
-        compact_all = [
-            {"name": t.name, "description": _compact_description(t.description)}
-            for t in tools
-        ]
-        visible = [t for t in tools if t.name in _visible_names(mcp)]
-        compact_visible = [
-            {"name": t.name, "description": _compact_description(t.description)}
-            for t in visible
-        ]
-        full_tokens = estimate_tokens(compact_all)
-        visible_tokens = estimate_tokens(compact_visible)
+        # Read the already-registered internal mapping directly. This avoids the
+        # expensive catalog/schema materialization path on the MCP request loop.
+        tools = list(mcp._tool_manager._tools.values())
+        names = sorted(tool.name for tool in tools)
+        public_names = [name for name in names if not name.startswith("dana_")]
+        visible_names = sorted(_visible_names(mcp))
+        fingerprint = hashlib.sha256("\n".join(names).encode()).hexdigest()[:16]
         categories = Counter(
-            tool.name.split("_", 1)[0]
-            for tool in tools
-            if not tool.name.startswith("dana_")
+            name.split("_", 1)[0] for name in public_names if "_" in name
         )
+        full_tokens = estimate_tokens(names)
+        visible_tokens = estimate_tokens(visible_names)
         _CAPABILITIES_CACHE = {
-            "tool_count": len([t for t in tools if not t.name.startswith("dana_")]),
+            "tool_count": len(public_names),
             "registry_version": fingerprint,
             "tool_definition_tokens": {
                 "full_estimate": full_tokens,
@@ -382,7 +374,7 @@ def register_optimization_tools(mcp: FastMCP) -> None:
             },
             "categories": dict(sorted(categories.items())),
             "progressive_discovery": os.getenv("DANA_PROGRESSIVE_TOOLS", "1").strip().lower() not in {"0", "false", "no", "off"},
-            "visible_tools": sorted(_visible_names(mcp)),
+            "visible_tools": visible_names,
             "cacheable_tools": sorted(_CACHE_TTLS),
         }
         return _CAPABILITIES_CACHE
