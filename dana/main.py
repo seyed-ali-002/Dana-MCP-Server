@@ -6,7 +6,6 @@ import tempfile
 from pathlib import Path
 
 import uvicorn
-from uvicorn.supervisors.multiprocess import Multiprocess, Process
 
 from .config import settings
 from .terminal_ui import server_dashboard
@@ -63,41 +62,6 @@ def _remove_pid() -> None:
         pass
 
 
-class DanaWorkerProcess(Process):
-    def __init__(self, config, sockets, worker_number: int):
-        self.worker_number = worker_number
-        super().__init__(config, sockets)
-
-    def target(self, sockets=None):
-        os.environ["DANA_WORKER_NUMBER"] = str(self.worker_number)
-        return super().target(sockets)
-
-
-class DanaMultiprocess(Multiprocess):
-    def _new_process(self, worker_number: int) -> DanaWorkerProcess:
-        process = DanaWorkerProcess(self.config, self.sockets, worker_number)
-        process.start()
-        return process
-
-    def init_processes(self) -> None:
-        for worker_number in range(1, self.processes_num + 1):
-            if self.should_exit.is_set():
-                return
-            process = self._new_process(worker_number)
-            if process.wait_until_ready(self.config.timeout_worker_healthcheck, self.should_exit):
-                self.processes.append(process)
-                continue
-            exit_code = process.exitcode
-            if exit_code is None:
-                process.terminate()
-            process.join()
-            logging.getLogger("dana").error(
-                "Worker #%s failed to start%s; continuing with the next worker.",
-                worker_number,
-                f" (exit code {exit_code})" if exit_code is not None else "",
-            )
-
-
 def run() -> None:
     mode = _mode()
     public_url = _public_url()
@@ -116,17 +80,18 @@ def run() -> None:
         log_level="error",
         access_log=False,
         reload=False,
-        workers=settings.normalized_workers(),
+        # Streamable HTTP sessions live in the MCP transport process. Multiple
+        # Uvicorn processes would randomly route follow-up requests to a process
+        # that does not own the session, producing "Missing session ID" / session
+        # terminated errors. Keep one public transport process until a shared
+        # session backend is explicitly configured.
+        workers=1,
     )
     _write_pid()
     funnel = DanaFunnelManager()
     try:
         funnel.start()
-        if config.workers > 1:
-            sock = config.bind_socket()
-            DanaMultiprocess(config, sockets=[sock]).run()
-        else:
-            uvicorn.Server(config).run()
+        uvicorn.Server(config).run()
     finally:
         funnel.stop()
         _remove_pid()

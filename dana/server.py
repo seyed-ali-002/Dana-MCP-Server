@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+import threading
 from multiprocessing import current_process
 from pathlib import Path
 from typing import Any
@@ -202,7 +203,13 @@ async def _logged_call_tool(
             and arguments.get("name")
         ):
             report_name = str(arguments["name"])
-        update_report(report_name, WORKER_NAME, WORKER_NUMBER, input_tokens, output_tokens, duration_ms, success, token_exact, token_source)
+        # Report generation performs disk sync and HTML rendering. Never keep an
+        # MCP response open while telemetry is being persisted.
+        threading.Thread(
+            target=update_report,
+            args=(report_name, WORKER_NAME, WORKER_NUMBER, input_tokens, output_tokens, duration_ms, success, token_exact, token_source),
+            daemon=True,
+        ).start()
         worker_event(
             WORKER_NAME,
             WORKER_NUMBER,

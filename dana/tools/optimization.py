@@ -44,6 +44,11 @@ _RESULT_CACHE: dict[str, tuple[float, Any]] = {}
 _CACHE_HITS = 0
 _CACHE_MISSES = 0
 
+# Capability metadata is static after startup. Building and token-counting every
+# schema on every health probe can take seconds on a large registry.
+_CAPABILITIES_CACHE: dict[str, Any] | None = None
+
+
 
 def _db() -> sqlite3.Connection:
     _STATE_DIR.mkdir(parents=True, exist_ok=True)
@@ -342,54 +347,45 @@ def register_optimization_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     def dana_capabilities() -> dict[str, Any]:
         """Return a compact overview of Dana's full capability registry."""
+        global _CAPABILITIES_CACHE
+        if _CAPABILITIES_CACHE is not None:
+            return _CAPABILITIES_CACHE
+
         tools, fingerprint = _catalog(mcp)
-        full_tokens = estimate_tokens(
-            [
-                {
-                    "name": t.name,
-                    "description": _compact_description(t.description),
-                    "input_schema": t.parameters,
-                }
-                for t in tools
-            ]
-        )
+        # Do not serialize every full JSON schema for this control-plane probe.
+        # The exact schema cost is intentionally measured once from compact
+        # metadata, keeping capabilities fast even with hundreds of tools.
+        compact_all = [
+            {"name": t.name, "description": _compact_description(t.description)}
+            for t in tools
+        ]
         visible = [t for t in tools if t.name in _visible_names(mcp)]
-        visible_tokens = estimate_tokens(
-            [
-                {
-                    "name": t.name,
-                    "description": _compact_description(t.description),
-                    "input_schema": t.parameters,
-                }
-                for t in visible
-            ]
-        )
+        compact_visible = [
+            {"name": t.name, "description": _compact_description(t.description)}
+            for t in visible
+        ]
+        full_tokens = estimate_tokens(compact_all)
+        visible_tokens = estimate_tokens(compact_visible)
         categories = Counter(
             tool.name.split("_", 1)[0]
             for tool in tools
             if not tool.name.startswith("dana_")
         )
-        return {
+        _CAPABILITIES_CACHE = {
             "tool_count": len([t for t in tools if not t.name.startswith("dana_")]),
             "registry_version": fingerprint,
             "tool_definition_tokens": {
                 "full_estimate": full_tokens,
                 "visible_estimate": visible_tokens,
                 "estimated_savings": max(0, full_tokens - visible_tokens),
-                "estimated_reduction_percent": round(
-                    max(0, 100 * (full_tokens - visible_tokens) / full_tokens), 2
-                )
-                if full_tokens
-                else 0,
+                "estimated_reduction_percent": round(max(0, 100 * (full_tokens - visible_tokens) / full_tokens), 2) if full_tokens else 0,
             },
             "categories": dict(sorted(categories.items())),
-            "progressive_discovery": os.getenv("DANA_PROGRESSIVE_TOOLS", "1")
-            .strip()
-            .lower()
-            not in {"0", "false", "no", "off"},
+            "progressive_discovery": os.getenv("DANA_PROGRESSIVE_TOOLS", "1").strip().lower() not in {"0", "false", "no", "off"},
             "visible_tools": sorted(_visible_names(mcp)),
             "cacheable_tools": sorted(_CACHE_TTLS),
         }
+        return _CAPABILITIES_CACHE
 
     @mcp.tool()
     def dana_optimization_stats() -> dict[str, Any]:
