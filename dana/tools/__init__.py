@@ -6,14 +6,16 @@ from .agent import register_agent_tools
 from .agent_planning import register_agent_planning_tools
 from .codebase_memory import register_codebase_memory_tools
 from .context_engine import register_context_tools
+from .design_engine import register_design_engine_tools
 from .docs_context import register_docs_context_tools
 from .documents import register_document_tools
 from .engineering import register_engineering_tools
 from .filesystem import register_filesystem_tools
 from .formatting import register_formatting_tools
-from .optimization import register_optimization_tools
 from .memory import register_memory_tools
+from .optimization import register_optimization_tools
 from .performance_engine import register_performance_tools
+from .principal_engine import register_principal_engine_tools
 from .system import register_system_tools
 from .token_analytics import register_token_analytics_tools
 from .web_quality_debug_docs import register_web_quality_debug_docs_tools
@@ -27,6 +29,8 @@ def register_tools(mcp: FastMCP) -> None:
     register_agent_tools(mcp)
     register_web_quality_debug_docs_tools(mcp)
     register_document_tools(mcp)
+    register_design_engine_tools(mcp)
+    register_principal_engine_tools(mcp)
     register_formatting_tools(mcp)
     register_advanced_tools(mcp)
     register_engineering_tools(mcp)
