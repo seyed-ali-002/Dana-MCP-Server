@@ -12,6 +12,7 @@ from .documents import register_document_tools
 from .engineering import register_engineering_tools
 from .filesystem import register_filesystem_tools
 from .formatting import register_formatting_tools
+from .intelligence import register_intelligence_tools
 from .memory import register_memory_tools
 from .optimization import register_optimization_tools
 from .performance_engine import register_performance_tools
@@ -34,6 +35,7 @@ def register_tools(mcp: FastMCP) -> None:
     register_formatting_tools(mcp)
     register_advanced_tools(mcp)
     register_engineering_tools(mcp)
+    register_intelligence_tools(mcp)
     register_agent_planning_tools(mcp)
     register_codebase_memory_tools(mcp)
     register_docs_context_tools(mcp)
