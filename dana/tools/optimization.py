@@ -32,6 +32,10 @@ _CACHE_TTLS = {
     "list_directory": 1.0,
     "database_schema": 5.0,
     "architecture_summary": 10.0,
+    "dana_map_repository": 10.0,
+    "dana_database_intelligence": 10.0,
+    "dana_visual_architecture_graph": 10.0,
+    "dana_api_intelligence": 10.0,
 }
 _CACHE_MAX_ITEMS = 256
 _CACHE_ENABLED = os.getenv("DANA_TOOL_CACHE", "1").strip().lower() not in {

@@ -2,6 +2,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .access_policy import register_access_policy_tools
 from .advanced import register_advanced_tools
+from .advanced_intelligence import register_advanced_intelligence_tools
 from .agent import register_agent_tools
 from .agent_planning import register_agent_planning_tools
 from .codebase_memory import register_codebase_memory_tools
@@ -36,6 +37,7 @@ def register_tools(mcp: FastMCP) -> None:
     register_advanced_tools(mcp)
     register_engineering_tools(mcp)
     register_intelligence_tools(mcp)
+    register_advanced_intelligence_tools(mcp)
     register_agent_planning_tools(mcp)
     register_codebase_memory_tools(mcp)
     register_docs_context_tools(mcp)
