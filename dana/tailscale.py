@@ -37,14 +37,28 @@ class DanaFunnelManager:
         return True
 
     def ensure(self, retries: int = 3) -> bool:
-        """Restore only Dana's unique path; never reset or remove port 443."""
+        """Restore Dana's public routes without depending on another MCP server.
+
+        Dana owns its tokenized MCP path and the OAuth endpoints used by ChatGPT's
+        re-authentication flow. Register both directly against the Dana process so
+        stopping My_PC cannot remove or proxy either route.
+        """
         if not self.enabled:
             return False
         token = settings.require_auth_token()
         backend = f"http://127.0.0.1:{settings.port}"
-        command = ["tailscale", "funnel", "--https=443", "--set-path", f"/{token}", "--yes", "--bg", backend]
+        routes = (
+            (f"/{token}", backend),
+            ("/authorize", f"{backend}/authorize"),
+            ("/token", f"{backend}/token"),
+            ("/.well-known", f"{backend}/.well-known"),
+        )
+        commands = [
+            ["tailscale", "funnel", "--https=443", "--set-path", path, "--yes", "--bg", target]
+            for path, target in routes
+        ]
         for attempt in range(retries):
-            if self._run(command):
+            if all(self._run(command) for command in commands):
                 return True
             if attempt + 1 < retries:
                 time.sleep(0.5)

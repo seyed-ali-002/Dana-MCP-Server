@@ -79,6 +79,11 @@ app = FastAPI(
 
 @app.get("/")
 async def root(request: Request):
+    # Tailscale path proxies strip their matched prefix before forwarding. The
+    # public /authorize route can therefore arrive as /. Preserve the OAuth
+    # query contract here so connector re-authentication remains Dana-owned.
+    if request.query_params.get("response_type") == "code" and request.query_params.get("client_id"):
+        return await authorize(request)
     host = settings.public_host or request.url.netloc
     scheme = "https" if settings.public_host else request.url.scheme
     token = settings.require_auth_token()
@@ -91,6 +96,60 @@ async def root(request: Request):
         "health_endpoint": f"{scheme}://{host}/health",
         "protocol": "streamable-http",
     }
+
+
+@app.get("/authorize")
+async def authorize(request: Request):
+    """Dana-owned OAuth authorization entrypoint for connector re-authentication."""
+    token = settings.require_auth_token()
+    redirect_uri = request.query_params.get("redirect_uri", "")
+    state = request.query_params.get("state", "")
+    return JSONResponse(
+        {
+            "status": "authorization_required",
+            "service": "Dana MCP Server",
+            "message": "Dana is online and owns this authorization endpoint independently.",
+            "authorization": "Use the configured Dana MCP connection token to continue.",
+            "redirect_uri": redirect_uri,
+            "state": state,
+            "mcp_endpoint": f"/{token}{settings.mcp_path}",
+        },
+        status_code=200,
+    )
+
+
+@app.get("/.well-known/oauth-authorization-server")
+async def oauth_authorization_server(request: Request):
+    host = settings.public_host or request.url.netloc
+    scheme = "https" if settings.public_host else request.url.scheme
+    issuer = f"{scheme}://{host}"
+    return {
+        "issuer": issuer,
+        "authorization_endpoint": f"{issuer}/authorize",
+        "token_endpoint": f"{issuer}/token",
+        "response_types_supported": ["code"],
+        "code_challenge_methods_supported": ["S256"],
+        "scopes_supported": ["mcp"],
+    }
+
+
+@app.get("/oauth-authorization-server")
+async def oauth_authorization_server_alias(request: Request):
+    """Alias for Tailscale path proxies that strip '/.well-known' before forwarding."""
+    return await oauth_authorization_server(request)
+
+
+
+@app.api_route("/token", methods=["GET", "POST"])
+async def oauth_token():
+    return JSONResponse(
+        {
+            "error": "authorization_pending",
+            "error_description": "Dana authorization is handled by the connector's configured authentication flow.",
+        },
+        status_code=400,
+    )
+
 
 
 @app.get("/health")

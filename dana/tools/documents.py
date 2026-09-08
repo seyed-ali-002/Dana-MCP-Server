@@ -5,6 +5,8 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from dana.security.path_policy import require_path
+
 
 def _set_rtl(paragraph) -> None:
     from docx.oxml import OxmlElement
@@ -117,6 +119,96 @@ def register_document_tools(mcp: FastMCP) -> None:
             story.append(Paragraph(shaped.replace("&", "&amp;"), style))
             story.append(Spacer(1, 8))
         doc.build(story)
+    @mcp.tool()
+    def extract_pdf_text(
+        path: str,
+        max_pages: int | None = None,
+        max_chars: int | None = None,
+    ) -> dict[str, Any]:
+        """Extract real textual content and metadata from a PDF file.
+
+        Use this before summarizing or creating educational material from PDFs.
+        The source file is checked against Dana's filesystem access policy.
+        """
+        try:
+            from pypdf import PdfReader
+        except ImportError as exc:
+            raise RuntimeError(
+                "PDF extraction requires pypdf. Install Dana dependencies first."
+            ) from exc
+
+        source = require_path(path, purpose="extract PDF text")
+        if not source.is_file():
+            raise ValueError(f"PDF file not found: {source}")
+        if source.suffix.lower() != ".pdf":
+            raise ValueError(f"Expected a .pdf file: {source}")
+
+        reader = PdfReader(str(source))
+        total_pages = len(reader.pages)
+        page_limit = total_pages if max_pages is None else max(0, min(int(max_pages), total_pages))
+        char_limit = None if max_chars is None else max(0, int(max_chars))
+        pages: list[dict[str, Any]] = []
+        chunks: list[str] = []
+        extracted_chars = 0
+        truncated = False
+
+        for index in range(page_limit):
+            text = reader.pages[index].extract_text() or ""
+            if char_limit is not None and extracted_chars + len(text) > char_limit:
+                remaining = max(0, char_limit - extracted_chars)
+                text = text[:remaining]
+                truncated = True
+            pages.append({"page": index + 1, "text": text})
+            chunks.append(text)
+            extracted_chars += len(text)
+            if char_limit is not None and extracted_chars >= char_limit:
+                truncated = index + 1 < page_limit or page_limit < total_pages
+                break
+
+        metadata = reader.metadata or {}
+        return {
+            "path": str(source),
+            "format": "pdf",
+            "page_count": total_pages,
+            "pages_extracted": len(pages),
+            "text": "\n\n".join(chunks),
+            "pages": pages,
+            "metadata": {str(k): str(v) for k, v in metadata.items() if v is not None},
+            "truncated": truncated or page_limit < total_pages,
+        }
+
+    @mcp.tool()
+    def extract_pdfs_text(
+        directory: str,
+        recursive: bool = False,
+        max_pages_per_file: int | None = None,
+        max_chars_per_file: int | None = None,
+    ) -> dict[str, Any]:
+        """Extract real text from every PDF in a directory for source-grounded analysis."""
+        target = require_path(directory, purpose="extract PDF texts")
+        if not target.is_dir():
+            raise ValueError(f"Not a directory: {target}")
+        pattern = "**/*.pdf" if recursive else "*.pdf"
+        files = sorted(path for path in target.glob(pattern) if path.is_file())
+        results = []
+        total_chars = 0
+        for pdf in files:
+            item = extract_pdf_text(
+                str(pdf),
+                max_pages=max_pages_per_file,
+                max_chars=max_chars_per_file,
+            )
+            total_chars += len(item["text"])
+            results.append(item)
+        return {
+            "directory": str(target),
+            "files_found": len(files),
+            "files_extracted": len(results),
+            "total_characters": total_chars,
+            "documents": results,
+        }
+
+
         return {"path": str(out), "format": "pdf", "rtl": True, "font": font_name}
 
     @mcp.tool()
