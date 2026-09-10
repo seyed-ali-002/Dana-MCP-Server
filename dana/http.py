@@ -1,5 +1,11 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+import base64
+import hashlib
+import secrets
+import time
+from urllib.parse import urlencode
+
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from .config import settings
 from .security.http import RequestGuard, audit, unauthorized
@@ -7,6 +13,22 @@ from .server import mcp
 
 _guard = RequestGuard(settings.rate_limit_rpm, settings.auth_burst)
 _raw_mcp_app = mcp.streamable_http_app()
+
+# OAuth codes are short-lived and single-use. Reconnect remains independent
+# from My_PC and external callback services.
+_OAUTH_CODES: dict[str, dict[str, str | float]] = {}
+_OAUTH_CODE_TTL_SECONDS = 120
+
+
+def _pkce_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def _cleanup_oauth_codes() -> None:
+    now = time.time()
+    for key in [key for key, value in _OAUTH_CODES.items() if float(value["expires_at"]) <= now]:
+        _OAUTH_CODES.pop(key, None)
 
 
 class AcceptCompatibleASGI:
@@ -100,22 +122,50 @@ async def root(request: Request):
 
 @app.get("/authorize")
 async def authorize(request: Request):
-    """Dana-owned OAuth authorization entrypoint for connector re-authentication."""
+    """OAuth 2.0 authorization-code endpoint with PKCE for ChatGPT reconnect."""
+    params = request.query_params
+    if params.get("response_type") != "code":
+        raise HTTPException(status_code=400, detail="unsupported_response_type")
+    redirect_uri = params.get("redirect_uri", "")
+    client_id = params.get("client_id", "")
+    challenge = params.get("code_challenge", "")
+    method = params.get("code_challenge_method", "")
+    state = params.get("state", "")
+    if not redirect_uri or not client_id or not challenge or method != "S256":
+        raise HTTPException(status_code=400, detail="invalid_authorization_request")
+    if not redirect_uri.startswith("https://chatgpt.com/connector/oauth/"):
+        raise HTTPException(status_code=400, detail="invalid_redirect_uri")
+    _cleanup_oauth_codes()
+    code = secrets.token_urlsafe(32)
+    _OAUTH_CODES[code] = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "challenge": challenge,
+        "expires_at": time.time() + _OAUTH_CODE_TTL_SECONDS,
+    }
+    query = urlencode({"code": code, "state": state})
+    return RedirectResponse(url=f"{redirect_uri}?{query}", status_code=302)
+
+
+@app.post("/token")
+async def oauth_token(
+    grant_type: str = Form(...),
+    code: str = Form(...),
+    redirect_uri: str = Form(...),
+    client_id: str = Form(...),
+    code_verifier: str = Form(...),
+):
+    """Exchange a single-use authorization code and verify PKCE."""
+    _cleanup_oauth_codes()
+    record = _OAUTH_CODES.pop(code, None)
+    if grant_type != "authorization_code" or record is None:
+        return JSONResponse({"error": "invalid_grant"}, status_code=400)
+    if record["redirect_uri"] != redirect_uri or record["client_id"] != client_id:
+        return JSONResponse({"error": "invalid_grant"}, status_code=400)
+    if not secrets.compare_digest(str(record["challenge"]), _pkce_challenge(code_verifier)):
+        return JSONResponse({"error": "invalid_grant"}, status_code=400)
     token = settings.require_auth_token()
-    redirect_uri = request.query_params.get("redirect_uri", "")
-    state = request.query_params.get("state", "")
-    return JSONResponse(
-        {
-            "status": "authorization_required",
-            "service": "Dana MCP Server",
-            "message": "Dana is online and owns this authorization endpoint independently.",
-            "authorization": "Use the configured Dana MCP connection token to continue.",
-            "redirect_uri": redirect_uri,
-            "state": state,
-            "mcp_endpoint": f"/{token}{settings.mcp_path}",
-        },
-        status_code=200,
-    )
+    return {"access_token": token, "token_type": "Bearer", "expires_in": 3600, "scope": "mcp"}
 
 
 @app.get("/.well-known/oauth-authorization-server")
@@ -128,6 +178,8 @@ async def oauth_authorization_server(request: Request):
         "authorization_endpoint": f"{issuer}/authorize",
         "token_endpoint": f"{issuer}/token",
         "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code"],
+        "token_endpoint_auth_methods_supported": ["none"],
         "code_challenge_methods_supported": ["S256"],
         "scopes_supported": ["mcp"],
     }
@@ -137,18 +189,6 @@ async def oauth_authorization_server(request: Request):
 async def oauth_authorization_server_alias(request: Request):
     """Alias for Tailscale path proxies that strip '/.well-known' before forwarding."""
     return await oauth_authorization_server(request)
-
-
-
-@app.api_route("/token", methods=["GET", "POST"])
-async def oauth_token():
-    return JSONResponse(
-        {
-            "error": "authorization_pending",
-            "error_description": "Dana authorization is handled by the connector's configured authentication flow.",
-        },
-        status_code=400,
-    )
 
 
 
