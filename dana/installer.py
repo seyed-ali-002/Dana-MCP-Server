@@ -327,9 +327,12 @@ def _tailscale_hostname_from_status() -> str | None:
         ["tailscale", "funnel", "status"],
     ]
     for command in commands:
-        result = subprocess.run(
-            command, cwd=ROOT, text=True, capture_output=True, check=False
-        )
+        try:
+            result = subprocess.run(
+                command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=10
+            )
+        except subprocess.TimeoutExpired:
+            continue
         raw = result.stdout or result.stderr
         if not raw:
             continue
@@ -346,12 +349,47 @@ def _tailscale_hostname_from_status() -> str | None:
     return None
 
 
+def _run_tailscale(command: list[str], *, timeout: float = 20.0) -> subprocess.CompletedProcess[str]:
+    """Run Tailscale with a hard timeout so the installer can never wait forever."""
+    try:
+        return subprocess.run(
+            command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "Tailscale did not respond in time. Open Tailscale, make sure you are signed in and online, "
+            "then run `tailscale status` and rerun the installer."
+        ) from exc
+
+
+def _ensure_tailscale_ready() -> None:
+    result = _run_tailscale(["tailscale", "status", "--json"], timeout=12)
+    if result.returncode != 0:
+        details = (result.stderr or result.stdout).strip()
+        raise RuntimeError(
+            "Tailscale is installed but not ready. Start the Tailscale application and sign in first"
+            + (f": {details}" if details else ".")
+        )
+    try:
+        status = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Tailscale returned an invalid status response. Restart Tailscale and try again.") from exc
+    backend_state = str(status.get("BackendState", ""))
+    if backend_state and backend_state.lower() != "running":
+        raise RuntimeError(
+            f"Tailscale is not connected (state: {backend_state}). Sign in and wait until it is connected, then retry."
+        )
+
+
 def configure_tailscale_local(token: str, port: int = 8765, funnel_port: int = 443) -> str:
     """Configure Local Mode Funnel on the standard HTTPS port and return its stable hostname."""
     if not command_exists("tailscale"):
-        raise RuntimeError("Tailscale is not installed or not in PATH.")
+        raise RuntimeError("Tailscale is not installed or not in PATH. Install and sign in to Tailscale first.")
 
-    result = subprocess.run(
+    step("Checking Tailscale connection")
+    _ensure_tailscale_ready()
+    step("Requesting Tailscale Funnel (this should take only a few seconds)")
+    result = _run_tailscale(
         [
             "tailscale",
             "funnel",
@@ -362,15 +400,13 @@ def configure_tailscale_local(token: str, port: int = 8765, funnel_port: int = 4
             "--bg",
             f"http://127.0.0.1:{port}",
         ],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
+        timeout=25,
     )
     if result.returncode != 0:
         details = (result.stderr or result.stdout).strip()
         raise RuntimeError(
-            f"Could not configure Tailscale Funnel{': ' + details if details else ''}"
+            "Could not configure Tailscale Funnel. Make sure Funnel is enabled for this Tailnet and the Tailscale client is up to date"
+            + (f": {details}" if details else ".")
         )
 
     # Funnel status can take a moment to become visible after --bg returns.
