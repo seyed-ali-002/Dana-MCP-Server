@@ -1,129 +1,169 @@
-# 🧠 Dana MCP Server
+# Dana MCP Server
 
-> **سرور MCP پایتون برای تبدیل کامپیوتر شما به یک Agent قابل استفاده از طریق ChatGPT، Grok و Claude**
+> Turn AI chatbots into powerful, free agents that can work with your computer, code, files, projects, and development environment through MCP.
 
-🇬🇧 **English documentation:** [README_EN.md](README_EN.md)
-
----
-
-Dana یک MCP Server کراس‌پلتفرم و مستقل از PHP است. برای نصب اولیه فقط از Installer استفاده کنید؛ سپس می‌توانید آن را در Local Mode روی کامپیوتر شخصی یا در Server Mode روی Linux server اجرا کنید.
-
-## 📚 فهرست مطالب
-
-- [امکانات](#-امکانات)
-- [ساختار Installer و Runtime](#-ساختار-installer-و-runtime)
-- [رابط ترمینال و Worker Logs](#-رابط-ترمینال-و-worker-logs)
-- [حالت‌های استقرار](#-حالتهای-استقرار)
-  - [نصب تعاملی](#نصب-تعاملی)
-  - [Local Mode](#local-mode)
-  - [Server Mode](#server-mode)
-  - [ظاهر ترمینال](#ظاهر-ترمینال)
-- [اجرای سریع](#-اجرای-سریع)
-  - [دریافت پروژه](#1-دریافت-پروژه)
-  - [نصب و راه‌اندازی](#2-نصب-و-راهاندازی)
-  - [لینک اتصال](#3-لینک-اتصال)
-- [راه‌اندازی Tailscale](#-راهاندازی-و-login-در-tailscale)
-- [مدیریت سرویس در Server Mode](#️-مدیریت-سرویس-dana-در-server-mode)
-- [مدیریت Token](#-مدیریت-token)
-- [ابزارهای Browser و Security](#-فعالسازی-کامل-ابزارهای-browser-و-security)
-- [اتصال به ChatGPT، Grok و Claude](#-اتصال-به-chatgpt-grok-و-claude)
-- [محدودسازی مسیرهای دسترسی](#-محدودسازی-مسیرهای-دسترسی-dana)
-- [استفاده کلی](#️-استفاده-کلی)
-- [معماری](#-معماری-کلی)
-- [تست](#-تست)
-- [مشارکت](#-مشارکت)
-- [مجوز](#-مجوز)
-- [تشکر ویژه](#-تشکر-ویژه)
+🇮🇷 **Persian documentation:** [README_FA.md](README_FA.md)  
+🇬🇧 **English:** This document
 
 ---
 
-> برای دسترسی سریع‌تر، ابتدا **اجرای سریع** را بخوانید و سپس متناسب با محیط خود **Local Mode** یا **Server Mode** را دنبال کنید.
+## 🙏 Special Thanks
+
+Special thanks to **Mohsen Samadinejad**. The original execution idea and early architectural direction that inspired this project came from his work.
+
+His **PHP MCP Server** was an important behavioral reference during Dana's Python implementation and evolution.
+
+GitHub: [Mohsen Samadinejad](https://github.com/samadinejad)
 
 ---
 
-## 🙏 تشکر ویژه
+## What is Dana?
 
-تشکر ویژه از **محسن صمدی‌نژاد (Mohsen Samadinejad)** که ایده اجرایی اصلی این ابزار با ایشان بود و معماری و مسیر اجرایی اولیه پروژه از آن ایده شکل گرفت.
+Dana is a cross-platform Python MCP server that gives compatible AI chatbots real capabilities on the machine where Dana runs.
 
-پیاده‌سازی PHP ایشان، یعنی پروژه **PHP MCP Server**، مبنای اصلی و مرجع رفتاری این بازنویسی Python بوده است. در فرایند مهاجرت، رفتارهای قابل مشاهده، قرارداد ابزارها، پروتکل MCP و سناریوهای سازگاری با نسخه PHP به‌عنوان مرجع در نظر گرفته شده‌اند.
+Instead of being limited to conversation, a chatbot can become an agent that can:
 
-صفحه GitHub محسن صمدی‌نژاد:
+- read, create, edit, and organize files
+- inspect and modify codebases
+- run tests, builds, linters, and diagnostics
+- manage Git, processes, packages, Docker, databases, and APIs
+- automate browsers
+- analyze projects and architecture
+- work with persistent project memory and optimized context
+- extract and analyze PDF content
+- generate documents, reports, README files, Word files, and PDFs
+- plan, review, debug, and validate engineering work
 
-🔗 https://github.com/samadinejad
+Dana is designed to work with MCP-compatible AI clients such as ChatGPT, Claude, Grok, and other compatible clients. The core project is free and self-hosted: Dana runs on your own computer or server and performs work there.
 
-## ✨ امکانات
+## Why Dana?
 
-- 🐍 پیاده‌سازی کامل با Python و مستقل از PHP
-- 🖥️ پشتیبانی از Linux، Windows و macOS
-- 🚀 Installer تعاملی با ساخت خودکار `.venv` و نصب ایزوله وابستگی‌ها
-- 🌐 Local Mode با Tailscale Funnel
-- 🌐 Server Mode با Domain، HTTPS، Reverse Proxy موجود و systemd
-- 🔐 Local Mode با لینک Tokenized و Server Mode با Endpoint استاندارد HTTPS
-- 📁 مدیریت فایل و پوشه و ویرایش کد
-- 💻 اجرای دستورات و مدیریت Process
-- 🌿 Git، تست، Lint، Build و Package Management
-- 🌍 HTTP/API و ابزارهای شبکه
-- 🐳 Docker و SQLite
-- 🌐 ابزارهای Web و Browser Automation
-- 🐞 ابزارهای Debug و بررسی کیفیت کد
-- 📄 ساخت Word و PDF با پشتیبانی RTL و فارسی
-- 📝 تولید README، Changelog، گزارش و مستندات
+Dana is built around three goals:
 
-## 🚀 حالت‌های استقرار
+1. **Real agent capabilities** — the chatbot can act through tools instead of only generating text.
+2. **Self-hosting and control** — tools run on infrastructure you control.
+3. **Efficiency** — Progressive Tool Discovery, caching, compact results, batching, and context intelligence reduce unnecessary latency and token usage.
 
-دانا یک هسته مشترک با دو حالت کاملاً مجزا دارد:
+---
 
-- **Local Mode**: اجرای دانا روی کامپیوتر شخصی و اتصال عمومی از طریق Tailscale.
-- **Server Mode**: اجرای Dana روی VPS یا سرور اختصاصی، بدون وابستگی به Tailscale، با Domain و HTTPS، Backend ایزوله روی localhost، Reverse Proxy خودکار و systemd.
+# Installation and Connection
 
-حالت فعال با `DANA_DEPLOYMENT_MODE=local` یا `DANA_DEPLOYMENT_MODE=server` مشخص می‌شود.
+## Step 1 — Install and sign in to Tailscale
 
-### نصب تعاملی
+For the easiest Local Mode setup, install [Tailscale](https://tailscale.com/) first and sign in on the machine that will run Dana. Dana uses Tailscale Funnel to expose a secure HTTPS MCP endpoint.
 
-برای نصب و راه‌اندازی معمولی، فقط Installer را اجرا کنید:
+### Linux
+
+Install Tailscale using the official instructions:
+
+[Tailscale for Linux](https://tailscale.com/download/linux)
+
+Then start it and sign in:
+
+```bash
+sudo systemctl enable --now tailscaled
+sudo tailscale up
+tailscale status
+```
+
+### Windows
+
+Install Tailscale from:
+
+[Tailscale for Windows](https://tailscale.com/download/windows)
+
+Open the application, choose **Log in**, complete browser authentication, and confirm that the device is connected.
+
+### macOS
+
+Install Tailscale from:
+
+[Tailscale for macOS](https://tailscale.com/download/mac)
+
+Sign in and confirm that the device is connected.
+
+> The Tailscale account must be allowed to use Funnel for Dana Local Mode.
+
+---
+
+## Step 2 — Clone Dana
+
+```bash
+git clone https://github.com/seyed-ali-002/Dana-MCP-Server.git
+cd Dana-MCP-Server
+```
+
+## Step 3 — Run the Installer
+
+### Linux / macOS
 
 ```bash
 python3 install.py
 ```
 
-Installer خودش محیط `.venv` را می‌سازد و تمام وابستگی‌ها را داخل آن نصب می‌کند؛ بنابراین با PEP 668 و Python مدیریت‌شده سیستم تداخلی ندارد. رابط Installer برای انتخاب Mode، تعداد Worker، احراز هویت و تنظیمات شبکه نیز به‌صورت اختصاصی طراحی شده است.
+### Windows
 
-پس از نصب، برای اجرای مستقیم Dana از محیط ایجادشده استفاده می‌شود. `scripts/run.py` و فایل‌های `run*` Runnerهای مستقیم/سازگاری هستند و مسیر نصب اصلی نیستند.
+```bat
+python install.py
+```
 
-Installer ابتدا حالت استقرار را می‌پرسد و سپس مراحل موردنیاز همان حالت را انجام می‌دهد. بعد از بررسی و نصب وابستگی‌ها، صفحه ترمینال پاک می‌شود و فقط اطلاعات نهایی اتصال نمایش داده می‌شود.
+The interactive installer:
 
-### Server Mode
+- creates or updates an isolated `.venv`
+- installs required dependencies
+- lets you choose Local or Server Mode
+- configures worker count
+- creates persistent authentication configuration
+- configures networking for the selected deployment mode
+- checks required services before startup
 
-Server Mode برای سرورهایی طراحی شده که ممکن است از قبل یک یا چند پروژه وب فعال داشته باشند. Dana روی یک **پورت داخلی آزاد** اجرا می‌شود و فقط روی `127.0.0.1` گوش می‌دهد؛ بنابراین با پورت‌های عمومی `80` و `443` یا سرویس‌های وب موجود تداخل مستقیم ندارد.
+For first-time setup, the Installer is the recommended path.
 
-Installer به‌صورت خودکار:
+---
 
-1. یک پورت آزاد برای Backend Dana انتخاب می‌کند.
-2. ابتدا وضعیت Reverse Proxyهای موجود را بررسی می‌کند و بدون نیاز Dana سرویس جدیدی نصب نمی‌کند.
-3. اگر Nginx موجود باشد، فقط همان Nginx را برای دامنه استفاده می‌کند.
-4. اگر هیچ Reverse Proxy پشتیبانی‌شده‌ای وجود نداشته باشد، قبل از نصب Caddy صریحاً اجازه می‌گیرد.
-5. درباره CDN و نوع ارتباط CDN با Origin (`HTTP` یا `HTTPS`) سؤال می‌کند.
-6. Dana را با systemd روی `127.0.0.1:<PORT>` اجرا می‌کند.
-7. Reverse Proxy موجود را تشخیص می‌دهد:
-   - Nginx
-   - Caddy
-   - Apache
-8. فایل Virtual Host مربوط به دامنه را پیدا می‌کند.
-9. قبل از تغییر، Backup می‌گیرد.
-10. Route مربوط به `/mcp` را به Backend Dana اضافه می‌کند.
-11. تنظیمات Proxy را Validate می‌کند.
-12. در صورت خطا، تنظیمات را Rollback می‌کند.
-13. Proxy را فقط بعد از اعتبارسنجی موفق Reload می‌کند.
-14. قبل از اعمال تغییرات، Plan نهایی را نمایش می‌دهد و تأیید صریح کاربر را می‌گیرد.
+## Step 4 — Choose a Deployment Mode
 
-### رفتار CDN و SSL
+### Local Mode — personal computer
 
-- اگر دامنه پشت CDN باشد و ارتباط **CDN → Origin = HTTP** انتخاب شود، Dana برای Origin گواهی SSL نصب یا تولید نمی‌کند.
-- اگر ارتباط **CDN → Origin = HTTPS** باشد، تنظیمات HTTPS Origin حفظ یا تنظیم می‌شود.
-- برای ساخت یک Virtual Host جدید HTTPS در Nginx، Installer مسیر Certificate و Private Key موجود را می‌پرسد؛ بدون آن‌ها کانفیگ ناقص ایجاد نمی‌کند.
-- Caddy فقط زمانی نصب می‌شود که هیچ Reverse Proxy پشتیبانی‌شده‌ای پیدا نشود و کاربر صریحاً نصب آن را تأیید کند.
+Local Mode is the simplest setup for a development machine or personal computer:
 
-نمونه معماری:
+```text
+AI Client
+   │
+   │ MCP over HTTPS
+   ▼
+Tailscale Funnel
+   │
+   ▼
+Dana
+   │
+   ├── Files
+   ├── Code
+   ├── Shell
+   ├── Git
+   ├── Browser
+   └── Intelligence
+```
+
+Dana displays a tokenized connection URL similar to:
+
+```text
+https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
+```
+
+Use the URL shown by Dana as the MCP connection URL.
+
+### Server Mode — VPS or dedicated server
+
+Server Mode is designed for Linux servers and existing web infrastructure. Dana runs on an internal localhost port and integrates with an existing reverse proxy.
+
+Supported reverse proxies:
+
+- Nginx
+- Caddy
+- Apache
+
+Architecture:
 
 ```text
 Internet
@@ -132,310 +172,82 @@ Internet
 https://mcp.example.com
    │
    ▼
-Existing Nginx / Caddy / Apache
-   ├── /     → Existing Web Project
-   └── /mcp  → 127.0.0.1:<DANA_PORT>
+Reverse Proxy :443
+   │
+   └── /mcp → 127.0.0.1:<DANA_PORT>
                     │
                     ▼
-                 Dana MCP
+                  Dana
 ```
 
-نمونه تنظیمات:
+The Installer can detect existing proxies, back up configuration, validate changes, and avoid unnecessary service installation. If no supported proxy is available, it asks before installing Caddy.
 
-```env
-DANA_DEPLOYMENT_MODE=server
-DANA_HOST=127.0.0.1
-DANA_PORT=<auto-selected-port>
-DANA_PUBLIC_HOST=mcp.example.com
-```
-
-پس از نصب، Endpoint استاندارد MCP به شکل زیر است:
+Typical endpoint:
 
 ```text
 https://mcp.example.com/mcp
 ```
 
-> در Server Mode توکن داخل URL قرار نمی‌گیرد تا URL استاندارد و HTTPS باقی بماند.
+Dana also exposes OAuth authorization metadata and a PKCE-based authorization-code flow for compatible reconnect flows, independently from My_PC or another local connector.
 
-### Local Mode
+---
 
-Local Mode جریان فعلی Tailscale را حفظ می‌کند و URL شامل token path است. **برای نصب و راه‌اندازی معمولی فقط `python3 install.py` را اجرا کنید.** Installer محیط `.venv` را می‌سازد، وابستگی‌ها را نصب می‌کند و حالت Local را تنظیم می‌کند.
+## Step 5 — Start and Stop Dana
 
-`./run.sh`، `run.bat` و `scripts/run.py` فقط Runnerهای مستقیم/سازگاری برای اجرای بعدی هستند و جایگزین Installer نیستند.
+After installation, use the project runners provided by your installation.
 
-Installer و Runtime به‌صورت mode-aware هستند و تنظیمات شبکه Local و Server با یکدیگر مخلوط نمی‌شوند.
-
-### ظاهر ترمینال
-
-Installer و Runtime دو رابط جدا دارند. Installer برای نمایش مراحل نصب و تنظیمات طراحی شده و Runtime فقط Dashboard زنده Dana و لاگ‌های Workerها را نمایش می‌دهد. Runtime دیگر مراحل نصب، `pip install` یا خروجی خام Tailscale را نشان نمی‌دهد.
-
-## 🧱 ساختار Installer و Runtime
-
-مسیر اجرای پیشنهادی به این شکل است:
-
-```text
-python install.py
-      │
-      ├── create/update .venv
-      ├── install dependencies
-      ├── select deployment mode
-      ├── configure workers
-      ├── generate persistent token
-      └── configure networking / Tailscale
-
-run / run.sh / run.bat
-      │
-      ▼
-Dana Runtime
-      │
-      ├── Dashboard
-      ├── Worker status
-      └── Worker job logs
-```
-
-`install.py` و `dana/installer.py` مسئول نصب و پیکربندی هستند. Runtime نباید برای نصب وابستگی یا آماده‌سازی محیط استفاده شود.
-
-### Tailscale در Local Mode
-
-در Local Mode، Installer پیکربندی Tailscale Funnel را انجام می‌دهد و خروجی خام فرمان‌های Tailscale را به کاربر نمایش نمی‌دهد. Runtime فقط URL نهایی MCP را از تنظیمات خوانده و نمایش می‌دهد.
-
-### Worker Logs
-
-هر Worker یک نام تصادفی از فهرست داخلی Dana دریافت می‌کند و شماره ثابت خود را حفظ می‌کند. بعد از پایان هر عملیات، لاگ شامل نام و شماره Worker، نام عملیات، زمان اجرا و اطلاعات Token ثبت می‌شود.
-
-نمونه:
-
-```text
-DONE Atlas #1  read_file
-     tokens 1,284 in / 4,912 out  time 184ms
-
-DONE Orion #3  edit_file
-     tokens 2,031 in / 1,447 out  time 921ms
-```
-
-پیام‌های داخلی Transport مانند `Terminating session: None` برای خروجی معمول Runtime نمایش داده نمی‌شوند.
-
-## ⏹️ توقف Dana
-
-برای توقف سرویس در حال اجرا از دستور زیر استفاده کنید:
+Typical local commands:
 
 ```bash
+./run
 ./stop
 ```
 
-این دستور فقط Process اصلی Dana را که توسط Runtime ثبت شده متوقف می‌کند و Tailscale Funnel را خاموش نمی‌کند. اگر Dana اجرا نباشد، پیام مناسب نمایش داده می‌شود.
+On Windows, use the corresponding `.bat` runner.
 
-اگر پورت `8765` قبلاً در اختیار Dana باشد، اجرای مجدد `./run` به‌جای Traceback، وضعیت را اعلام می‌کند و دستور `./stop` را پیشنهاد می‌دهد.
-
-## 🚀 اجرای سریع
-
-**مسیر پیشنهادی برای همه کاربران: فقط Installer را اجرا کنید.**
-
-### 1. دریافت پروژه
-
-```bash
-git clone git@github.com:seyed-ali-002/Dana-MCP-Server.git
-cd Dana-MCP-Server
-```
-
-### 2. نصب و راه‌اندازی
-
-**Linux / macOS / Windows:**
-
-```bash
-python3 install.py
-```
-
-در Windows در صورت نبودن `python3` از `python install.py` استفاده کنید.
-
-Installer تنها مسیر پیشنهادی نصب است و ساخت `.venv`، نصب وابستگی‌ها، انتخاب Local/Server و تنظیمات مربوط به همان Mode را مدیریت می‌کند.
-
-`./run.sh`، `run.bat` و `scripts/run.py` فقط Runnerهای مستقیم/سازگاری برای اجرای Dana پس از نصب هستند و نباید برای نصب اولیه استفاده شوند.
-
-> ⚠️ اگر Tailscale روی سیستم نصب یا Login نشده باشد، ابتدا آن را نصب و وارد حساب خود شوید.
-
-### 🔐 راه‌اندازی و Login در Tailscale
-
-اگر Tailscale روی سیستم نصب نیست یا هنوز وارد حساب نشده‌اید، مراحل زیر را انجام دهید.
-
-#### 🐧 Linux
-
-1. Tailscale را از صفحه رسمی دانلود و نصب کنید:
-   https://tailscale.com/download/linux
-2. سپس سرویس را فعال کنید:
-
-```bash
-sudo systemctl enable --now tailscaled
-```
-
-3. Login را انجام دهید:
-
-```bash
-sudo tailscale up
-```
-
-4. دستور یک لینک احراز هویت نمایش می‌دهد. لینک را در مرورگر باز کنید و وارد حساب Tailscale شوید.
-5. برای بررسی وضعیت:
-
-```bash
-tailscale status
-```
-
-#### 🪟 Windows
-
-1. Tailscale را از صفحه رسمی دانلود کنید:
-   https://tailscale.com/download/windows
-2. برنامه را نصب و اجرا کنید.
-3. روی **Log in** کلیک کنید.
-4. مرورگر باز می‌شود؛ وارد حساب Tailscale شوید و دسترسی را تأیید کنید.
-5. پس از ورود، مطمئن شوید Tailscale در حالت **Connected** قرار دارد.
-
-#### 🍎 macOS
-
-1. Tailscale را از صفحه رسمی دانلود کنید:
-   https://tailscale.com/download/mac
-2. برنامه را نصب و اجرا کنید.
-3. Tailscale را از نوار منو باز کنید و **Log in** را انتخاب کنید.
-4. در مرورگر وارد حساب Tailscale شوید و دسترسی را تأیید کنید.
-5. پس از ورود، وضعیت Tailscale باید **Connected** باشد.
-
-> 💡 **نکته:** Dana برای ایجاد لینک عمومی MCP به Tailscale Funnel نیاز دارد؛ بنابراین همان حسابی که روی سیستم Login کرده‌اید باید اجازه استفاده از Funnel را داشته باشد.
-
-🔗 مستندات رسمی: https://tailscale.com/kb/start
-
-## ⏹️ مدیریت سرویس Dana در Server Mode
-
-Dana در Server Mode به‌صورت یک سرویس systemd با نام `dana` اجرا می‌شود.
-
-### توقف سرویس
-
-```bash
-sudo systemctl stop dana
-```
-
-### شروع سرویس
+In Server Mode, Dana can run as a systemd service:
 
 ```bash
 sudo systemctl start dana
-```
-
-### Restart سرویس
-
-```bash
+sudo systemctl stop dana
 sudo systemctl restart dana
-```
-
-### بررسی وضعیت
-
-```bash
 sudo systemctl status dana --no-pager
-```
-
-### مشاهده لاگ زنده
-
-```bash
 sudo journalctl -u dana -f
 ```
 
-### جلوگیری از اجرای خودکار پس از Boot
-
-```bash
-sudo systemctl disable dana
-```
-
-### فعال‌سازی مجدد اجرای خودکار
-
-```bash
-sudo systemctl enable dana
-```
-
-> Backend Dana به‌صورت عادی فقط روی `127.0.0.1` اجرا می‌شود. بنابراین برای بستن دسترسی اینترنتی آن نیازی به بستن پورت در Firewall نیست؛ دسترسی عمومی فقط از طریق HTTPS Reverse Proxy و مسیر `/mcp` انجام می‌شود.
-
-### 👷 تعداد Workerها
-
-تعداد Workerها در مرحله **Installer** انتخاب می‌شود، نه هنگام اجرای معمول Runtime. مقدار پیش‌فرض **5** است و بازه مجاز **1 تا 128** است.
-
-پس از نصب، Runtime بدون پرسیدن سؤال‌های نصب مستقیماً Dashboard را اجرا می‌کند. نام هر Worker نیز به‌صورت تصادفی از فهرست نام‌های داخلی Dana انتخاب می‌شود.
-
-مقدار انتخاب‌شده در `.env` با نام زیر ذخیره می‌شود:
+Worker count is configured during installation and stored as:
 
 ```env
 DANA_WORKERS=5
 ```
 
-### 3. لینک اتصال
+---
 
-پس از نصب و اجرای Runtime، Dashboard لینک اتصال را نمایش می‌دهد. در Local Mode URL به شکل زیر است:
+## Step 6 — Connect Your AI Client
 
-```text
-https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
-```
-
-همین URL را در بخش اتصال MCP سرویس موردنظر قرار دهید. **در Local Mode نیازی به Authorization Header جداگانه نیست.**
-
-برای Server Mode از URL استاندارد زیر استفاده کنید:
-
-```text
-https://<your-domain>/mcp
-```
-
-## 🔑 مدیریت Token
-
-Token به‌صورت پایدار نگهداری می‌شود و با هر اجرای Dana تغییر نمی‌کند.
-
-برای تولید Token جدید:
-
-```bash
-python scripts/regenerate_token.py
-```
-
-سپس Dana را restart کنید. Token قبلی دیگر نباید برای اتصال جدید استفاده شود.
-
-## 🌐 فعال‌سازی کامل ابزارهای Browser و Security
-
-برای فعال شدن کامل قابلیت‌های پیشرفته Dana، می‌توانید وابستگی‌های اختیاری را نصب کنید:
-
-```bash
-pip install -e ".[full]"
-playwright install chromium
-```
-
-یا فقط Browser را نصب کنید:
-
-```bash
-pip install -e ".[browser]"
-playwright install chromium
-```
-
-این کار ابزارهای Playwright و بررسی امنیت وابستگی‌ها را فعال می‌کند.
-
-## 🤖 اتصال به ChatGPT، Grok و Claude
+Add Dana as an MCP or Custom Connector in your AI client and use the URL generated by Dana.
 
 ### ChatGPT
 
-در ChatGPT به بخش **Plugins / Connectors** بروید و گزینه مربوط به افزودن اتصال MCP یا Custom Connector را انتخاب کنید. URL چاپ‌شده توسط Dana را وارد کنید.
-
-> نام و محل دقیق گزینه‌ها ممکن است با توجه به نسخه و رابط کاربری ChatGPT تغییر کند.
-
-### Grok
-
-در Grok وارد بخش **Custom Connectors** شوید، یک اتصال جدید MCP بسازید و URL زیر را وارد کنید:
-
-```text
-https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
-```
+Open the Connectors or MCP connection area and add Dana's endpoint. Server Mode supports OAuth metadata and PKCE reconnect flows for compatible clients.
 
 ### Claude
 
-در Claude وارد بخش **Custom Connectors** شوید، اتصال MCP را اضافه کنید و همان URL Dana را وارد کنید.
+Add a Custom MCP connection and use Dana's endpoint.
 
-### ⚠️ نکته مهم
+### Grok
 
-اگر Connector قبلاً با نسخه قدیمی Dana ساخته شده، برای دریافت فهرست ابزارهای جدید ممکن است لازم باشد اتصال قبلی را حذف و دوباره ایجاد کنید تا `tools/list` مجدداً دریافت شود.
+Create a Custom Connector and use Dana's endpoint.
 
-## 🔒 محدودسازی مسیرهای دسترسی Dana
+> Client menu names can change over time. Use the current MCP/Connector configuration area of your client.
 
-Dana می‌تواند فقط به مسیرهایی که شما تعیین می‌کنید دسترسی داشته باشد. تنظیمات در `config/access_policy.json` ذخیره می‌شود.
+---
+
+# Security and Access Control
+
+Dana executes tools on the machine where it is running. Operating-system permissions therefore matter.
+
+Filesystem access can be restricted in `config/access_policy.json`:
 
 ```json
 {
@@ -444,118 +256,376 @@ Dana می‌تواند فقط به مسیرهایی که شما تعیین می�
 }
 ```
 
-اگر `allowed_paths` خالی باشد، Dana به همه مسیرها دسترسی دارد؛ با این حال `deny_paths` همچنان می‌تواند مسیرهای حساس را مسدود کند. کنترل مسیر در ابزارهای فایل، تحلیل پروژه، لاگ، دیتابیس، Build و خروجی Browser اعمال می‌شود و مسیرها پس از `resolve()` بررسی می‌شوند تا مسیرهای `..` و Symlink نتوانند به‌سادگی Policy را دور بزنند. ابزارهای `get_allowed_paths`، `set_allowed_paths_tool`، `add_allowed_path_tool`، `remove_allowed_path_tool` و `validate_path_access` نیز برای مدیریت Policy در MCP در دسترس هستند.
+Dana also provides MCP tools for inspecting and updating the access policy.
 
-## 🛠️ استفاده کلی
-
-پس از اتصال، Chatbot می‌تواند ابزارهای Dana را از طریق MCP مشاهده و استفاده کند. برای مثال می‌توانید از آن بخواهید فایل ایجاد یا ویرایش کند، کد را جستجو کند، تست اجرا کند، Git را مدیریت کند، یک API را بررسی کند، مشکل برنامه را Debug کند یا یک فایل Word/PDF فارسی بسازد.
-
-Dana ابزارها را روی **همان سیستمی که Server روی آن اجرا شده** اجرا می‌کند؛ بنابراین دسترسی‌های سیستم‌عامل و سطح دسترسی کاربر اجراکننده اهمیت دارد.
-
-## 🧩 معماری کلی
-
-### Local Mode
-
-```text
-ChatGPT / Grok / Claude
-          │
-          │ MCP over HTTPS
-          ▼
-   Tailscale Funnel
-          │
-          ▼
-      Dana Server
-          │
-    ┌─────┼─────┐
-    ▼     ▼     ▼
- Files  Shell  Git ...
-```
-
-### Server Mode
-
-```text
-ChatGPT / Grok / Claude
-          │
-          │ MCP over HTTPS
-          ▼
- Existing Reverse Proxy :443
- Nginx / Caddy / Apache
-          │
-          ├── /     → Existing Web Projects
-          │
-          └── /mcp  → 127.0.0.1:<DANA_PORT>
-                           │
-                           ▼
-                        Dana MCP
-```
-
-در Server Mode Dana از پورت داخلی اختصاصی خود استفاده می‌کند و مسیر `/mcp` به‌صورت خودکار با Reverse Proxy موجود یکپارچه می‌شود؛ بنابراین پروژه‌های وب موجود روی همان سرور حفظ می‌شوند.
-
-## 🧪 تست
+Keep connection URLs and tokens private. Rotate a token when necessary:
 
 ```bash
-pytest -q
+python scripts/regenerate_token.py
 ```
-
-## 🤝 مشارکت
-
-Pull Request و Issue کاملاً استقبال می‌شود. اگر باگ، ناسازگاری، ابزار موردنیاز یا ایده‌ای برای بهتر شدن Dana دارید:
-
-1. یک Issue ایجاد کنید 🐛
-2. راه‌حل یا قابلیت پیشنهادی خود را پیاده‌سازی کنید 🛠️
-3. تست‌های مربوط را اضافه کنید 🧪
-4. یک Pull Request ارسال کنید 🚀
-
-لطفاً هنگام گزارش خطا، سیستم‌عامل، نسخه Python، نسخه Dana و لاگ مرتبط را نیز تا حد امکان ذکر کنید.
-
-## 📜 مجوز
-
-این پروژه تحت مجوز موجود در فایل [LICENSE](LICENSE) منتشر شده است.
 
 ---
 
-⭐ اگر Dana برای شما مفید است، با Star کردن پروژه و مشارکت در توسعه آن از پروژه حمایت کنید.
+# Performance and Context Optimization
 
-## 🧠 Codebase Memory و Context Optimization
+Dana is intentionally designed to avoid turning a large tool registry into unnecessary prompt overhead.
 
-Dana پروژه را با SQLite + FTS5 به‌صورت افزایشی ایندکس می‌کند. با `index_codebase` ایندکس بسازید و با `search_codebase_memory` فقط Context مرتبط را با بودجه مشخص دریافت کنید. `get_library_docs` مستندات URLهای عمومی را Cache می‌کند و `context_compress` متن‌های تکراری را فشرده می‌کند.
+## Progressive Tool Discovery
 
-## 🧠 بهینه‌سازی Context بدون محدودیت Token
+By default, the MCP client sees a small set of entry points:
 
-Dana اطلاعات پروژه را بدون اعمال سقف مصنوعی Token بازیابی می‌کند و با Deduplication، Context ID و Cache، Delta Context، بارگذاری مرحله‌ای، تحلیل Symbol و Dependency، و فشرده‌سازی ساختاری، Context تکراری و غیرضروری را کاهش می‌دهد. اطلاعات مرتبط به دلیل رسیدن به یک Budget پیش‌فرض حذف نمی‌شوند.
+- `dana_search_tools`
+- `dana_call_tool`
+- `dana_batch_call`
+- `dana_capabilities`
+- `dana_optimization_stats`
 
-## 📊 تحلیل Token و زمان
+The complete registry remains available internally and is discovered on demand. This keeps initial MCP context small even when Dana contains many capabilities.
 
-Dana می‌تواند مصرف Token و زمان هر عملیات را ثبت کند. آمار شامل هر عملیات، مجموع Session و مجموع کل پروژه است. برای مصرف دقیق مدل، Client/API باید `input_tokens` و `output_tokens` واقعی را گزارش کند؛ در غیر این صورت فقط تخمین Context قابل ارائه است.
+## Runtime Optimization
 
-## ⚡ Progressive Tool Discovery و بهینه‌سازی Runtime
+Dana includes:
 
-برای کاهش شدید Context اولیه، Dana به‌صورت پیش‌فرض همه ابزارها را برای اجرای داخلی ثبت می‌کند اما فقط پنج ورودی کوچک را در `tools/list` به MCP Client نشان می‌دهد:
+- short-lived caching for safe read operations
+- parallel execution for independent batch calls
+- compact result generation
+- context deduplication and compression
+- repository and symbol indexing
+- delta context and file summaries
+- persistent codebase memory
+- bounded analysis to avoid oversized responses
+- tool cost and optimization statistics
 
-- `dana_search_tools` برای پیدا کردن قابلیت و Schema موردنیاز
-- `dana_call_tool` برای اجرای هر ابزار Dana با نام دقیق
-- `dana_batch_call` برای اجرای چند عملیات مستقل به‌صورت موازی
-- `dana_capabilities` برای مشاهده نسخه Registry و میزان صرفه‌جویی Context
-- `dana_optimization_stats` برای Cache، زمان و تخمین Token
-
-تمام ابزارهای قبلی همچنان در Registry داخلی وجود دارند و از طریق `dana_call_tool` قابل اجرا هستند؛ بنابراین قابلیت‌ها حذف نشده‌اند، فقط سطحی که مدل در ابتدا می‌بیند کوچک شده است. در وضعیت فعلی پروژه، این تغییر تعداد ابزارهای قابل مشاهده را از بیش از 100 ابزار به 5 ابزار و برآورد تعریف Toolها را حدود 95٪ کاهش می‌دهد.
-
-Dana همچنین برای عملیات read-oriented و کم‌ریسک مانند `system_info`، `system_metrics`، `process_list` و `list_directory` Cache کوتاه‌مدت دارد و `dana_batch_call` عملیات مستقل را با `asyncio.gather` موازی اجرا می‌کند. عملیات mutating، شبکه‌ای و مدیریتی به‌صورت پیش‌فرض Cache نمی‌شوند.
-
-برای سازگاری با Clientهایی که هنوز به فهرست کامل ابزارها نیاز دارند:
+Legacy clients that require the full tool list can disable progressive discovery:
 
 ```env
 DANA_PROGRESSIVE_TOOLS=0
 ```
 
-برای غیرفعال کردن Cache داخلی ابزارهای safe-read:
+To disable safe-read caching:
 
 ```env
 DANA_TOOL_CACHE=0
 ```
 
-این دو گزینه فقط رفتار بهینه‌سازی را تغییر می‌دهند و قابلیت‌های اصلی Dana را حذف نمی‌کنند.
+---
 
-## 🖥️ رابط گرافیکی
+# All Dana Capabilities
 
-رابط مدرن و مینیمال Dana با **PySide6 (Qt)** پیاده‌سازی شده و از Tkinter استفاده نمی‌کند. اجرا: `python run_gui.py` یا `dana-gui`
+Dana's complete registry is organized below. In the default optimized MCP mode, these capabilities are discovered and invoked through `dana_search_tools` and `dana_call_tool` rather than all being sent to the client at connection time.
+
+## Core MCP and Optimization
+
+- `dana_search_tools`
+- `dana_call_tool`
+- `dana_batch_call`
+- `dana_capabilities`
+- `dana_optimization_stats`
+- `dana_optimization_controller`
+- `dana_tool_cost`
+- `dana_tool_costs`
+- `dana_fast_path`
+- `dana_prompt_cache_key`
+- `dana_semantic_cache`
+- `dana_result_optimize`
+- `dana_result_page`
+- `dana_result_delta`
+- `dana_context_build`
+- `dana_context_compact`
+
+## Filesystem and Workspace
+
+- `list_directory`
+- `read_file`
+- `write_file`
+- `edit_file`
+- `delete_path`
+- `workspace_snapshot`
+- `change_summary`
+- `rollback_changes`
+- `get_allowed_paths`
+- `set_allowed_paths_tool`
+- `add_allowed_path_tool`
+- `remove_allowed_path_tool`
+- `validate_path_access`
+
+## Shell, Processes, System, and Network
+
+- `run_command`
+- `run_process`
+- `debug_command`
+- `debug_trace`
+- `process_list`
+- `process_stop`
+- `system_info`
+- `system_details`
+- `system_metrics`
+- `environment`
+- `network_check`
+- `port_check`
+- `schedule_command`
+- `cancel_scheduled_task`
+
+## Code Search and Project Analysis
+
+- `search_code`
+- `find_symbol`
+- `find_references`
+- `find_entry_points`
+- `analyze_project`
+- `architecture_summary`
+- `generate_project_diagram`
+- `project_health_check`
+- `code_complexity`
+- `find_duplicate_code`
+- `static_analysis`
+- `python_diagnostics`
+- `change_summary`
+- `analyze_stacktrace`
+- `analyze_implementation_need`
+- `review_implementation`
+- `simplify_code`
+
+## Build, Test, Quality, and Debugging
+
+- `run_tests`
+- `build_project`
+- `discover_tests`
+- `coverage`
+- `benchmark`
+- `check_code_quality`
+- `check_prettier`
+- `lint_or_format`
+- `format_code`
+- `format_project`
+- `format_python`
+- `format_python_check`
+- `lint_python`
+- `fix_python_code`
+- `sort_python_imports`
+- `type_check_python`
+- `lint_javascript`
+- `dana_debug_issue`
+- `dana_test_intelligence`
+- `dana_predict_regression`
+- `dana_rank_root_causes`
+- `dana_self_healing_plan`
+
+## Git, Packages, Containers, and Dependencies
+
+- `git`
+- `package_manager`
+- `dependency_outdated`
+- `dependency_security_scan`
+- `secret_scan`
+- `docker`
+- `docker_status`
+- `docker_build`
+- `container_logs`
+- `toolchain_status`
+
+## HTTP, APIs, Browser, and Web
+
+- `http_request`
+- `api_request`
+- `web_fetch`
+- `browser_check`
+- `browser_open`
+- `browser_automation`
+- `dana_api_intelligence`
+
+Optional browser support can be installed with:
+
+```bash
+pip install -e ".[browser]"
+playwright install chromium
+```
+
+## Database Intelligence
+
+- `sqlite_query`
+- `database_schema`
+- `database_health_check`
+- `dana_database_intelligence`
+
+## PDF, Documents, Reports, and Documentation
+
+- `extract_pdf_text`
+- `extract_pdfs_text`
+- `create_document`
+- `create_docx`
+- `create_pdf`
+- `generate_readme`
+- `generate_changelog`
+- `generate_report`
+
+## Codebase Memory and Context
+
+- `index_codebase`
+- `update_codebase_memory`
+- `clear_codebase_memory`
+- `codebase_memory_status`
+- `search_codebase_memory`
+- `get_context`
+- `get_context_delta`
+- `get_file_delta`
+- `get_file_summary`
+- `get_project_map`
+- `get_symbol_context`
+- `get_dependency_context`
+- `estimate_tokens_for_context`
+- `context_compress`
+- `memory_write`
+- `memory_retrieve`
+- `memory_stats`
+- `memory_digest`
+- `memory_export`
+- `memory_feedback`
+- `memory_link`
+- `memory_links`
+- `memory_maintain`
+- `memory_purge`
+
+## Library and Documentation Intelligence
+
+- `resolve_library`
+- `get_library_docs`
+- `search_library_docs`
+
+## Advanced Engineering Intelligence
+
+- `dana_classify_request`
+- `dana_route_request`
+- `dana_plan`
+- `dana_plan_execute`
+- `dana_create_implementation_plan`
+- `dana_engineering_decision`
+- `dana_engineering_policy`
+- `dana_architecture_review`
+- `dana_dependency_graph`
+- `dana_analyze_change_impact`
+- `dana_project_index`
+- `dana_map_repository`
+- `dana_symbol_search`
+- `dana_trace_symbol`
+- `dana_security_review`
+- `dana_execution_sandbox_plan`
+- `dana_cross_repository_intelligence`
+- `dana_record_architecture_decision`
+- `dana_visual_architecture_graph`
+
+## Tasks, Planning, and Work Sessions
+
+- `create_task_plan`
+- `task_status`
+- `start_work_session`
+- `end_work_session`
+- `dana_session_start`
+- `dana_session_get`
+
+## Token and Operation Analytics
+
+- `record_token_usage`
+- `get_token_analytics`
+- `reset_token_analytics`
+- `get_operation_analytics`
+
+## UI and Visual Design Intelligence
+
+- `dana_create_ui_design`
+- `dana_add_ui_screen`
+- `dana_add_ui_component`
+- `dana_connect_ui_screens`
+- `dana_generate_ui_prompt`
+- `dana_export_ui_html`
+
+---
+
+# Example Requests
+
+After connecting Dana, you can ask your AI client things like:
+
+- “Analyze this repository and explain the architecture.”
+- “Find the cause of this stack trace and propose the smallest safe fix.”
+- “Read all PDFs in this folder, extract their content, and build a study guide.”
+- “Review my changes, predict regression risks, run targeted tests, and report the result.”
+- “Create an implementation plan before changing the code.”
+- “Search the project for duplicate code and simplify it safely.”
+- “Create a Persian Word or PDF report from these project files.”
+- “Inspect the database schema and identify likely performance risks.”
+
+---
+
+# Testing
+
+Run the test suite:
+
+```bash
+pytest -q
+```
+
+For a basic syntax check:
+
+```bash
+python3 -m py_compile dana/http.py
+```
+
+---
+
+# Architecture
+
+Dana keeps the MCP layer lightweight while heavier analysis is performed on demand:
+
+```text
+AI Client
+   │
+   ▼
+Dana MCP Gateway
+   │
+   ├── Progressive Tool Discovery
+   ├── Authentication / OAuth
+   ├── Optimization Layer
+   └── Tool Router
+          │
+          ├── System & Files
+          ├── Engineering Intelligence
+          ├── Codebase Memory
+          ├── Browser & API
+          ├── Documents & PDF
+          └── Database & Containers
+```
+
+This design helps Dana grow without sending its entire capability set into every initial MCP request.
+
+---
+
+# Contributing
+
+Dana is an open project and contributions are welcome.
+
+You can help by:
+
+1. reporting bugs
+2. proposing new tools or integrations
+3. improving installation and deployment support
+4. adding tests
+5. improving documentation
+6. submitting pull requests
+7. reviewing architecture and performance
+
+Before opening a pull request, please test your changes and keep changes focused where possible.
+
+When reporting a bug, include relevant information such as:
+
+- operating system
+- Python version
+- Dana version or commit
+- deployment mode
+- relevant logs
+- reproduction steps
+
+If Dana is useful to you, consider starring the repository and sharing ideas for its next capabilities.
+
+## License
+
+See [LICENSE](LICENSE).
