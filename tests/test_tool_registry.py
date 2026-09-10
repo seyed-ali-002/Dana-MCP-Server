@@ -50,7 +50,9 @@ VISIBLE = {
     "dana_result_page",
     "dana_result_optimize",
     "dana_session_start",
-    "dana_session_compact",
+    "dana_route_request",
+    "dana_plan_execute",
+    "dana_result_delta",
     "dana_session_get",
     "dana_prompt_cache_key",
 }

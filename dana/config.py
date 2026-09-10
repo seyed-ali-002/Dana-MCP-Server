@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     workers: int = 5
     rate_limit_rpm: int = 120
     auth_burst: int = 20
+    # ChatGPT connector access tokens are backed by Dana's static auth token.
+    # Keep the advertised OAuth lifetime long so the connector does not force
+    # a reconnect every hour while the underlying credential is still valid.
+    oauth_access_token_ttl_seconds: int = 365 * 24 * 60 * 60
     max_body_bytes: int = 10 * 1024 * 1024
     allow_dangerous_tools: bool = False
     allowed_origins: str = ""

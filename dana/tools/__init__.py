@@ -16,7 +16,10 @@ from .formatting import register_formatting_tools
 from .intelligence import register_intelligence_tools
 from .memory import register_memory_tools
 from .optimization import register_optimization_tools
+from .output_style import register_output_style_tools
 from .performance_engine import register_performance_tools
+from .persian_writing import register_persian_writing_tools
+from .ui_sashimi import register_sashimi_ui_tools
 from .principal_engine import register_principal_engine_tools
 from .system import register_system_tools
 from .token_analytics import register_token_analytics_tools
@@ -29,9 +32,12 @@ def register_tools(mcp: FastMCP) -> None:
     register_access_policy_tools(mcp)
     register_filesystem_tools(mcp)
     register_agent_tools(mcp)
+    register_output_style_tools(mcp)
     register_web_quality_debug_docs_tools(mcp)
     register_document_tools(mcp)
     register_design_engine_tools(mcp)
+    register_sashimi_ui_tools(mcp)
+    register_persian_writing_tools(mcp)
     register_principal_engine_tools(mcp)
     register_formatting_tools(mcp)
     register_advanced_tools(mcp)

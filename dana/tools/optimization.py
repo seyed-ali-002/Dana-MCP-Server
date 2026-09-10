@@ -16,6 +16,8 @@ from mcp.server.fastmcp import FastMCP
 
 from .context_engine import _hash, optimize_result
 from .performance_engine import semantic_get, semantic_put
+from .runtime_optimization import CACHE, bounded, record, runtime_stats
+from .tool_catalog import ALIASES, category_for, enrich
 
 _ROOT = Path(__file__).resolve().parents[2]
 _STATE_DIR = _ROOT / ".dana"
@@ -37,16 +39,12 @@ _CACHE_TTLS = {
     "dana_visual_architecture_graph": 10.0,
     "dana_api_intelligence": 10.0,
 }
-_CACHE_MAX_ITEMS = 256
 _CACHE_ENABLED = os.getenv("DANA_TOOL_CACHE", "1").strip().lower() not in {
     "0",
     "false",
     "no",
     "off",
 }
-_RESULT_CACHE: dict[str, tuple[float, Any]] = {}
-_CACHE_HITS = 0
-_CACHE_MISSES = 0
 
 # Capability metadata is static after startup. Building and token-counting every
 # schema on every health probe can take seconds on a large registry.
@@ -104,32 +102,19 @@ def _tool_cache_key(name: str, arguments: dict[str, Any]) -> str:
 
 
 def _cached(name: str, arguments: dict[str, Any]) -> tuple[bool, Any]:
-    global _CACHE_HITS, _CACHE_MISSES
-    if not _CACHE_ENABLED:
+    if not _CACHE_ENABLED or name not in _CACHE_TTLS:
         return False, None
-    ttl = _CACHE_TTLS.get(name)
-    if not ttl:
-        return False, None
-    key = _tool_cache_key(name, arguments)
-    item = _RESULT_CACHE.get(key)
-    if item and time.monotonic() - item[0] < ttl:
-        _CACHE_HITS += 1
-        return True, item[1]
-    _CACHE_MISSES += 1
-    _RESULT_CACHE.pop(key, None)
-    return False, None
+    key = "tool:" + _tool_cache_key(name, arguments)
+    value = CACHE.get(key)
+    return (value is not None), value
 
 
 def _store_cache(name: str, arguments: dict[str, Any], result: Any) -> None:
     if not _CACHE_ENABLED:
         return
     ttl = _CACHE_TTLS.get(name)
-    if not ttl:
-        return
-    if len(_RESULT_CACHE) >= _CACHE_MAX_ITEMS:
-        oldest = min(_RESULT_CACHE.items(), key=lambda item: item[1][0])[0]
-        _RESULT_CACHE.pop(oldest, None)
-    _RESULT_CACHE[_tool_cache_key(name, arguments)] = (time.monotonic(), result)
+    if ttl:
+        CACHE.put("tool:" + _tool_cache_key(name, arguments), result, ttl)
 
 
 def _compact_description(description: str | None) -> str:
@@ -191,7 +176,11 @@ def _visible_names(mcp: FastMCP) -> set[str]:
         "dana_result_page",
         "dana_result_optimize",
         "dana_session_start",
+        "dana_session_compact",
         "dana_session_get",
+        "dana_route_request",
+        "dana_plan_execute",
+        "dana_result_delta",
         "dana_prompt_cache_key",
     }
 
@@ -226,14 +215,19 @@ def register_optimization_tools(mcp: FastMCP) -> None:
         query = query.strip()
         limit = max(1, min(limit, 12))
         ranked = []
+        query_lower = query.lower()
+        alias_names = {name for alias, names in ALIASES.items() if alias in query_lower for name in names}
         for tool in tools:
             score = _search_score(tool.name, tool.description, query)
+            if tool.name in alias_names:
+                score += 40
             if score:
                 ranked.append((score, tool))
         ranked.sort(key=lambda item: (-item[0], item[1].name))
         results = [
             {
                 "name": tool.name,
+                "category": category_for(tool.name),
                 "description": _compact_description(tool.description),
                 "input_schema": tool.parameters,
                 "cached": tool.name in _CACHE_TTLS,
@@ -273,9 +267,9 @@ def register_optimization_tools(mcp: FastMCP) -> None:
         success = True
         result: Any = None
         try:
-            result = await raw_call_tool(
+            result = await bounded(raw_call_tool(
                 target, args, context=None, convert_result=False
-            )
+            ))
             result = optimize_result(result)
             _store_cache(target, args, result)
             return result
@@ -300,6 +294,7 @@ def register_optimization_tools(mcp: FastMCP) -> None:
             )
             conn.commit()
             conn.close()
+            record(target, duration, success)
 
     @mcp.tool()
     async def dana_batch_call(
@@ -328,9 +323,9 @@ def register_optimization_tools(mcp: FastMCP) -> None:
             if hit:
                 return {"name": name, "ok": True, "cached": True, "result": cached}
             try:
-                result = await raw_call_tool(
+                result = await bounded(raw_call_tool(
                     name, args, context=None, convert_result=False
-                )
+                ))
                 _store_cache(name, args, result)
                 return {"name": name, "ok": True, "cached": False, "result": result}
             except (ValueError, RuntimeError, OSError) as exc:
@@ -391,11 +386,7 @@ def register_optimization_tools(mcp: FastMCP) -> None:
         ).fetchall()
         conn.close()
         return {
-            "cache": {
-                "hits": _CACHE_HITS,
-                "misses": _CACHE_MISSES,
-                "entries": len(_RESULT_CACHE),
-            },
+            "cache": CACHE.stats(),
             "calls": {
                 "input_tokens_est": row[0],
                 "output_tokens_est": row[1],
@@ -405,6 +396,7 @@ def register_optimization_tools(mcp: FastMCP) -> None:
             "top_tools": [
                 {"name": r[0], "operations": r[1], "duration_ms": r[2]} for r in by_tool
             ],
+            "runtime": runtime_stats(),
         }
 
 
@@ -496,7 +488,7 @@ def register_optimization_tools(mcp: FastMCP) -> None:
                 return {"id": item.get("id", i), "name": name, "ok": False, "error": "Unknown or unsupported tool"}
             try:
                 started = time.perf_counter()
-                value = await raw_call_tool(name, args, context=None, convert_result=False)
+                value = await bounded(raw_call_tool(name, args, context=None, convert_result=False))
                 value = optimize_result(value)
                 duration = (time.perf_counter() - started) * 1000
                 conn = _db()

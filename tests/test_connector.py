@@ -49,6 +49,11 @@ def test_mcp_get_accept_header_compatibility():
         assert response.status_code != 406
 
 
+
+def test_oauth_token_uses_long_lived_static_credential():
+    assert settings.oauth_access_token_ttl_seconds >= 31_536_000
+
+
 def test_server_mode_connector_uses_canonical_https_url(monkeypatch):
     monkeypatch.setattr("dana.http.settings.deployment_mode", "server")
     monkeypatch.setattr("dana.http.settings.public_host", "mcp.example.com")
@@ -77,7 +82,7 @@ def test_server_mode_mcp_uses_canonical_path(monkeypatch):
         monkeypatch.setattr("dana.http.settings.deployment_mode", "local")
 
 
-def test_server_mode_connector_is_single_tokenized_url(monkeypatch):
+def test_server_mode_connector_uses_single_canonical_url(monkeypatch):
     monkeypatch.setattr("dana.http.settings.deployment_mode", "server")
     monkeypatch.setattr("dana.http.settings.public_host", "mcp.example.com")
     try:
@@ -87,7 +92,18 @@ def test_server_mode_connector_is_single_tokenized_url(monkeypatch):
             )
             assert (
                 response.json()["url"]
-                == f"http://mcp.example.com/{settings.auth_token}/mcp"
+                == "https://mcp.example.com/mcp"
             )
     finally:
         monkeypatch.setattr("dana.http.settings.deployment_mode", "local")
+
+
+
+def test_mcp_streamable_http_lifecycle_initializes_task_group():
+    with TestClient(app) as client:
+        response = client.get(
+            "/mcp",
+            headers={"Accept": "text/event-stream"},
+            follow_redirects=False,
+        )
+        assert response.status_code != 500

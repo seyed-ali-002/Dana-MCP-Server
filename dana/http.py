@@ -92,6 +92,10 @@ class AcceptCompatibleASGI:
 
 mcp_app = AcceptCompatibleASGI(_raw_mcp_app)
 
+# FastMCP's Streamable HTTP manager owns an AnyIO task group which must be
+# entered through the application's lifespan. Keep the FastMCP lifespan on
+# the outer FastAPI app so every mounted /mcp request sees an initialized
+# session manager, including requests arriving immediately after startup.
 app = FastAPI(
     title="Dana MCP Server",
     version="0.1.0",
@@ -109,7 +113,7 @@ async def root(request: Request):
     host = settings.public_host or request.url.netloc
     scheme = "https" if settings.public_host else request.url.scheme
     token = settings.require_auth_token()
-    endpoint = f"{scheme}://{host}/{token}{settings.mcp_path}"
+    endpoint = f"{scheme}://{host}{settings.mcp_path}" if settings.normalized_mode() == "server" else f"{scheme}://{host}/{token}{settings.mcp_path}"
     return {
         "name": "Dana MCP Server",
         "status": "ok",
@@ -165,7 +169,16 @@ async def oauth_token(
     if not secrets.compare_digest(str(record["challenge"]), _pkce_challenge(code_verifier)):
         return JSONResponse({"error": "invalid_grant"}, status_code=400)
     token = settings.require_auth_token()
-    return {"access_token": token, "token_type": "Bearer", "expires_in": 3600, "scope": "mcp"}
+    # The bearer value is Dana's long-lived static auth token, so advertising
+    # a one-hour OAuth lifetime would make ChatGPT discard an otherwise valid
+    # connection and repeatedly ask the user to reconnect. Keep the advertised
+    # lifetime aligned with the actual credential lifecycle.
+    return {
+        "access_token": token,
+        "token_type": "Bearer",
+        "expires_in": settings.oauth_access_token_ttl_seconds,
+        "scope": "mcp",
+    }
 
 
 @app.get("/.well-known/oauth-authorization-server")
@@ -215,7 +228,15 @@ async def connector(request: Request):
         return unauthorized()
     host = settings.public_host or request.url.netloc
     scheme = "https" if settings.public_host else request.url.scheme
-    return {"title": "Chatbot Connection Link", "url": f"{scheme}://{host}/{token}{settings.mcp_path}"}
+    url = f"{scheme}://{host}{settings.mcp_path}" if settings.normalized_mode() == "server" else f"{scheme}://{host}/{token}{settings.mcp_path}"
+    return {"title": "Chatbot Connection Link", "url": url}
+
+
+@app.api_route("/{legacy_token}/mcp", methods=["GET", "POST", "DELETE"])
+async def legacy_mcp_block(legacy_token: str):
+    if settings.normalized_mode() == "server" and secrets.compare_digest(legacy_token, settings.require_auth_token()):
+        return JSONResponse({"error": "Use canonical /mcp endpoint"}, status_code=401)
+    return JSONResponse({"error": "Not Found"}, status_code=404)
 
 
 # FastMCP already owns the /mcp route. Mounting it under /mcp would create
@@ -223,5 +244,6 @@ async def connector(request: Request):
 # a Mount prefix; Starlette strips that prefix and FastMCP still receives /mcp.
 # No BaseHTTPMiddleware sits in front of streaming responses.
 token = settings.require_auth_token()
-app.mount(f"/{token}", mcp_app)
+if settings.normalized_mode() != "server":
+    app.mount(f"/{token}", mcp_app)
 app.mount("/", mcp_app)
