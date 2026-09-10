@@ -381,47 +381,45 @@ def _ensure_tailscale_ready() -> None:
         )
 
 
+def _tailscale_error(result: subprocess.CompletedProcess[str]) -> str:
+    return (result.stderr or result.stdout or "").strip()
+
+
+def _is_tailscale_listener_conflict(details: str) -> bool:
+    text = details.lower()
+    return ("listener already exists" in text or "foreground listener already exists" in text or ("already exists for port" in text and "listener" in text))
+
+
+def _configure_funnel_command(token: str, port: int, funnel_port: int) -> subprocess.CompletedProcess[str]:
+    return _run_tailscale(["tailscale", "funnel", f"--https={funnel_port}", "--set-path", f"/{token}", "--yes", "--bg", f"http://127.0.0.1:{port}"], timeout=25)
+
+
 def configure_tailscale_local(token: str, port: int = 8765, funnel_port: int = 443) -> str:
-    """Configure Local Mode Funnel on the standard HTTPS port and return its stable hostname."""
+    """Configure Funnel and automatically recover from stale/conflicting listeners."""
     if not command_exists("tailscale"):
         raise RuntimeError("Tailscale is not installed or not in PATH. Install and sign in to Tailscale first.")
-
     step("Checking Tailscale connection")
     _ensure_tailscale_ready()
     step("Requesting Tailscale Funnel (this should take only a few seconds)")
-    result = _run_tailscale(
-        [
-            "tailscale",
-            "funnel",
-            f"--https={funnel_port}",
-            "--set-path",
-            f"/{token}",
-            "--yes",
-            "--bg",
-            f"http://127.0.0.1:{port}",
-        ],
-        timeout=25,
-    )
+    result = _configure_funnel_command(token, port, funnel_port)
+    if result.returncode != 0 and _is_tailscale_listener_conflict(_tailscale_error(result)):
+        step("Existing Tailscale Funnel listener detected; resetting Dana's Funnel configuration")
+        reset = _run_tailscale(["tailscale", "funnel", "reset"], timeout=15)
+        if reset.returncode != 0:
+            details = _tailscale_error(reset)
+            raise RuntimeError("Tailscale Funnel has a conflicting listener and automatic reset failed" + (f": {details}" if details else "."))
+        step(f"Recreating Funnel automatically with `tailscale funnel {port}`")
+        result = _run_tailscale(["tailscale", "funnel", "--yes", "--bg", str(port)], timeout=25)
     if result.returncode != 0:
-        details = (result.stderr or result.stdout).strip()
-        raise RuntimeError(
-            "Could not configure Tailscale Funnel. Make sure Funnel is enabled for this Tailnet and the Tailscale client is up to date"
-            + (f": {details}" if details else ".")
-        )
-
-    # Funnel status can take a moment to become visible after --bg returns.
-    # Retry instead of assuming the first status response contains the hostname.
-    for attempt in range(4):
+        details = _tailscale_error(result)
+        raise RuntimeError("Could not configure Tailscale Funnel. Make sure Funnel is enabled for this Tailnet and the Tailscale client is up to date" + (f": {details}" if details else "."))
+    for attempt in range(6):
         hostname = _tailscale_hostname_from_status()
         if hostname:
             return hostname
-        if attempt < 3:
+        if attempt < 5:
             time.sleep(0.75)
-
-    raise RuntimeError(
-        "Tailscale Funnel was configured, but its public hostname could not be determined. "
-        "Check `tailscale funnel status` and confirm that Tailscale DNS is enabled."
-    )
+    raise RuntimeError("Tailscale Funnel was configured, but its public hostname could not be determined. Check `tailscale funnel status` and confirm that Tailscale DNS is enabled.")
 
 
 def set_local_public_host(host: str) -> None:
