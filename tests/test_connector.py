@@ -107,3 +107,10 @@ def test_mcp_streamable_http_lifecycle_initializes_task_group():
             follow_redirects=False,
         )
         assert response.status_code != 500
+
+
+def test_mcp_transport_can_restart_with_a_fresh_session_manager():
+    for _ in range(2):
+        with TestClient(app) as client:
+            response = client.get("/mcp", follow_redirects=False)
+            assert response.status_code != 500

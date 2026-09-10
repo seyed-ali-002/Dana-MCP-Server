@@ -1,4 +1,5 @@
 import base64
+import contextlib
 import hashlib
 import secrets
 import time
@@ -12,7 +13,32 @@ from .security.http import RequestGuard, audit, unauthorized
 from .server import mcp
 
 _guard = RequestGuard(settings.rate_limit_rpm, settings.auth_burst)
-_raw_mcp_app = mcp.streamable_http_app()
+
+
+class RestartableMCPApp:
+    """ASGI proxy that receives a fresh FastMCP transport on every app startup.
+
+    StreamableHTTPSessionManager is intentionally single-use. Rebuilding the
+    transport per lifespan makes graceful restarts and repeated TestClient
+    lifecycles safe without sharing a closed AnyIO task group.
+    """
+
+    def __init__(self):
+        self.app = None
+
+    def set_app(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if self.app is None:
+            response = JSONResponse({"error": "MCP transport is starting"}, status_code=503)
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
+_mcp_proxy = RestartableMCPApp()
+_raw_mcp_app = None
 
 # OAuth codes are short-lived and single-use. Reconnect remains independent
 # from My_PC and external callback services.
@@ -90,16 +116,38 @@ class AcceptCompatibleASGI:
         await self.app(scope, receive, send)
 
 
-mcp_app = AcceptCompatibleASGI(_raw_mcp_app)
+mcp_app = AcceptCompatibleASGI(_mcp_proxy)
 
 # FastMCP's Streamable HTTP manager owns an AnyIO task group which must be
 # entered through the application's lifespan. Keep the FastMCP lifespan on
 # the outer FastAPI app so every mounted /mcp request sees an initialized
 # session manager, including requests arriving immediately after startup.
+@contextlib.asynccontextmanager
+async def _mcp_lifespan(app_instance):
+    global _raw_mcp_app
+    # A StreamableHTTPSessionManager cannot be entered twice. Create a fresh
+    # FastMCP ASGI transport for every FastAPI lifespan instead of reusing the
+    # previous manager after shutdown/restart.
+    # FastMCP caches the session manager after the first transport is built,
+    # but that manager is single-use. Discard the closed manager before every
+    # new application lifespan so restart/test lifecycles get a fresh task group.
+    mcp._session_manager = None
+    raw_app = mcp.streamable_http_app()
+    _raw_mcp_app = raw_app
+    _mcp_proxy.set_app(raw_app)
+    try:
+        async with raw_app.router.lifespan_context(raw_app):
+            yield
+    finally:
+        _mcp_proxy.set_app(None)
+        if _raw_mcp_app is raw_app:
+            _raw_mcp_app = None
+
+
 app = FastAPI(
     title="Dana MCP Server",
     version="0.1.0",
-    lifespan=_raw_mcp_app.router.lifespan_context,
+    lifespan=_mcp_lifespan,
 )
 
 
