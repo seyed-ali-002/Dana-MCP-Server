@@ -55,6 +55,23 @@ def _issuer(request: Request) -> str:
     return f"{scheme}://{host}"
 
 
+def _resource_url(request: Request) -> str:
+    issuer = _issuer(request)
+    if settings.normalized_mode() == "local":
+        return f"{issuer}/{settings.require_auth_token()}{settings.mcp_path}"
+    return f"{issuer}{settings.mcp_path}"
+
+
+def _oauth_protected_resource_metadata(request: Request) -> dict[str, object]:
+    issuer = _issuer(request)
+    return {
+        "resource": _resource_url(request),
+        "authorization_servers": [issuer],
+        "bearer_methods_supported": ["header"],
+        "scopes_supported": ["mcp"],
+    }
+
+
 def _cleanup_oauth_clients() -> None:
     # Registration metadata is deliberately bounded so a long-running public
     # server cannot accumulate abandoned connector registrations forever.
@@ -371,15 +388,7 @@ async def oauth_register_alias(request: Request):
 @app.get("/.well-known/oauth-protected-resource/mcp")
 async def oauth_protected_resource(request: Request):
     """RFC 9728 metadata so MCP clients can discover Dana OAuth automatically."""
-    host = settings.public_host or request.url.netloc
-    scheme = "https" if settings.public_host else request.url.scheme
-    issuer = f"{scheme}://{host}"
-    return {
-        "resource": f"{issuer}{settings.mcp_path}",
-        "authorization_servers": [issuer],
-        "bearer_methods_supported": ["header"],
-        "scopes_supported": ["mcp"],
-    }
+    return _oauth_protected_resource_metadata(request)
 
 
 @app.get("/.well-known/oauth-authorization-server")
@@ -443,5 +452,31 @@ async def connector(request: Request):
 # Server mode uses OAuth on the canonical /mcp endpoint instead.
 token = settings.require_auth_token()
 if settings.normalized_mode() == "local":
+
+    # OAuth discovery must work against the existing tokenized MCP URL itself.
+    # Different MCP clients derive RFC 9728 metadata URLs differently for a
+    # resource with path segments, so support both the RFC path-insertion form
+    # and the path-local form without changing Dana's public URL contract.
+    @app.get(f"/.well-known/oauth-protected-resource/{token}{settings.mcp_path}")
+    async def oauth_protected_resource_token_rfc(request: Request):
+        return _oauth_protected_resource_metadata(request)
+
+
+    @app.get(f"/{token}/.well-known/oauth-protected-resource")
+    @app.get(f"/{token}/.well-known/oauth-protected-resource/mcp")
+    async def oauth_protected_resource_token_local(request: Request):
+        return _oauth_protected_resource_metadata(request)
+
+
+    @app.get(f"/{token}/.well-known/oauth-authorization-server")
+    async def oauth_authorization_server_token_local(request: Request):
+        return await oauth_authorization_server(request)
+
+
+    @app.get(f"/{token}/oauth-authorization-server")
+    async def oauth_authorization_server_token_alias(request: Request):
+        return await oauth_authorization_server(request)
+
+
     app.mount(f"/{token}", LocalTokenMCPASGI(AcceptCompatibleASGI(_mcp_proxy)))
 app.mount("/", mcp_app)
