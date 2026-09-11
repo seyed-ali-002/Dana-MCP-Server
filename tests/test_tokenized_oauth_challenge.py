@@ -22,6 +22,13 @@ def test_tokenized_mcp_returns_oauth_challenge_without_bearer():
         assert settings.mcp_path in challenge
 
 
+def test_tokenized_mcp_challenges_get_without_bearer():
+    with TestClient(app) as client:
+        response = client.get(_tokenized_path(), headers={"Accept": "application/json"})
+        assert response.status_code == 401
+        assert "resource_metadata=" in response.headers["www-authenticate"]
+
+
 def test_tokenized_mcp_accepts_dana_bearer():
     with TestClient(app) as client:
         response = client.get(

@@ -220,10 +220,11 @@ class LocalTokenMCPASGI:
             await response(scope, receive, send)
             return
 
-        # Keep legacy GET probes on the tokenized URL compatible while making
-        # MCP POST initialization standards-compliant: OAuth clients discover
-        # authorization from the 401 challenge before they send JSON-RPC.
-        if scope.get("type") == "http" and scope.get("method") != "GET":
+        # A protected MCP resource must challenge unauthenticated probes on every
+        # HTTP method. Some clients discover OAuth with GET while others begin
+        # with POST initialize; returning a public 200 to either can make the
+        # client conclude that this resource does not implement OAuth.
+        if scope.get("type") == "http":
             authorization = next((
                 value.decode("latin1")
                 for name, value in scope.get("headers", ())

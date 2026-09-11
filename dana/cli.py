@@ -84,7 +84,21 @@ def install_server(host: str, public_port: int = 8765) -> str:
     return connector_url
 
 
+def _reexec_inside_dana_venv() -> None:
+    """Use Dana's installed runtime for commands launched with system Python."""
+    python = venv_python()
+    try:
+        current = Path(sys.executable).resolve()
+        target = python.resolve()
+    except OSError:
+        return
+    if not target.exists() or current == target:
+        return
+    os.execv(str(target), [str(target), "-m", "dana", *sys.argv[1:]])
+
+
 def main() -> None:
+    _reexec_inside_dana_venv()
     if len(sys.argv) > 1 and sys.argv[1] == "doctor":
         from .doctor import main as doctor_main
         sys.argv = [sys.argv[0], *sys.argv[2:]]
