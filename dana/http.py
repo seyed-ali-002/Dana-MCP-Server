@@ -209,7 +209,7 @@ mcp_app = OAuthProtectedMCPASGI(AcceptCompatibleASGI(_mcp_proxy))
 
 
 class LocalTokenMCPASGI:
-    """Compatibility transport for Dana Local Mode's secret URL."""
+    """OAuth-protected transport preserving Dana's legacy tokenized URL."""
 
     def __init__(self, app):
         self.app = app
@@ -219,6 +219,34 @@ class LocalTokenMCPASGI:
             response = JSONResponse({"error": "Not Found"}, status_code=404)
             await response(scope, receive, send)
             return
+
+        # Keep legacy GET probes on the tokenized URL compatible while making
+        # MCP POST initialization standards-compliant: OAuth clients discover
+        # authorization from the 401 challenge before they send JSON-RPC.
+        if scope.get("type") == "http" and scope.get("method") != "GET":
+            authorization = next((
+                value.decode("latin1")
+                for name, value in scope.get("headers", ())
+                if name.lower() == b"authorization"
+            ), "")
+            expected = f"Bearer {settings.require_auth_token()}"
+            if not _guard.token_matches(authorization, expected):
+                host = settings.public_host or next((
+                    value.decode("latin1")
+                    for name, value in scope.get("headers", ())
+                    if name.lower() == b"host"
+                ), "")
+                scheme = "https" if settings.public_host else scope.get("scheme", "http")
+                token = settings.require_auth_token()
+                metadata = f"{scheme}://{host}/.well-known/oauth-protected-resource/{token}{settings.mcp_path}"
+                response = JSONResponse(
+                    {"error": "unauthorized"},
+                    status_code=401,
+                    headers={"WWW-Authenticate": f'Bearer resource_metadata="{metadata}", scope="mcp"'},
+                )
+                await response(scope, receive, send)
+                return
+
         await self.app(scope, receive, send)
 
 # FastMCP's Streamable HTTP manager owns an AnyIO task group which must be
@@ -399,6 +427,7 @@ async def oauth_authorization_server(request: Request):
         "authorization_endpoint": f"{issuer}/authorize",
         "token_endpoint": f"{issuer}/token",
         "registration_endpoint": f"{issuer}/register",
+        "client_id_metadata_document_supported": True,
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code"],
         "token_endpoint_auth_methods_supported": ["none"],
