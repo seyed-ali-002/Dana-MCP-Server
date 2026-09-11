@@ -85,6 +85,11 @@ def install_server(host: str, public_port: int = 8765) -> str:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "doctor":
+        from .doctor import main as doctor_main
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        doctor_main()
+        return
     if not os.environ.get("DANA_AUTH_TOKEN"):
         console.print("[bold red]Dana is not installed or configured.[/bold red]")
         console.print("Run [bold cyan]python install.py[/bold cyan] first.")

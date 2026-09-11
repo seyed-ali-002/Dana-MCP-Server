@@ -119,7 +119,18 @@ def venv_python() -> Path:
     return venv / "bin" / "python"
 
 
+def check_python_compatibility() -> None:
+    version = sys.version_info[:2]
+    if version < (3, 11):
+        raise RuntimeError("Dana requires Python 3.11 or newer.")
+    if version > (3, 13):
+        console.print(
+            f"[yellow]Warning: Python {platform.python_version()} is not in Dana's tested 3.11-3.13 range. Installation will continue, but use Python 3.12/3.13 if this machine shows compatibility issues.[/yellow]"
+        )
+
+
 def ensure_venv() -> Path:
+    check_python_compatibility()
     python = venv_python()
     if python.exists():
         return python

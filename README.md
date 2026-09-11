@@ -556,6 +556,26 @@ After connecting Dana, you can ask your AI client things like:
 
 ---
 
+## Dana Doctor
+
+Dana includes a cross-platform diagnostic command for cases where one machine works correctly and another does not.
+
+    python -m dana doctor
+
+or:
+
+    dana doctor
+
+Doctor checks the Dana version and Git commit, Python compatibility, environment configuration, required project files, dependencies, live health and OAuth routes, Tailscale state, Funnel state, deployment mode, and the generated connector URL. Tokens are masked by default.
+
+    python -m dana doctor --show-url
+
+Use `--show-url` only on a trusted terminal when you need the complete Local Mode URL. Machine-readable output is also available:
+
+    python -m dana doctor --json
+
+---
+
 # Testing
 
 Run the test suite:
