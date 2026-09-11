@@ -17,10 +17,20 @@ def test_connector_requires_auth(monkeypatch):
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == "Chatbot Connection Link"
-        assert data["url"] == "https://example.ts.net/mcp"
-        mcp_response = client.get("/mcp", follow_redirects=False)
-        assert mcp_response.status_code == 401
-        assert "resource_metadata=" in mcp_response.headers["www-authenticate"]
+        assert data["url"] == f"https://example.ts.net/{settings.auth_token}/mcp"
+        mcp_response = client.get(f"/{settings.auth_token}/mcp", follow_redirects=False)
+        assert mcp_response.status_code == 200
+        assert mcp_response.json()["protocol"] == "streamable-http"
+
+
+def test_local_mode_tokenized_mcp_path_remains_available_without_bearer(monkeypatch):
+    monkeypatch.setattr("dana.http.settings.deployment_mode", "local")
+    with TestClient(app) as client:
+        response = client.get(f"/{settings.auth_token}/mcp", follow_redirects=False)
+        assert response.status_code == 200
+        assert response.json()["endpoint"].endswith("/mcp")
+        root = client.get("/mcp", follow_redirects=False)
+        assert root.status_code == 401
 
 
 def test_mcp_requires_oauth_bearer_and_advertises_discovery_metadata():

@@ -144,6 +144,20 @@ class OAuthProtectedMCPASGI:
 
 mcp_app = OAuthProtectedMCPASGI(AcceptCompatibleASGI(_mcp_proxy))
 
+
+class LocalTokenMCPASGI:
+    """Compatibility transport for Dana Local Mode's secret URL."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if settings.normalized_mode() != "local":
+            response = JSONResponse({"error": "Not Found"}, status_code=404)
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
 # FastMCP's Streamable HTTP manager owns an AnyIO task group which must be
 # entered through the application's lifespan. Keep the FastMCP lifespan on
 # the outer FastAPI app so every mounted /mcp request sees an initialized
@@ -187,7 +201,11 @@ async def root(request: Request):
     host = settings.public_host or request.url.netloc
     scheme = "https" if settings.public_host else request.url.scheme
     token = settings.require_auth_token()
-    endpoint = f"{scheme}://{host}{settings.mcp_path}"
+    endpoint = (
+        f"{scheme}://{host}{settings.mcp_path}"
+        if settings.normalized_mode() == "server"
+        else f"{scheme}://{host}/{token}{settings.mcp_path}"
+    )
     return {
         "name": "Dana MCP Server",
         "status": "ok",
@@ -317,21 +335,19 @@ async def connector(request: Request):
         return unauthorized()
     host = settings.public_host or request.url.netloc
     scheme = "https" if settings.public_host else request.url.scheme
-    url = f"{scheme}://{host}{settings.mcp_path}"
+    url = (
+        f"{scheme}://{host}{settings.mcp_path}"
+        if settings.normalized_mode() == "server"
+        else f"{scheme}://{host}/{token}{settings.mcp_path}"
+    )
     return {"title": "Chatbot Connection Link", "url": url}
 
 
-@app.api_route("/{legacy_token}/mcp", methods=["GET", "POST", "DELETE"])
-async def legacy_mcp_block(legacy_token: str):
-    if settings.normalized_mode() == "server" and secrets.compare_digest(legacy_token, settings.require_auth_token()):
-        return JSONResponse({"error": "Use canonical /mcp endpoint"}, status_code=401)
-    return JSONResponse({"error": "Not Found"}, status_code=404)
-
-
-# FastMCP already owns the /mcp route. Mounting it under /mcp would create
-# /mcp/mcp, so the canonical transport is mounted at root. The public token is
-# a Mount prefix; Starlette strips that prefix and FastMCP still receives /mcp.
-# No BaseHTTPMiddleware sits in front of streaming responses.
-# MCP always has one canonical URL. OAuth discovery and protected-resource
-# metadata live on the same origin and work in both Local Funnel and Server modes.
+# Local mode deliberately keeps the token in the public URL. The tokenized
+# mount is the compatibility contract used by existing Dana connectors: Starlette
+# strips /<token>, then FastMCP receives the normal /mcp transport path.
+# Server mode uses OAuth on the canonical /mcp endpoint instead.
+token = settings.require_auth_token()
+if settings.normalized_mode() == "local":
+    app.mount(f"/{token}", LocalTokenMCPASGI(AcceptCompatibleASGI(_mcp_proxy)))
 app.mount("/", mcp_app)

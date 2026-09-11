@@ -453,7 +453,7 @@ def install_local() -> None:
     step("Configuring secure Tailscale Funnel")
     public_host = configure_tailscale_local(token)
     set_local_public_host(public_host)
-    success(f"Secure endpoint configured: https://{public_host}/mcp")
+    success(f"Secure endpoint configured: https://{public_host}/{token}/mcp")
     clear()
     banner("INSTALLATION COMPLETE")
     table = Table.grid(padding=(0, 2))
