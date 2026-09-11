@@ -3,7 +3,7 @@ import contextlib
 import hashlib
 import secrets
 import time
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -55,6 +55,28 @@ def _cleanup_oauth_codes() -> None:
     now = time.time()
     for key in [key for key, value in _OAUTH_CODES.items() if float(value["expires_at"]) <= now]:
         _OAUTH_CODES.pop(key, None)
+
+
+def _is_trusted_openai_redirect_uri(redirect_uri: str) -> bool:
+    """Accept HTTPS callback URLs used by current OpenAI connector clients.
+
+    OpenAI has used more than one callback path/domain over time. Validate the
+    origin instead of pinning a single path so connector UI updates do not
+    break existing Dana installations.
+    """
+    try:
+        parsed = urlsplit(redirect_uri)
+    except ValueError:
+        return False
+    host = (parsed.hostname or "").lower()
+    return parsed.scheme == "https" and (
+        host == "chatgpt.com"
+        or host.endswith(".chatgpt.com")
+        or host == "chat.openai.com"
+        or host.endswith(".chat.openai.com")
+        or host == "openai.com"
+        or host.endswith(".openai.com")
+    )
 
 
 class AcceptCompatibleASGI:
@@ -229,7 +251,7 @@ async def authorize(request: Request):
     state = params.get("state", "")
     if not redirect_uri or not client_id or not challenge or method != "S256":
         raise HTTPException(status_code=400, detail="invalid_authorization_request")
-    if not redirect_uri.startswith("https://chatgpt.com/connector/oauth/"):
+    if not _is_trusted_openai_redirect_uri(redirect_uri):
         raise HTTPException(status_code=400, detail="invalid_redirect_uri")
     _cleanup_oauth_codes()
     code = secrets.token_urlsafe(32)

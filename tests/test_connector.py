@@ -122,3 +122,14 @@ def test_mcp_transport_can_restart_with_a_fresh_session_manager():
         with TestClient(app) as client:
             response = client.get("/mcp", headers={"Authorization": f"Bearer {settings.auth_token}"}, follow_redirects=False)
             assert response.status_code != 500
+
+
+
+def test_authorize_accepts_current_openai_callback_origins():
+    from dana.http import _is_trusted_openai_redirect_uri
+
+    assert _is_trusted_openai_redirect_uri("https://chatgpt.com/connector/oauth/callback")
+    assert _is_trusted_openai_redirect_uri("https://chat.openai.com/connector/oauth/callback")
+    assert _is_trusted_openai_redirect_uri("https://openai.com/connector/oauth/callback")
+    assert not _is_trusted_openai_redirect_uri("http://chatgpt.com/connector/oauth/callback")
+    assert not _is_trusted_openai_redirect_uri("https://chatgpt.com.evil.example/callback")
