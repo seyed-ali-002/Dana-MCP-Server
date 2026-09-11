@@ -40,10 +40,28 @@ class RestartableMCPApp:
 _mcp_proxy = RestartableMCPApp()
 _raw_mcp_app = None
 
-# OAuth codes are short-lived and single-use. Reconnect remains independent
-# from My_PC and external callback services.
+# OAuth codes and dynamically registered public clients are intentionally
+# process-local. Dana's bearer credential is the durable authentication secret;
+# OAuth client registration only identifies a connector during an authorization
+# flow and does not require users to create or paste a client ID manually.
 _OAUTH_CODES: dict[str, dict[str, str | float]] = {}
+_OAUTH_CLIENTS: dict[str, dict[str, object]] = {}
 _OAUTH_CODE_TTL_SECONDS = 120
+
+
+def _issuer(request: Request) -> str:
+    host = settings.public_host or request.url.netloc
+    scheme = "https" if settings.public_host else request.url.scheme
+    return f"{scheme}://{host}"
+
+
+def _cleanup_oauth_clients() -> None:
+    # Registration metadata is deliberately bounded so a long-running public
+    # server cannot accumulate abandoned connector registrations forever.
+    cutoff = time.time() - (7 * 24 * 60 * 60)
+    for client_id, value in list(_OAUTH_CLIENTS.items()):
+        if float(value.get("created_at", 0)) < cutoff:
+            _OAUTH_CLIENTS.pop(client_id, None)
 
 
 def _pkce_challenge(verifier: str) -> str:
@@ -259,6 +277,12 @@ async def authorize(request: Request):
         raise HTTPException(status_code=400, detail="invalid_authorization_request")
     if not _is_trusted_connector_redirect_uri(redirect_uri):
         raise HTTPException(status_code=400, detail="invalid_redirect_uri")
+    _cleanup_oauth_clients()
+    registered = _OAUTH_CLIENTS.get(client_id)
+    if registered is not None:
+        registered_redirects = registered.get("redirect_uris", [])
+        if redirect_uri not in registered_redirects:
+            raise HTTPException(status_code=400, detail="invalid_redirect_uri")
     _cleanup_oauth_codes()
     code = secrets.token_urlsafe(32)
     _OAUTH_CODES[code] = {
@@ -301,6 +325,48 @@ async def oauth_token(
     }
 
 
+@app.post("/register", status_code=201)
+async def oauth_register(request: Request):
+    """RFC 7591-style dynamic registration for public MCP OAuth clients."""
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid_client_metadata"}, status_code=400)
+
+    redirect_uris = payload.get("redirect_uris") if isinstance(payload, dict) else None
+    if not isinstance(redirect_uris, list) or not redirect_uris:
+        return JSONResponse({"error": "invalid_redirect_uri"}, status_code=400)
+    if not all(isinstance(uri, str) and _is_trusted_connector_redirect_uri(uri) for uri in redirect_uris):
+        return JSONResponse({"error": "invalid_redirect_uri"}, status_code=400)
+
+    token_endpoint_auth_method = payload.get("token_endpoint_auth_method", "none")
+    if token_endpoint_auth_method not in {"none", None}:
+        return JSONResponse({"error": "invalid_client_metadata"}, status_code=400)
+
+    _cleanup_oauth_clients()
+    client_id = f"dana_{secrets.token_urlsafe(24)}"
+    now = int(time.time())
+    _OAUTH_CLIENTS[client_id] = {
+        "redirect_uris": list(dict.fromkeys(redirect_uris)),
+        "created_at": time.time(),
+        "client_name": str(payload.get("client_name", "Dana MCP Client"))[:200],
+    }
+    return {
+        "client_id": client_id,
+        "client_id_issued_at": now,
+        "redirect_uris": _OAUTH_CLIENTS[client_id]["redirect_uris"],
+        "token_endpoint_auth_method": "none",
+        "grant_types": ["authorization_code"],
+        "response_types": ["code"],
+    }
+
+
+@app.post("/oauth/register", status_code=201)
+async def oauth_register_alias(request: Request):
+    """Alias for path proxies that rewrite the public registration route."""
+    return await oauth_register(request)
+
+
 @app.get("/.well-known/oauth-protected-resource")
 @app.get("/.well-known/oauth-protected-resource/mcp")
 async def oauth_protected_resource(request: Request):
@@ -318,16 +384,16 @@ async def oauth_protected_resource(request: Request):
 
 @app.get("/.well-known/oauth-authorization-server")
 async def oauth_authorization_server(request: Request):
-    host = settings.public_host or request.url.netloc
-    scheme = "https" if settings.public_host else request.url.scheme
-    issuer = f"{scheme}://{host}"
+    issuer = _issuer(request)
     return {
         "issuer": issuer,
         "authorization_endpoint": f"{issuer}/authorize",
         "token_endpoint": f"{issuer}/token",
+        "registration_endpoint": f"{issuer}/register",
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code"],
         "token_endpoint_auth_methods_supported": ["none"],
+        "token_endpoint_auth_signing_alg_values_supported": [],
         "code_challenge_methods_supported": ["S256"],
         "scopes_supported": ["mcp"],
     }
