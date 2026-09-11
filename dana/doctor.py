@@ -93,6 +93,33 @@ def _http_check(url: str) -> tuple[bool, str]:
         return False, type(exc).__name__
 
 
+def _tokenized_oauth_check(settings: Settings) -> tuple[bool, str]:
+    """Verify the exact legacy connector URL, not only Dana's root metadata."""
+    token_path = f"/{settings.require_auth_token()}{settings.mcp_path}"
+    base = f"http://{settings.host}:{settings.port}"
+    metadata_url = f"{base}/.well-known/oauth-protected-resource{token_path}"
+    try:
+        with urllib.request.urlopen(metadata_url, timeout=2) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if response.status != 200 or not payload.get("authorization_servers"):
+            return False, "protected-resource metadata is incomplete"
+        request = urllib.request.Request(
+            f"{base}{token_path}",
+            method="GET",
+            headers={"Accept": "application/json"},
+        )
+        try:
+            urllib.request.urlopen(request, timeout=2)
+            return False, "tokenized MCP probe returned success instead of OAuth challenge"
+        except urllib.error.HTTPError as exc:
+            challenge = exc.headers.get("WWW-Authenticate", "")
+            if exc.code == 401 and "resource_metadata=" in challenge:
+                return True, "401 OAuth challenge + tokenized metadata"
+            return False, f"HTTP {exc.code} without OAuth resource_metadata"
+    except Exception as exc:
+        return False, type(exc).__name__
+
+
 def collect_checks(settings_factory: Callable[[], Settings] = Settings) -> tuple[list[Check], dict[str, str]]:
     checks: list[Check] = []
     info = {"dana_version": _version(), "git_commit": _git_commit(), "platform": f"{platform.system()} {platform.release()}", "python": platform.python_version()}
@@ -142,6 +169,9 @@ def collect_checks(settings_factory: Callable[[], Settings] = Settings) -> tuple
         checks.append(Check("Health endpoint", "PASS" if ok else "FAIL", detail, "Inspect Dana logs if /health does not return HTTP 200."))
         ok, detail = _http_check(f"http://{settings.host}:{settings.port}/.well-known/oauth-protected-resource/mcp")
         checks.append(Check("OAuth discovery", "PASS" if ok else "FAIL", detail, "Verify dana/http.py and restart Dana after updating."))
+        if settings.normalized_mode() == "local":
+            ok, detail = _tokenized_oauth_check(settings)
+            checks.append(Check("Tokenized OAuth connector", "PASS" if ok else "FAIL", detail, "Restart Dana after updating; the exact /TOKEN/mcp URL must return a 401 OAuth challenge and reachable RFC 9728 metadata."))
 
     if settings.normalized_mode() == "local":
         tailscale = _run(["tailscale", "status", "--json"])

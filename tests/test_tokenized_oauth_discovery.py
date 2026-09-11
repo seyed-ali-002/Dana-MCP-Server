@@ -35,3 +35,18 @@ def test_tokenized_authorization_server_alias():
         response = client.get(f"/{token}/.well-known/oauth-authorization-server")
         assert response.status_code == 200
         assert response.json()["registration_endpoint"].endswith("/register")
+
+
+def test_tokenized_oauth_discovery_supports_path_aware_authorization_metadata():
+    token_path = _tokenized_path()
+    with TestClient(app) as client:
+        response = client.get(f"/.well-known/oauth-authorization-server{token_path}")
+        assert response.status_code == 200
+        assert response.json()["authorization_endpoint"].endswith("/authorize")
+
+
+def test_tokenized_oauth_discovery_supports_endpoint_local_metadata():
+    with TestClient(app) as client:
+        response = client.get(f"{_tokenized_path()}/.well-known/oauth-protected-resource")
+        assert response.status_code == 200
+        assert response.json()["resource"].endswith(_tokenized_path())

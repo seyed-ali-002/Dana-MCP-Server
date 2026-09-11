@@ -421,7 +421,8 @@ async def oauth_protected_resource(request: Request):
 
 
 @app.get("/.well-known/oauth-authorization-server")
-async def oauth_authorization_server(request: Request):
+@app.get("/.well-known/oauth-authorization-server/{resource_path:path}")
+async def oauth_authorization_server(request: Request, resource_path: str = ""):
     issuer = _issuer(request)
     return {
         "issuer": issuer,
@@ -499,13 +500,26 @@ if settings.normalized_mode() == "local":
 
 
     @app.get(f"/{token}/.well-known/oauth-authorization-server")
+    @app.get(f"/{token}/.well-known/oauth-authorization-server/mcp")
+    @app.get(f"/{token}{settings.mcp_path}/.well-known/oauth-authorization-server")
     async def oauth_authorization_server_token_local(request: Request):
         return await oauth_authorization_server(request)
 
 
     @app.get(f"/{token}/oauth-authorization-server")
+    @app.get(f"/{token}{settings.mcp_path}/oauth-authorization-server")
     async def oauth_authorization_server_token_alias(request: Request):
         return await oauth_authorization_server(request)
+
+
+    # Connector implementations have historically used three discovery patterns
+    # for a tokenized MCP resource. Keep all of them as aliases so the public
+    # /TOKEN/mcp contract remains unchanged while OAuth discovery is independent
+    # of a provider's URL-derivation strategy.
+    @app.get(f"/{token}{settings.mcp_path}/.well-known/oauth-protected-resource")
+    @app.get(f"/{token}{settings.mcp_path}/.well-known/oauth-protected-resource/mcp")
+    async def oauth_protected_resource_token_endpoint_local(request: Request):
+        return _oauth_protected_resource_metadata(request)
 
 
     app.mount(f"/{token}", LocalTokenMCPASGI(AcceptCompatibleASGI(_mcp_proxy)))
