@@ -391,7 +391,9 @@ def _is_tailscale_listener_conflict(details: str) -> bool:
 
 
 def _configure_funnel_command(token: str, port: int, funnel_port: int) -> subprocess.CompletedProcess[str]:
-    return _run_tailscale(["tailscale", "funnel", f"--https={funnel_port}", "--set-path", f"/{token}", "--yes", "--bg", f"http://127.0.0.1:{port}"], timeout=25)
+    # Dana exposes a canonical HTTPS origin. OAuth discovery requires sibling
+    # /.well-known endpoints to be reachable, so never hide MCP behind a token path.
+    return _run_tailscale(["tailscale", "funnel", f"--https={funnel_port}", "--yes", "--bg", str(port)], timeout=25)
 
 
 def configure_tailscale_local(token: str, port: int = 8765, funnel_port: int = 443) -> str:
@@ -409,7 +411,7 @@ def configure_tailscale_local(token: str, port: int = 8765, funnel_port: int = 4
             details = _tailscale_error(reset)
             raise RuntimeError("Tailscale Funnel has a conflicting listener and automatic reset failed" + (f": {details}" if details else "."))
         step(f"Recreating Funnel automatically with `tailscale funnel {port}`")
-        result = _run_tailscale(["tailscale", "funnel", "--yes", "--bg", str(port)], timeout=25)
+        result = _run_tailscale(["tailscale", "funnel", f"--https={funnel_port}", "--yes", "--bg", str(port)], timeout=25)
     if result.returncode != 0:
         details = _tailscale_error(result)
         raise RuntimeError("Could not configure Tailscale Funnel. Make sure Funnel is enabled for this Tailnet and the Tailscale client is up to date" + (f": {details}" if details else "."))
@@ -451,7 +453,7 @@ def install_local() -> None:
     step("Configuring secure Tailscale Funnel")
     public_host = configure_tailscale_local(token)
     set_local_public_host(public_host)
-    success(f"Secure endpoint configured: https://{public_host}/{token}/mcp")
+    success(f"Secure endpoint configured: https://{public_host}/mcp")
     clear()
     banner("INSTALLATION COMPLETE")
     table = Table.grid(padding=(0, 2))

@@ -116,7 +116,33 @@ class AcceptCompatibleASGI:
         await self.app(scope, receive, send)
 
 
-mcp_app = AcceptCompatibleASGI(_mcp_proxy)
+class OAuthProtectedMCPASGI:
+    """Require Dana OAuth bearer credentials on the canonical MCP transport."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http" or scope.get("path", "") not in {"/mcp", "/mcp/"}:
+            await self.app(scope, receive, send)
+            return
+        authorization = next((value.decode("latin1") for name, value in scope.get("headers", ()) if name.lower() == b"authorization"), "")
+        expected = f"Bearer {settings.require_auth_token()}"
+        if not _guard.token_matches(authorization, expected):
+            host = settings.public_host or next((value.decode("latin1") for name, value in scope.get("headers", ()) if name.lower() == b"host"), "")
+            scheme = "https" if settings.public_host else scope.get("scheme", "http")
+            metadata = f'{scheme}://{host}/.well-known/oauth-protected-resource/mcp'
+            response = JSONResponse(
+                {"error": "unauthorized"},
+                status_code=401,
+                headers={"WWW-Authenticate": f'Bearer resource_metadata="{metadata}"'},
+            )
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
+mcp_app = OAuthProtectedMCPASGI(AcceptCompatibleASGI(_mcp_proxy))
 
 # FastMCP's Streamable HTTP manager owns an AnyIO task group which must be
 # entered through the application's lifespan. Keep the FastMCP lifespan on
@@ -161,7 +187,7 @@ async def root(request: Request):
     host = settings.public_host or request.url.netloc
     scheme = "https" if settings.public_host else request.url.scheme
     token = settings.require_auth_token()
-    endpoint = f"{scheme}://{host}{settings.mcp_path}" if settings.normalized_mode() == "server" else f"{scheme}://{host}/{token}{settings.mcp_path}"
+    endpoint = f"{scheme}://{host}{settings.mcp_path}"
     return {
         "name": "Dana MCP Server",
         "status": "ok",
@@ -229,6 +255,21 @@ async def oauth_token(
     }
 
 
+@app.get("/.well-known/oauth-protected-resource")
+@app.get("/.well-known/oauth-protected-resource/mcp")
+async def oauth_protected_resource(request: Request):
+    """RFC 9728 metadata so MCP clients can discover Dana OAuth automatically."""
+    host = settings.public_host or request.url.netloc
+    scheme = "https" if settings.public_host else request.url.scheme
+    issuer = f"{scheme}://{host}"
+    return {
+        "resource": f"{issuer}{settings.mcp_path}",
+        "authorization_servers": [issuer],
+        "bearer_methods_supported": ["header"],
+        "scopes_supported": ["mcp"],
+    }
+
+
 @app.get("/.well-known/oauth-authorization-server")
 async def oauth_authorization_server(request: Request):
     host = settings.public_host or request.url.netloc
@@ -276,7 +317,7 @@ async def connector(request: Request):
         return unauthorized()
     host = settings.public_host or request.url.netloc
     scheme = "https" if settings.public_host else request.url.scheme
-    url = f"{scheme}://{host}{settings.mcp_path}" if settings.normalized_mode() == "server" else f"{scheme}://{host}/{token}{settings.mcp_path}"
+    url = f"{scheme}://{host}{settings.mcp_path}"
     return {"title": "Chatbot Connection Link", "url": url}
 
 
@@ -291,7 +332,6 @@ async def legacy_mcp_block(legacy_token: str):
 # /mcp/mcp, so the canonical transport is mounted at root. The public token is
 # a Mount prefix; Starlette strips that prefix and FastMCP still receives /mcp.
 # No BaseHTTPMiddleware sits in front of streaming responses.
-token = settings.require_auth_token()
-if settings.normalized_mode() != "server":
-    app.mount(f"/{token}", mcp_app)
+# MCP always has one canonical URL. OAuth discovery and protected-resource
+# metadata live on the same origin and work in both Local Funnel and Server modes.
 app.mount("/", mcp_app)

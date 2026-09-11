@@ -17,28 +17,27 @@ def test_connector_requires_auth(monkeypatch):
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == "Chatbot Connection Link"
-        assert data["url"] == f"https://example.ts.net/{settings.auth_token}/mcp"
+        assert data["url"] == "https://example.ts.net/mcp"
         mcp_response = client.get("/mcp", follow_redirects=False)
-        assert mcp_response.status_code != 404
-        assert mcp_response.status_code != 401
-        assert mcp_response.status_code != 400
+        assert mcp_response.status_code == 401
+        assert "resource_metadata=" in mcp_response.headers["www-authenticate"]
 
 
-def test_tokenized_mcp_path_normalizes_to_canonical_route():
-    token = settings.auth_token
+def test_mcp_requires_oauth_bearer_and_advertises_discovery_metadata():
     with TestClient(app) as client:
-        response = client.get(f"/{token}/mcp/", follow_redirects=False)
-        assert response.status_code != 404
-        assert response.status_code != 401
-        assert response.status_code != 400
+        response = client.get("/mcp", follow_redirects=False)
+        assert response.status_code == 401
+        assert "resource_metadata=" in response.headers["www-authenticate"]
+        metadata = client.get("/.well-known/oauth-protected-resource/mcp")
+        assert metadata.status_code == 200
+        assert metadata.json()["resource"].endswith("/mcp")
 
 
 
 def test_mcp_get_probe_is_not_rejected_for_missing_accept():
     with TestClient(app) as client:
         response = client.get("/mcp", follow_redirects=False)
-        assert response.status_code != 406
-        assert response.status_code != 404
+        assert response.status_code == 401
 
 
 def test_mcp_get_accept_header_compatibility():
@@ -46,7 +45,7 @@ def test_mcp_get_accept_header_compatibility():
         response = client.get(
             "/mcp", headers={"Accept": "application/json"}, follow_redirects=False
         )
-        assert response.status_code != 406
+        assert response.status_code == 401
 
 
 
@@ -74,10 +73,9 @@ def test_server_mode_mcp_uses_canonical_path(monkeypatch):
     try:
         with TestClient(app) as client:
             response = client.get("/mcp", follow_redirects=False)
-            assert response.status_code != 401
-            assert response.status_code != 404
+            assert response.status_code == 401
             legacy = client.get(f"/{settings.auth_token}/mcp", follow_redirects=False)
-            assert legacy.status_code == 401
+            assert legacy.status_code in {404, 401}
     finally:
         monkeypatch.setattr("dana.http.settings.deployment_mode", "local")
 
@@ -103,7 +101,7 @@ def test_mcp_streamable_http_lifecycle_initializes_task_group():
     with TestClient(app) as client:
         response = client.get(
             "/mcp",
-            headers={"Accept": "text/event-stream"},
+            headers={"Accept": "text/event-stream", "Authorization": f"Bearer {settings.auth_token}"},
             follow_redirects=False,
         )
         assert response.status_code != 500
@@ -112,5 +110,5 @@ def test_mcp_streamable_http_lifecycle_initializes_task_group():
 def test_mcp_transport_can_restart_with_a_fresh_session_manager():
     for _ in range(2):
         with TestClient(app) as client:
-            response = client.get("/mcp", follow_redirects=False)
+            response = client.get("/mcp", headers={"Authorization": f"Bearer {settings.auth_token}"}, follow_redirects=False)
             assert response.status_code != 500
