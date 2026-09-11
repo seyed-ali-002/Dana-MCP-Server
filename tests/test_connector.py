@@ -125,11 +125,23 @@ def test_mcp_transport_can_restart_with_a_fresh_session_manager():
 
 
 
-def test_authorize_accepts_current_openai_callback_origins():
-    from dana.http import _is_trusted_openai_redirect_uri
+def test_authorize_accepts_supported_connector_callback_origins():
+    from dana.http import _is_trusted_connector_redirect_uri
 
-    assert _is_trusted_openai_redirect_uri("https://chatgpt.com/connector/oauth/callback")
-    assert _is_trusted_openai_redirect_uri("https://chat.openai.com/connector/oauth/callback")
-    assert _is_trusted_openai_redirect_uri("https://openai.com/connector/oauth/callback")
-    assert not _is_trusted_openai_redirect_uri("http://chatgpt.com/connector/oauth/callback")
-    assert not _is_trusted_openai_redirect_uri("https://chatgpt.com.evil.example/callback")
+    # OpenAI / ChatGPT
+    assert _is_trusted_connector_redirect_uri("https://chatgpt.com/connector/oauth/callback")
+    assert _is_trusted_connector_redirect_uri("https://chat.openai.com/connector/oauth/callback")
+    assert _is_trusted_connector_redirect_uri("https://openai.com/connector/oauth/callback")
+
+    # Anthropic / Claude
+    assert _is_trusted_connector_redirect_uri("https://claude.ai/oauth/callback")
+    assert _is_trusted_connector_redirect_uri("https://console.anthropic.com/oauth/callback")
+
+    # xAI / Grok
+    assert _is_trusted_connector_redirect_uri("https://grok.com/oauth/callback")
+    assert _is_trusted_connector_redirect_uri("https://console.x.ai/oauth/callback")
+    assert _is_trusted_connector_redirect_uri("https://x.com/oauth/callback")
+
+    # Reject insecure and look-alike origins.
+    assert not _is_trusted_connector_redirect_uri("http://grok.com/oauth/callback")
+    assert not _is_trusted_connector_redirect_uri("https://claude.ai.evil.example/callback")

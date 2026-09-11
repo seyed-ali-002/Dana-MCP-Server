@@ -57,25 +57,31 @@ def _cleanup_oauth_codes() -> None:
         _OAUTH_CODES.pop(key, None)
 
 
-def _is_trusted_openai_redirect_uri(redirect_uri: str) -> bool:
-    """Accept HTTPS callback URLs used by current OpenAI connector clients.
+def _is_trusted_connector_redirect_uri(redirect_uri: str) -> bool:
+    """Accept HTTPS OAuth callbacks from supported AI connector providers.
 
-    OpenAI has used more than one callback path/domain over time. Validate the
-    origin instead of pinning a single path so connector UI updates do not
-    break existing Dana installations.
+    Dana is a multi-client MCP server. Providers can change callback paths, so
+    validation is origin-based and limited to trusted provider domains instead
+    of pinning one UI-specific redirect path.
     """
     try:
         parsed = urlsplit(redirect_uri)
     except ValueError:
         return False
     host = (parsed.hostname or "").lower()
-    return parsed.scheme == "https" and (
-        host == "chatgpt.com"
-        or host.endswith(".chatgpt.com")
-        or host == "chat.openai.com"
-        or host.endswith(".chat.openai.com")
-        or host == "openai.com"
-        or host.endswith(".openai.com")
+    trusted_domains = (
+        "chatgpt.com",
+        "chat.openai.com",
+        "openai.com",
+        "claude.ai",
+        "anthropic.com",
+        "grok.com",
+        "x.ai",
+        "x.com",
+    )
+    return parsed.scheme == "https" and any(
+        host == domain or host.endswith(f".{domain}")
+        for domain in trusted_domains
     )
 
 
@@ -240,7 +246,7 @@ async def root(request: Request):
 
 @app.get("/authorize")
 async def authorize(request: Request):
-    """OAuth 2.0 authorization-code endpoint with PKCE for ChatGPT reconnect."""
+    """OAuth 2.0 authorization-code endpoint with PKCE for supported connectors."""
     params = request.query_params
     if params.get("response_type") != "code":
         raise HTTPException(status_code=400, detail="unsupported_response_type")
@@ -251,7 +257,7 @@ async def authorize(request: Request):
     state = params.get("state", "")
     if not redirect_uri or not client_id or not challenge or method != "S256":
         raise HTTPException(status_code=400, detail="invalid_authorization_request")
-    if not _is_trusted_openai_redirect_uri(redirect_uri):
+    if not _is_trusted_connector_redirect_uri(redirect_uri):
         raise HTTPException(status_code=400, detail="invalid_redirect_uri")
     _cleanup_oauth_codes()
     code = secrets.token_urlsafe(32)
