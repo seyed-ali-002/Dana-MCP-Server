@@ -12,6 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_DIR = ROOT / ".dana"
 REPORT_JSON = REPORT_DIR / "report.json"
+# Keep the stable report at the project root for backwards compatibility.
+# Temporary atomic-write files are stored under .dana and never beside source files.
 REPORT_HTML = ROOT / "report.html"
 _LOCK = threading.Lock()
 MAX_EVENTS = 1000
@@ -19,7 +21,10 @@ MAX_EVENTS = 1000
 
 def _atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=".report-", dir=path.parent)
+    # Use one dedicated runtime temp directory for every report write. This
+    # prevents .report-* artifacts from ever appearing beside the source tree.
+    temp_dir = REPORT_DIR
+    fd, tmp = tempfile.mkstemp(prefix=".report-", dir=temp_dir)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(text)

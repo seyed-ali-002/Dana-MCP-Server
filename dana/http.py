@@ -225,6 +225,29 @@ class LocalTokenMCPASGI:
         # with POST initialize; returning a public 200 to either can make the
         # client conclude that this resource does not implement OAuth.
         if scope.get("type") == "http":
+            # A human opening the legacy URL in a browser should still see a
+            # useful endpoint response. MCP clients advertise JSON/event-stream
+            # and must receive the OAuth challenge instead.
+            method = scope.get("method", "")
+            accept = next((
+                value.lower()
+                for name, value in scope.get("headers", ())
+                if name.lower() == b"accept"
+            ), b"")
+            browser_probe = method == "GET" and (
+                b"text/html" in accept or accept in {b"", b"*/*"}
+            )
+            if browser_probe:
+                response = JSONResponse({
+                    "status": "ok",
+                    "service": "Dana MCP Server",
+                    "protocol": "streamable-http",
+                    "endpoint": scope.get("path", ""),
+                    "message": "Dana MCP endpoint is online. Use an MCP client to connect.",
+                })
+                await response(scope, receive, send)
+                return
+
             authorization = next((
                 value.decode("latin1")
                 for name, value in scope.get("headers", ())
@@ -429,7 +452,7 @@ async def oauth_authorization_server(request: Request, resource_path: str = ""):
         "authorization_endpoint": f"{issuer}/authorize",
         "token_endpoint": f"{issuer}/token",
         "registration_endpoint": f"{issuer}/register",
-        "client_id_metadata_document_supported": True,
+        "client_id_metadata_document_supported": False,
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code"],
         "token_endpoint_auth_methods_supported": ["none"],
