@@ -36,6 +36,15 @@ GitHub: [Mohsen Samadinejad](https://github.com/samadinejad)
 
 ---
 
+## نمای تصویری دانا
+
+برای اینکه تصویر کلی‌تری از محیط و اجرای دانا داشته باشید، چند Screenshot واقعی از روند توسعه در این مستندات قرار گرفته است:
+
+![نمای کلی Screenshotهای دانا](docs/images/dana-screenshots-overview.png)
+
+مراحل اتصال هر Client نیز به‌صورت تصویری در ادامه آمده است.
+
+
 # مراحل نصب و اتصال
 
 ## مرحله ۱ — نصب، ورود و فعال‌سازی Tailscale Funnel
@@ -225,13 +234,63 @@ DANA_WORKERS=5
 
 ## مرحله ۶ — اتصال ChatGPT، Claude یا Grok
 
-در بخش MCP / Custom Connector سرویس موردنظر، URL تولیدشده توسط Dana را وارد کنید.
+URL دقیق تولیدشده توسط دانا را در Client موردنظر وارد کنید.
 
-- **ChatGPT:** اتصال MCP یا Connector
-- **Claude:** Custom MCP Connection
-- **Grok:** Custom Connector
+### ChatGPT — ابتدا Developer Mode
 
-نام دقیق منوها ممکن است با تغییر رابط کاربری سرویس‌ها متفاوت باشد.
+برای ساخت Custom MCP App در ChatGPT، در حساب‌ها/Workspaceهایی که این قابلیت را ارائه می‌کنند ابتدا **Developer Mode** را فعال کنید. مسیر فعلی بسته به نوع حساب می‌تواند از **Settings → Apps → Advanced Settings** یا از بخش Workspace Apps باشد. OpenAI اعلام کرده که قابلیت‌های کامل MCP و رابط کاربری در حال توسعه و عرضه مرحله‌ای هستند. citeturn0search0
+
+![مراحل تصویری اتصال ChatGPT به دانا](docs/images/chatgpt-setup.svg)
+
+مراحل:
+
+1. وارد **Settings → Apps → Advanced Settings** شوید و **Developer Mode** را فعال کنید.
+2. وارد **Apps → Create** یا مسیر متناظر Workspace شوید.
+3. URL مربوط به MCP دانا را وارد و روش Authentication را انتخاب کنید.
+4. روی **Scan Tools** بزنید؛ در صورت درخواست Authorization را تکمیل کنید.
+5. App را ایجاد کنید و سپس در Chat از App/Connector دانا استفاده کنید.
+
+> مسیر دقیق و دسترسی به Developer Mode به Plan و سطح دسترسی Workspace بستگی دارد و رابط کاربری ممکن است تغییر کند. citeturn0search0
+
+### نصب Plugin / App
+
+در بعضی رابط‌های ChatGPT گزینه **Install plugin** نمایش داده می‌شود و در رابط‌های جدیدتر ممکن است همین جریان با عنوان **Apps** یا **Custom MCP App** نمایش داده شود. اگر گزینه Install plugin را می‌بینید، روند کلی به این صورت است:
+
+![مراحل تصویری نصب Plugin / App](docs/images/plugin-install.svg)
+
+**Apps / Plugins → Install plugin → Connect / Authorize → Enable در Chat**. citeturn0search14
+
+برای Custom MCP دانا، اگر Developer Mode در حساب شما فعال است، مسیر **Create custom app** را مبنا قرار دهید.
+
+### Claude — بدون Developer Mode
+
+Claude برای Remote MCP از **Custom Connector** استفاده می‌کند و به Developer Mode مشابه ChatGPT نیاز ندارد. در حساب‌های شخصی Pro/Max مسیر فعلی **Customize → Connectors → + → Add custom connector** است؛ سپس URL عمومی MCP دانا را وارد و Connect کنید. در Team/Enterprise ممکن است Owner ابتدا Connector را در سطح سازمان اضافه کند. citeturn2search0turn2search4
+
+![مراحل تصویری اتصال Claude به دانا](docs/images/claude-setup.svg)
+
+1. وارد **Customize → Connectors** شوید.
+2. **Add custom connector** را انتخاب کنید.
+3. نام و URL عمومی MCP دانا را وارد کنید.
+4. Connector را Add و در صورت نیاز Authenticate کنید.
+5. در Chat از **+ → Connectors** دانا را فعال کنید.
+
+Claude اتصال Remote MCP را از زیرساخت ابری Anthropic برقرار می‌کند؛ بنابراین Endpoint دانا باید از اینترنت عمومی قابل دسترس باشد. citeturn2search0
+
+### Grok — بدون Developer Mode
+
+در Grok نیز برای Custom MCP Connector نیازی به Developer Mode مشابه ChatGPT نیست. مسیر فعلی **grok.com/connectors → New Connector → Custom** است؛ سپس URL سرور MCP دانا را وارد و احراز هویت را تکمیل کنید. citeturn1search0
+
+![مراحل تصویری اتصال Grok به دانا](docs/images/grok-setup.svg)
+
+1. وارد **grok.com/connectors** شوید.
+2. روی **New Connector** بزنید.
+3. گزینه **Custom** را انتخاب و URL عمومی MCP دانا را وارد کنید.
+4. در صورت نیاز Authentication را تکمیل کنید.
+5. بررسی کنید ابزارهای دانا Discover شده و در گفتگو قابل استفاده هستند.
+
+مستندات فعلی Grok برای Custom Connector نیاز به Endpoint قابل دسترس از اینترنت عمومی را ذکر می‌کنند؛ Tailscale Funnel در Local Mode این Endpoint عمومی HTTPS را برای دانا فراهم می‌کند. citeturn1search0turn1search1
+
+> نام منوها و دسترسی‌ها ممکن است با تغییر رابط کاربری Clientها تغییر کند؛ در صورت تفاوت، UI فعلی سرویس را ملاک قرار دهید.
 
 ---
 
