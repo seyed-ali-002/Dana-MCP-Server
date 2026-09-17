@@ -41,9 +41,15 @@ REQUIRED = {
 
 VISIBLE = {
     "dana_search_tools",
+    "dana_list_tools",
+    "dana_help_tool",
     "dana_call_tool",
     "dana_batch_call",
     "dana_capabilities",
+    "dana_worker_status",
+    "dana_parallel_call",
+    "dana_runtime_health",
+    "dana_workspace_context",
     "dana_optimization_stats",
     "dana_context_build",
     "dana_context_compact",

@@ -61,6 +61,7 @@ def _load() -> dict:
     data.setdefault("operations", 0)
     data.setdefault("exact_tokens", 0)
     data.setdefault("estimated_tokens", 0)
+    data.setdefault("active_seconds", 0.0)
     data.setdefault("events", [])
     return data
 
@@ -69,7 +70,30 @@ def _render(data: dict) -> str:
     events = data["events"]
     total = int(data["input"]) + int(data["output"])
     now = time.time()
-    elapsed = (data["last"] or now) - data["start"]
+    # Usage time is the union of tool-execution intervals. This excludes idle time
+    # and also avoids double-counting overlapping operations when multiple workers
+    # execute tools concurrently.
+    intervals = []
+    for event in events:
+        end = float(event.get("time", 0.0))
+        duration = max(0.0, float(event.get("duration", 0.0))) / 1000.0
+        start = float(event.get("started", end - duration))
+        if end > start:
+            intervals.append((start, end))
+    intervals.sort()
+    active_union = 0.0
+    current_start = current_end = None
+    for start, end in intervals:
+        if current_start is None:
+            current_start, current_end = start, end
+        elif start <= current_end:
+            current_end = max(current_end, end)
+        else:
+            active_union += current_end - current_start
+            current_start, current_end = start, end
+    if current_start is not None:
+        active_union += current_end - current_start
+    elapsed = max(0.0, active_union)
 
     tools = Counter(str(e.get("tool", "unknown")) for e in events)
     workers = Counter(str(e.get("worker", "unknown")) for e in events)
@@ -124,7 +148,7 @@ def _render(data: dict) -> str:
 <div class="card"><div class="label">Output tokens</div><div class="value">{int(data["output"]):,}</div></div>
 <div class="card"><div class="label">Operations</div><div class="value">{int(data["operations"]):,}</div></div>
 <div class="card"><div class="label">Success rate</div><div class="value">{success_rate:.1f}%</div></div>
-<div class="card"><div class="label">Usage time</div><div class="value">{_fmt_duration(elapsed)}</div></div>
+<div class="card"><div class="label">Active usage time</div><div class="value">{_fmt_duration(elapsed)}</div></div>
 </div>
 <div class="two"><section class="panel"><h2>Token activity</h2><canvas id="chart" width="1100" height="300"></canvas></section>
 <section class="panel"><h2>Top tools</h2><div class="scroll"><table><tr><th>Tool</th><th>Calls</th></tr>{tool_rows}</table></div><h2>Workers</h2><div class="sub">{html.escape(", ".join(f"{name}: {count}" for name,count in workers.most_common()) or "No activity yet")}</div><h2>Average duration</h2><div class="value">{avg_duration:.0f} ms</div></section></div>
@@ -145,11 +169,12 @@ def update_report(tool: str, worker: str, number: int, input_tokens: int, output
         data["input"] += inp
         data["output"] += out
         data["operations"] += 1
+        data["active_seconds"] += max(0.0, float(duration_ms)) / 1000.0
         if exact:
             data["exact_tokens"] += inp + out
         else:
             data["estimated_tokens"] += inp + out
-        data["events"].append({"time": now, "worker": worker, "number": number, "tool": tool, "input": inp, "output": out, "duration": duration_ms, "success": success, "exact": exact, "source": source})
+        data["events"].append({"time": now, "started": now - max(0.0, float(duration_ms)) / 1000.0, "worker": worker, "number": number, "tool": tool, "input": inp, "output": out, "duration": duration_ms, "success": success, "exact": exact, "source": source})
         data["events"] = data["events"][-MAX_EVENTS:]
         _atomic_write(REPORT_JSON, json.dumps(data, ensure_ascii=False, separators=(",", ":")))
         _atomic_write(REPORT_HTML, _render(data))

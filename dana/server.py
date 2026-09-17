@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -140,23 +141,58 @@ WORKER_NAME = _worker_name(WORKER_NUMBER)
 
 
 class WorkerPool:
-    """Logical execution workers inside the single stateful MCP transport.
+    """Real bounded async worker slots inside the single stateful MCP transport.
 
-    MCP sessions stay in one process, while concurrent tool calls are assigned
-    round-robin to independent worker identities for scheduling, telemetry and
-    capacity control. This avoids cross-process session loss entirely.
+    MCP sessions remain in one transport process, while each configured worker has
+    its own execution gate. Concurrent client sessions can therefore execute in
+    parallel up to ``DANA_WORKERS`` without creating multiple MCP transports and
+    losing stateful Streamable HTTP sessions.
     """
 
     def __init__(self, size: int) -> None:
         self.size = size
         self._next = 0
         self._lock = threading.Lock()
+        self._slots = [None] * size
+        self._active = [0] * size
 
-    def acquire(self) -> tuple[int, str]:
+    def select(self) -> tuple[int, str]:
         with self._lock:
             number = self._next % self.size + 1
             self._next += 1
         return number, _worker_name(number)
+
+    async def run(self, operation: Any) -> tuple[int, str, Any]:
+        # Locks are created lazily because the MCP event loop is created after
+        # module import. One lock per worker gives a true concurrency ceiling.
+        if self._slots[0] is None:
+            async with asyncio.Lock():
+                if self._slots[0] is None:
+                    self._slots = [asyncio.Semaphore(1) for _ in range(self.size)]
+        number, name = self.select()
+        slot = self._slots[number - 1]
+        assert slot is not None
+        async with slot:
+            with self._lock:
+                self._active[number - 1] += 1
+            try:
+                return number, name, await operation()
+            finally:
+                with self._lock:
+                    self._active[number - 1] = max(0, self._active[number - 1] - 1)
+
+    def status(self) -> dict[str, Any]:
+        with self._lock:
+            active = list(self._active)
+        return {
+            "workers": self.size,
+            "active": sum(active),
+            "idle": self.size - sum(active),
+            "slots": [
+                {"number": i + 1, "name": _worker_name(i + 1), "active": value, "idle": value == 0}
+                for i, value in enumerate(active)
+            ],
+        }
 
 
 WORKER_POOL = WorkerPool(settings.normalized_workers())
@@ -184,10 +220,22 @@ mcp = FastMCP(
 register_tools(mcp)
 
 
+@mcp.tool()
+def dana_worker_status() -> dict[str, Any]:
+    """Return live worker-slot capacity for concurrent MCP sessions."""
+    return WORKER_POOL.status()
+
+
 # FastMCP centralizes every tool invocation through ToolManager.call_tool.
 # Wrapping that one point gives us one consistent worker/job log without
 # touching the dozens of individual tools.
 _original_call_tool = mcp._tool_manager.call_tool
+_ORCHESTRATION_TOOLS = {
+    "dana_call_tool",
+    "dana_batch_call",
+    "dana_parallel_call",
+    "dana_plan_execute",
+}
 
 
 async def _logged_call_tool(
@@ -196,16 +244,42 @@ async def _logged_call_tool(
     context: Any = None,
     convert_result: bool = False,
 ) -> Any:
-    worker_number, worker_name = WORKER_POOL.acquire()
     started = time.perf_counter()
     input_tokens = _estimate_tokens(arguments)
     token_exact = False
-    token_source = "tiktoken"
+    token_source = "estimate"
     success = True
+    worker_number = 1
+    worker_name = _worker_name(worker_number)
     try:
-        result = await _original_call_tool(
-            name, arguments, context=context, convert_result=convert_result
-        )
+        async def operation() -> Any:
+            # FastMCP currently invokes synchronous tools directly from its async
+            # Tool.run path. Without an executor, one blocking tool (for example
+            # `run_command`, file I/O, or a long analysis) stalls the entire event
+            # loop and makes multiple Workers look concurrent while actually running
+            # serially. Run synchronous tool calls in dedicated threads; async tools
+            # remain on the MCP event loop.
+            tool = mcp._tool_manager.get_tool(name)
+            if tool is not None and not tool.is_async:
+                return await asyncio.to_thread(
+                    lambda: asyncio.run(
+                        _original_call_tool(
+                            name, arguments, context=context, convert_result=convert_result
+                        )
+                    )
+                )
+            return await _original_call_tool(
+                name, arguments, context=context, convert_result=convert_result
+            )
+
+        if name in _ORCHESTRATION_TOOLS:
+            # Gateway/plan tools schedule other tools themselves. Reserving a worker
+            # for the outer orchestration call would consume one slot and can deadlock
+            # a one-worker installation when the inner call waits for that same slot.
+            result = await operation()
+            worker_number, worker_name = 1, "Gateway"
+        else:
+            worker_number, worker_name, result = await WORKER_POOL.run(operation)
         usage = _reported_usage(result)
         if usage is not None:
             input_tokens, output_tokens = usage
@@ -227,22 +301,26 @@ async def _logged_call_tool(
             and arguments.get("name")
         ):
             report_name = str(arguments["name"])
-        # Report generation performs disk sync and HTML rendering. Never keep an
-        # MCP response open while telemetry is being persisted.
-        threading.Thread(
-            target=update_report,
-            args=(report_name, worker_name, worker_number, input_tokens, output_tokens, duration_ms, success, token_exact, token_source),
-            daemon=True,
-        ).start()
-        worker_event(
-            worker_name,
-            worker_number,
-            report_name,
-            input_tokens,
-            output_tokens,
-            duration_ms,
-            success,
-        )
+        # Orchestration calls are control-plane wrappers around the real tool calls;
+        # their inner calls already produce telemetry. Recording both layers would
+        # double-count operations, tokens and execution time in the usage report.
+        if name not in _ORCHESTRATION_TOOLS:
+            # Report generation performs disk sync and HTML rendering. Never keep an
+            # MCP response open while telemetry is being persisted.
+            threading.Thread(
+                target=update_report,
+                args=(report_name, worker_name, worker_number, input_tokens, output_tokens, duration_ms, success, token_exact, token_source),
+                daemon=True,
+            ).start()
+            worker_event(
+                worker_name,
+                worker_number,
+                report_name,
+                input_tokens,
+                output_tokens,
+                duration_ms,
+                success,
+            )
 
 
 def _token_text(value: Any) -> str:

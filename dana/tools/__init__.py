@@ -18,6 +18,7 @@ from .memory import register_memory_tools
 from .optimization import register_optimization_tools
 from .output_style import register_output_style_tools
 from .performance_engine import register_performance_tools
+from .runtime_orchestration import register_runtime_orchestration_tools
 from .persian_writing import register_persian_writing_tools
 from .ui_sashimi import register_sashimi_ui_tools
 from .principal_engine import register_principal_engine_tools
@@ -52,3 +53,5 @@ def register_tools(mcp: FastMCP) -> None:
     register_optimization_tools(mcp)
     register_memory_tools(mcp)
     register_performance_tools(mcp)
+
+    register_runtime_orchestration_tools(mcp)

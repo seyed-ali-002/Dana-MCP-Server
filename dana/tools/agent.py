@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import json
 import os
 import platform
@@ -77,13 +78,41 @@ def register_agent_tools(mcp: FastMCP) -> None:
         target = _path(path)
         text = target.read_text(encoding="utf-8")
         count = text.count(old)
+        match_mode = "exact"
         if not count:
-            raise ValueError("Target text not found")
-        target.write_text(
-            text.replace(old, new) if replace_all else text.replace(old, new, 1),
-            encoding="utf-8",
-        )
-        return {"path": str(target), "matches": count}
+            # Planning agents frequently carry a stale copy of a file after another
+            # worker has edited it. Try a conservative whitespace-normalized match
+            # before failing, and return actionable evidence instead of a generic
+            # exception that makes the whole plan look broken.
+            normalized_old = "\\n".join(line.rstrip() for line in old.splitlines()).strip()
+            lines = text.splitlines()
+            normalized_lines = [line.rstrip() for line in lines]
+            needle = normalized_old.splitlines()
+            start = None
+            if needle:
+                width = len(needle)
+                for i in range(0, max(0, len(normalized_lines) - width + 1)):
+                    if normalized_lines[i:i + width] == needle:
+                        start = i
+                        break
+            if start is not None:
+                original = "\\n".join(lines[start:start + width])
+                replacement = new
+                text = text.replace(original, replacement, 1)
+                count = 1
+                match_mode = "whitespace_normalized"
+            else:
+                close = difflib.get_close_matches(old, [text], n=1, cutoff=0.55)
+                preview = old[:240].replace("\\n", "\\\\n")
+                raise ValueError(
+                    f"Target text not found. The file may have changed since the plan was created. "
+                    f"Re-read '{target}' and retry with current content; requested text starts with: {preview!r}. "
+                    f"Close match available: {bool(close)}"
+                )
+        else:
+            text = text.replace(old, new) if replace_all else text.replace(old, new, 1)
+        target.write_text(text, encoding="utf-8")
+        return {"path": str(target), "matches": count, "match_mode": match_mode}
 
     @mcp.tool()
     def delete_path(path: str, recursive: bool = False) -> str:

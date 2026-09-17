@@ -167,9 +167,16 @@ def _visible_names(mcp: FastMCP) -> set[str]:
     # capabilities remain registered and executable through dana_call_tool.
     return {
         "dana_search_tools",
+        "dana_list_tools",
+        "dana_help_tool",
         "dana_call_tool",
         "dana_batch_call",
         "dana_capabilities",
+        "dana_worker_status",
+        "dana_parallel_call",
+        "dana_plan_execute",
+        "dana_runtime_health",
+        "dana_workspace_context",
         "dana_optimization_stats",
         "dana_context_build",
         "dana_context_compact",
@@ -267,9 +274,9 @@ def register_optimization_tools(mcp: FastMCP) -> None:
         success = True
         result: Any = None
         try:
-            result = await bounded(raw_call_tool(
-                target, args, context=None, convert_result=False
-            ))
+            result = await bounded(
+                manager.call_tool(target, args, context=None, convert_result=False)
+            )
             result = optimize_result(result)
             _store_cache(target, args, result)
             return result
@@ -323,9 +330,9 @@ def register_optimization_tools(mcp: FastMCP) -> None:
             if hit:
                 return {"name": name, "ok": True, "cached": True, "result": cached}
             try:
-                result = await bounded(raw_call_tool(
-                    name, args, context=None, convert_result=False
-                ))
+                result = await bounded(
+                    manager.call_tool(name, args, context=None, convert_result=False)
+                )
                 _store_cache(name, args, result)
                 return {"name": name, "ok": True, "cached": False, "result": result}
             except (ValueError, RuntimeError, OSError) as exc:

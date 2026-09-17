@@ -47,7 +47,7 @@ def enrich(tool: Any) -> dict[str, Any]:
         "name": tool.name,
         "canonical_name": canonical_name(tool.name),
         "category": category_for(tool.name),
-        "description": (tool.description or "").strip(),
+        "description": (tool.description or "").strip() or f"Dana {category_for(tool.name)} capability: {tool.name}.",
         "input_schema": tool.parameters,
     }
 
