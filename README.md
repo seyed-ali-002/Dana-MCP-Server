@@ -48,9 +48,13 @@ Dana is built around three goals:
 
 # Installation and Connection
 
-## Step 1 — Install and sign in to Tailscale
+## Step 1 — Install, sign in, and enable Tailscale Funnel
 
-For the easiest Local Mode setup, install [Tailscale](https://tailscale.com/) first and sign in on the machine that will run Dana. Dana uses Tailscale Funnel to expose a secure HTTPS MCP endpoint.
+For the easiest Local Mode setup, install [Tailscale](https://tailscale.com/) first and sign in on the machine that will run Dana. Dana uses Tailscale Funnel to expose a public HTTPS MCP endpoint.
+
+![Dana and Tailscale Funnel architecture](docs/images/tailscale-funnel.svg)
+
+**Important:** signing in to Tailscale is not the final step. Funnel must also be enabled and approved for the tailnet. Tailscale's current CLI uses the short form `tailscale funnel <target>`; Dana's default backend port is `8765`. citeturn2search0turn2search1
 
 ### Linux
 
@@ -66,6 +70,25 @@ sudo tailscale up
 tailscale status
 ```
 
+After the device is connected, enable Funnel for Dana:
+
+```bash
+tailscale funnel 8765
+```
+
+Tailscale may open a confirmation/approval flow. **Approve Funnel** when prompted. The command maps the local Dana service to a public HTTPS Funnel endpoint. Funnel requires the tailnet's MagicDNS/HTTPS configuration and appropriate Funnel permission. citeturn2search1
+
+For persistent background operation, use:
+
+```bash
+tailscale funnel --bg 8765
+tailscale funnel status
+```
+
+The status command must show an active Funnel route before you continue with Dana. Tailscale documents `--bg` as the persistent mode and `tailscale funnel status` as the verification command. citeturn2search0turn2search5
+
+**Security:** Funnel publishes the selected local service to the public internet. Keep Dana's authentication enabled, do not share the tokenized MCP URL publicly, and do not expose sensitive services through Funnel. citeturn1search3turn0search12
+
 ### Windows
 
 Install Tailscale from:
@@ -74,6 +97,18 @@ Install Tailscale from:
 
 Open the application, choose **Log in**, complete browser authentication, and confirm that the device is connected.
 
+Then open an elevated terminal and enable Dana's Funnel. If Dana is using the default port:
+
+```powershell
+tailscale funnel 8765
+```
+
+Approve the Funnel confirmation if Tailscale asks for it, then verify:
+
+```powershell
+tailscale funnel status
+```
+
 ### macOS
 
 Install Tailscale from:
@@ -81,6 +116,14 @@ Install Tailscale from:
 [Tailscale for macOS](https://tailscale.com/download/mac)
 
 Sign in and confirm that the device is connected.
+
+Then enable Funnel for Dana:
+
+```bash
+tailscale funnel 8765
+```
+
+Approve the Funnel confirmation if prompted and verify with `tailscale funnel status`. On macOS, Funnel port sharing has platform-specific requirements; follow Tailscale's current Funnel documentation if the CLI reports a platform restriction. citeturn2search1
 
 > The Tailscale account must be allowed to use Funnel for Dana Local Mode.
 
@@ -266,18 +309,42 @@ python scripts/regenerate_token.py
 
 ---
 
+# Concurrent Workers and Agent Orchestration
+
+![Dana concurrent workers](docs/images/multi-worker.svg)
+
+Dana supports multiple AI clients and concurrent tool execution in the same MCP service. Worker slots are bounded by `DANA_WORKERS`, while MCP sessions remain in the stateful transport process so session state is not lost by creating a separate HTTP server for every worker.
+
+Each request is assigned to a worker slot, and independent work can run concurrently. The runtime also supports dependency-aware plans through `dana_plan_execute`: independent tasks can execute in parallel while dependent tasks wait for their prerequisites.
+
+Useful runtime tools include:
+
+- `dana_worker_status` — live worker capacity and active/idle slots
+- `dana_parallel_call` — concurrent execution of independent tool calls
+- `dana_plan_execute` — dependency-aware task DAG execution
+- `dana_runtime_health` — registry and orchestration health checks
+- `dana_workspace_context` — compact project/workspace context
+
+This architecture is intended for multiple simultaneous chats without serializing all tool calls behind Worker #1.
+
 # Performance and Context Optimization
 
 Dana is intentionally designed to avoid turning a large tool registry into unnecessary prompt overhead.
 
 ## Progressive Tool Discovery
 
+![Dana progressive tool discovery](docs/images/tool-discovery.svg)
+
 By default, the MCP client sees a small set of entry points:
 
 - `dana_search_tools`
+- `dana_list_tools`
+- `dana_help_tool`
 - `dana_call_tool`
 - `dana_batch_call`
 - `dana_capabilities`
+- `dana_worker_status`
+- `dana_runtime_health`
 - `dana_optimization_stats`
 
 The complete registry remains available internally and is discovered on demand. This keeps initial MCP context small even when Dana contains many capabilities.
@@ -522,6 +589,23 @@ playwright install chromium
 - `end_work_session`
 - `dana_session_start`
 - `dana_session_get`
+- `dana_plan_execute`
+- `dana_parallel_call`
+- `dana_workspace_context`
+- `dana_worker_status`
+- `dana_runtime_health`
+
+## Tool Discovery and Runtime Orchestration
+
+- `dana_list_tools`
+- `dana_search_tools`
+- `dana_help_tool`
+- `dana_capabilities`
+- `dana_parallel_call`
+- `dana_plan_execute`
+- `dana_workspace_context`
+- `dana_worker_status`
+- `dana_runtime_health`
 
 ## Token and Operation Analytics
 
@@ -576,6 +660,12 @@ Use `--show-url` only on a trusted terminal when you need the complete Local Mod
 
 ---
 
+# Usage Report and Observability
+
+Dana generates a local `report.html` containing token estimates/provider-reported usage, operation counts, worker activity, failures, and actual tool execution time. **Active usage time** sums the measured execution duration of operations; idle time between separate chats is not counted as usage.
+
+Runtime databases, reports, and local telemetry are kept out of Git.
+
 # Testing
 
 Run the test suite:
@@ -593,6 +683,8 @@ python3 -m py_compile dana/http.py
 ---
 
 # Architecture
+
+![Dana architecture](docs/images/dana-architecture.svg)
 
 Dana keeps the MCP layer lightweight while heavier analysis is performed on demand:
 

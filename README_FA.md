@@ -38,9 +38,13 @@ GitHub: [Mohsen Samadinejad](https://github.com/samadinejad)
 
 # مراحل نصب و اتصال
 
-## مرحله ۱ — نصب و ورود به Tailscale
+## مرحله ۱ — نصب، ورود و فعال‌سازی Tailscale Funnel
 
 برای ساده‌ترین حالت Local Mode ابتدا [Tailscale](https://tailscale.com/) را روی سیستمی که دانا اجرا می‌شود نصب و Login کنید. دانا برای ایجاد Endpoint عمومی HTTPS در Local Mode از Tailscale Funnel استفاده می‌کند.
+
+![معماری دانا و Tailscale Funnel](docs/images/tailscale-funnel.svg)
+
+**نکته مهم:** فقط Login کردن به Tailscale کافی نیست. Funnel نیز باید فعال و تأیید شود. پورت پیش‌فرض Backend دانا `8765` است؛ بنابراین بعد از اتصال Tailscale دستور `tailscale funnel 8765` را اجرا کنید و اگر صفحه تأیید Funnel نمایش داده شد آن را تأیید کنید. citeturn2search1
 
 ### Linux
 
@@ -54,17 +58,55 @@ sudo tailscale up
 tailscale status
 ```
 
+بعد از اتصال، Funnel دانا را فعال کنید:
+
+```bash
+tailscale funnel 8765
+```
+
+در اولین اجرا ممکن است Tailscale صفحه تأیید/فعال‌سازی Funnel را باز کند. **فعال‌سازی Funnel را تأیید کنید.** سپس برای اجرای دائمی در پس‌زمینه:
+
+```bash
+tailscale funnel --bg 8765
+tailscale funnel status
+```
+
+باید در خروجی `tailscale funnel status` یک Route فعال برای دانا مشاهده شود. گزینه `--bg` باعث می‌شود Funnel بعد از پایان ترمینال نیز به کار ادامه دهد. citeturn2search0turn2search5
+
+**امنیت:** Funnel سرویس انتخاب‌شده را روی اینترنت عمومی قابل دسترس می‌کند. احراز هویت دانا را فعال نگه دارید، URL شامل Token را عمومی نکنید و سرویس‌های حساس را از طریق Funnel منتشر نکنید. citeturn1search3turn0search12
+
 ### Windows
 
 [دانلود Tailscale برای Windows](https://tailscale.com/download/windows)
 
 برنامه را نصب کنید، روی **Log in** بزنید و پس از ورود مطمئن شوید وضعیت **Connected** است.
 
+سپس در ترمینال Administrator این دستور را اجرا کنید:
+
+```powershell
+tailscale funnel 8765
+```
+
+اگر صفحه تأیید Funnel نمایش داده شد آن را تأیید کنید و سپس وضعیت را بررسی کنید:
+
+```powershell
+tailscale funnel status
+```
+
 ### macOS
 
 [دانلود Tailscale برای macOS](https://tailscale.com/download/mac)
 
 برنامه را نصب و Login کنید و وضعیت اتصال را بررسی کنید.
+
+سپس:
+
+```bash
+tailscale funnel 8765
+tailscale funnel status
+```
+
+در اولین فعال‌سازی، تأیید Funnel را انجام دهید. در macOS محدودیت‌های نسخه/نوع نصب Tailscale را در مستندات فعلی بررسی کنید. citeturn2search1
 
 > حساب Tailscale باید اجازه استفاده از Funnel را داشته باشد.
 
@@ -220,14 +262,38 @@ python scripts/regenerate_token.py
 
 ---
 
+# اجرای همزمان Workerها و Orchestration
+
+![معماری همزمان Workerهای دانا](docs/images/multi-worker.svg)
+
+دانا می‌تواند همزمان به چند Chat Bot یا چند Session متصل باشد. تعداد Workerها با `DANA_WORKERS` مشخص می‌شود و هر درخواست می‌تواند روی یک Worker مستقل اجرا شود؛ در نتیجه چند درخواست همزمان پشت سر هم منتظر Worker شماره ۱ نمی‌مانند.
+
+برای کارهای مستقل می‌توان از `dana_parallel_call` استفاده کرد و برای کارهایی که وابستگی دارند از `dana_plan_execute`. در Plan، taskهای مستقل موازی و taskهای وابسته بعد از تکمیل پیش‌نیازها اجرا می‌شوند.
+
+ابزارهای اصلی این بخش:
+
+- `dana_worker_status` — وضعیت لحظه‌ای Workerها و ظرفیت آزاد
+- `dana_parallel_call` — اجرای همزمان ابزارهای مستقل
+- `dana_plan_execute` — اجرای Plan/DAG با dependency
+- `dana_runtime_health` — بررسی سلامت Runtime و Registry
+- `dana_workspace_context` — ساخت Context فشرده از Workspace
+
+![معماری کلی دانا](docs/images/dana-architecture.svg)
+
 # بهینه‌سازی سرعت و Token
 
 دانا تمام ابزارها را در ابتدای اتصال به Client ارسال نمی‌کند. به‌صورت پیش‌فرض فقط چند Entry Point سبک نمایش داده می‌شود:
 
+![Progressive Tool Discovery در دانا](docs/images/tool-discovery.svg)
+
 - `dana_search_tools`
+- `dana_list_tools`
+- `dana_help_tool`
 - `dana_call_tool`
 - `dana_batch_call`
 - `dana_capabilities`
+- `dana_worker_status`
+- `dana_runtime_health`
 - `dana_optimization_stats`
 
 سپس Client فقط ابزار موردنیاز را کشف می‌کند.
@@ -246,6 +312,28 @@ python scripts/regenerate_token.py
 - Tool Cost Statistics
 
 است.
+
+### کشف ابزار و Help
+
+برای دریافت فهرست کامل و تمیز ابزارها:
+
+```text
+dana_list_tools
+```
+
+برای جستجو، حتی Query خالی پشتیبانی می‌شود:
+
+```text
+dana_search_tools(query="", category="filesystem")
+```
+
+برای دریافت Schema، توضیح و نمونه استفاده یک ابزار:
+
+```text
+dana_help_tool(name="edit_file")
+```
+
+این لایه باعث می‌شود نام ابزارها، دسته‌بندی، توضیحات و Schemaها ساختار یکنواخت‌تری داشته باشند و Client مجبور نباشد کل Registry را در Context اولیه بارگذاری کند.
 
 برای نمایش Legacy Full Tool List:
 
@@ -323,6 +411,12 @@ Context Optimization
 - «Schema دیتابیس را بررسی و ریسک‌های Performance را مشخص کن.»
 
 ---
+
+# گزارش مصرف و Observability
+
+دانا یک `report.html` محلی تولید می‌کند که شامل Tokenها، تعداد عملیات، Workerها، خطاها و زمان اجرای واقعی عملیات است. **Active Usage Time** فقط مدت اجرای واقعی Toolها را جمع می‌کند و فاصله‌های بیکاری بین دو Chat را به زمان مصرف‌شده اضافه نمی‌کند.
+
+اطلاعات Runtime و گزارش محلی در Git commit نمی‌شوند.
 
 # تست
 
