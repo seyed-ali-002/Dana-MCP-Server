@@ -36,14 +36,6 @@ GitHub: [Mohsen Samadinejad](https://github.com/samadinejad)
 
 ---
 
-## نمای تصویری دانا
-
-برای اینکه تصویر کلی‌تری از محیط و اجرای دانا داشته باشید، چند Screenshot واقعی از روند توسعه در این مستندات قرار گرفته است:
-
-![نمای کلی Screenshotهای دانا](docs/images/dana-screenshots-overview.png)
-
-مراحل اتصال هر Client نیز به‌صورت تصویری در ادامه آمده است.
-
 
 # مراحل نصب و اتصال
 
@@ -240,15 +232,33 @@ URL دقیق تولیدشده توسط دانا را در Client موردنظر 
 
 برای ساخت Custom MCP App در ChatGPT، در حساب‌ها/Workspaceهایی که این قابلیت را ارائه می‌کنند ابتدا **Developer Mode** را فعال کنید. مسیر فعلی بسته به نوع حساب می‌تواند از **Settings → Apps → Advanced Settings** یا از بخش Workspace Apps باشد. OpenAI اعلام کرده که قابلیت‌های کامل MCP و رابط کاربری در حال توسعه و عرضه مرحله‌ای هستند. citeturn0search0
 
-![مراحل تصویری اتصال ChatGPT به دانا](docs/images/chatgpt-setup.svg)
+**مرحله ۱ — فعال‌سازی Developer Mode**
 
-مراحل:
+وارد **Settings → Apps → Advanced Settings** شوید و **Developer Mode** را فعال کنید.
 
-1. وارد **Settings → Apps → Advanced Settings** شوید و **Developer Mode** را فعال کنید.
-2. وارد **Apps → Create** یا مسیر متناظر Workspace شوید.
-3. URL مربوط به MCP دانا را وارد و روش Authentication را انتخاب کنید.
-4. روی **Scan Tools** بزنید؛ در صورت درخواست Authorization را تکمیل کنید.
-5. App را ایجاد کنید و سپس در Chat از App/Connector دانا استفاده کنید.
+![فعال‌سازی Developer Mode در ChatGPT — Screenshot واقعی](docs/images/screenshots/Screenshot%20from%202026-09-11%2014-04-59.png)
+
+**مرحله ۲ — ساخت MCP App دانا**
+
+وارد **Apps → Create** یا مسیر متناظر Workspace شوید.
+
+**مرحله ۳ — وارد کردن Endpoint دانا**
+
+URL مربوط به MCP دانا را وارد و روش Authentication را انتخاب کنید.
+
+
+
+**مرحله ۴ — Scan Tools و Authorization**
+
+روی **Scan Tools** بزنید؛ در صورت درخواست Authorization را تکمیل کنید.
+
+
+
+**مرحله ۵ — استفاده از دانا در Chat**
+
+App را ایجاد کنید و سپس در Chat از App/Connector دانا استفاده کنید.
+
+
 
 > مسیر دقیق و دسترسی به Developer Mode به Plan و سطح دسترسی Workspace بستگی دارد و رابط کاربری ممکن است تغییر کند. citeturn0search0
 
@@ -256,7 +266,23 @@ URL دقیق تولیدشده توسط دانا را در Client موردنظر 
 
 در بعضی رابط‌های ChatGPT گزینه **Install plugin** نمایش داده می‌شود و در رابط‌های جدیدتر ممکن است همین جریان با عنوان **Apps** یا **Custom MCP App** نمایش داده شود. اگر گزینه Install plugin را می‌بینید، روند کلی به این صورت است:
 
-![مراحل تصویری نصب Plugin / App](docs/images/plugin-install.svg)
+**مرحله ۱ — ورود به Apps / Plugins**
+
+وارد بخش Apps / Plugins شوید.
+
+![Apps / Plugins — Screenshot واقعی](docs/images/screenshots/Screenshot%20from%202026-09-13%2016-21-13.png)
+
+**مرحله ۲ — نصب Plugin / App**
+
+گزینه **Install plugin** یا معادل آن را انتخاب کنید.
+
+**مرحله ۳ — اتصال و Authorization**
+
+Dana را انتخاب کنید و مراحل اتصال/احراز هویت را تکمیل کنید.
+
+**مرحله ۴ — فعال‌سازی در Chat**
+
+Dana را برای گفت‌وگوی فعلی فعال کنید.
 
 **Apps / Plugins → Install plugin → Connect / Authorize → Enable در Chat**. citeturn0search14
 
@@ -266,7 +292,7 @@ URL دقیق تولیدشده توسط دانا را در Client موردنظر 
 
 Claude برای Remote MCP از **Custom Connector** استفاده می‌کند و به Developer Mode مشابه ChatGPT نیاز ندارد. در حساب‌های شخصی Pro/Max مسیر فعلی **Customize → Connectors → + → Add custom connector** است؛ سپس URL عمومی MCP دانا را وارد و Connect کنید. در Team/Enterprise ممکن است Owner ابتدا Connector را در سطح سازمان اضافه کند. citeturn2search0turn2search4
 
-![مراحل تصویری اتصال Claude به دانا](docs/images/claude-setup.svg)
+![اتصال Claude به دانا — Screenshot واقعی](docs/images/screenshots/Screenshot%20from%202026-09-17%2011-28-52.png)
 
 1. وارد **Customize → Connectors** شوید.
 2. **Add custom connector** را انتخاب کنید.
@@ -280,7 +306,9 @@ Claude اتصال Remote MCP را از زیرساخت ابری Anthropic برق�
 
 در Grok نیز برای Custom MCP Connector نیازی به Developer Mode مشابه ChatGPT نیست. مسیر فعلی **grok.com/connectors → New Connector → Custom** است؛ سپس URL سرور MCP دانا را وارد و احراز هویت را تکمیل کنید. citeturn1search0
 
-![مراحل تصویری اتصال Grok به دانا](docs/images/grok-setup.svg)
+![اتصال Grok به دانا — Screenshot واقعی](docs/images/screenshots/Screenshot%20from%202026-09-17%2011-29-00.png)
+
+![ابزارهای Grok — Screenshot واقعی](docs/images/screenshots/Screenshot%20from%202026-09-16%2014-35-02.png)
 
 1. وارد **grok.com/connectors** شوید.
 2. روی **New Connector** بزنید.
