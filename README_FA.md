@@ -236,7 +236,6 @@ URL دقیق تولیدشده توسط دانا را در Client موردنظر 
 
 وارد **Settings → Apps → Advanced Settings** شوید و **Developer Mode** را فعال کنید.
 
-![فعال‌سازی Developer Mode در ChatGPT — Screenshot واقعی](docs/images/screenshots/Screenshot%20from%202026-09-11%2014-04-59.png)
 
 **مرحله ۲ — ساخت MCP App دانا**
 
@@ -270,7 +269,6 @@ App را ایجاد کنید و سپس در Chat از App/Connector دانا ا�
 
 وارد بخش Apps / Plugins شوید.
 
-![Apps / Plugins — Screenshot واقعی](docs/images/screenshots/Screenshot%20from%202026-09-13%2016-21-13.png)
 
 **مرحله ۲ — نصب Plugin / App**
 
@@ -292,7 +290,6 @@ Dana را برای گفت‌وگوی فعلی فعال کنید.
 
 Claude برای Remote MCP از **Custom Connector** استفاده می‌کند و به Developer Mode مشابه ChatGPT نیاز ندارد. در حساب‌های شخصی Pro/Max مسیر فعلی **Customize → Connectors → + → Add custom connector** است؛ سپس URL عمومی MCP دانا را وارد و Connect کنید. در Team/Enterprise ممکن است Owner ابتدا Connector را در سطح سازمان اضافه کند. citeturn2search0turn2search4
 
-![اتصال Claude به دانا — Screenshot واقعی](docs/images/screenshots/Screenshot%20from%202026-09-17%2011-28-52.png)
 
 1. وارد **Customize → Connectors** شوید.
 2. **Add custom connector** را انتخاب کنید.
@@ -306,9 +303,7 @@ Claude اتصال Remote MCP را از زیرساخت ابری Anthropic برق�
 
 در Grok نیز برای Custom MCP Connector نیازی به Developer Mode مشابه ChatGPT نیست. مسیر فعلی **grok.com/connectors → New Connector → Custom** است؛ سپس URL سرور MCP دانا را وارد و احراز هویت را تکمیل کنید. citeturn1search0
 
-![اتصال Grok به دانا — Screenshot واقعی](docs/images/screenshots/Screenshot%20from%202026-09-17%2011-29-00.png)
 
-![ابزارهای Grok — Screenshot واقعی](docs/images/screenshots/Screenshot%20from%202026-09-16%2014-35-02.png)
 
 1. وارد **grok.com/connectors** شوید.
 2. روی **New Connector** بزنید.

@@ -279,7 +279,6 @@ ChatGPT's current custom MCP app flow requires **Developer Mode** for the releva
 
 Open **Settings → Apps → Advanced Settings** and enable **Developer Mode** when your account exposes that option.
 
-![ChatGPT Developer Mode — real screenshot](docs/images/screenshots/Screenshot%20from%202026-09-11%2014-04-59.png)
 
 **Step 2 — Create the Dana MCP App**
 
@@ -310,7 +309,6 @@ Some ChatGPT interfaces expose an **Install plugin** action, while newer interfa
 
 Open the client's Apps / Plugins area.
 
-![Apps / Plugins — real screenshot](docs/images/screenshots/Screenshot%20from%202026-09-13%2016-21-13.png)
 
 **Step 2 — Install the plugin/app**
 
@@ -330,7 +328,6 @@ For a custom Dana MCP server, prefer the current **Create custom app** flow abov
 
 Claude supports custom remote MCP connectors without the ChatGPT-style Developer Mode step. For individual Pro/Max users, the current flow is **Customize → Connectors → + → Add custom connector**, enter Dana's public MCP URL, then **Add** and **Connect**. Team/Enterprise owners may need to add the connector at the organization level first. citeturn2search0turn2search4
 
-![Claude custom connector — real screenshot](docs/images/screenshots/Screenshot%20from%202026-09-17%2011-28-52.png)
 
 1. Open **Customize → Connectors**.
 2. Select **Add custom connector**.
@@ -344,9 +341,7 @@ Claude connects to remote custom connectors from Anthropic's cloud, so Dana must
 
 Grok currently supports custom MCP connectors directly from **grok.com/connectors**: **New Connector → Custom → enter the MCP server URL → complete authentication**. citeturn1search0
 
-![Grok custom connector — real screenshot](docs/images/screenshots/Screenshot%20from%202026-09-17%2011-29-00.png)
 
-![Grok tools — real screenshot](docs/images/screenshots/Screenshot%20from%202026-09-16%2014-35-02.png)
 
 1. Open **grok.com/connectors**.
 2. Click **New Connector**.
