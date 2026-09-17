@@ -234,7 +234,7 @@ URL دقیق تولیدشده توسط دانا را در Client موردنظر 
 
 **مرحله ۱ — فعال‌سازی Developer Mode**
 
-وارد **Settings → Apps → Advanced Settings** شوید و **Developer Mode** را فعال کنید.
+وارد **Settings → Security** شوید و **Developer Mode** را فعال کنید.
 
 
 **مرحله ۲ — ساخت MCP App دانا**

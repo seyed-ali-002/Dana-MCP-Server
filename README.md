@@ -277,7 +277,7 @@ ChatGPT's current custom MCP app flow requires **Developer Mode** for the releva
 
 **Step 1 — Enable Developer Mode**
 
-Open **Settings → Apps → Advanced Settings** and enable **Developer Mode** when your account exposes that option.
+Open **Settings → Security** and enable **Developer Mode** when your account exposes that option.
 
 
 **Step 2 — Create the Dana MCP App**
