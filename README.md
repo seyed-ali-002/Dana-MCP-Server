@@ -234,6 +234,14 @@ https://mcp.example.com/mcp
 
 Dana also exposes OAuth authorization metadata and a PKCE-based authorization-code flow for compatible reconnect flows, independently from My_PC or another local connector.
 
+### Connection-link security
+
+The generated ChatGPT connection URL is the canonical `/mcp` endpoint and **never contains Dana's long-lived bearer token**. Dana authenticates compatible clients through **OAuth 2.0 Authorization Code + PKCE**. The authorization code is single-use and short-lived, and the PKCE verifier is retained by the initiating client, so copying an authorization URL alone does not transfer an authenticated MCP session to another device.
+
+The older `/<token>/mcp` URL remains only as a compatibility endpoint for existing local installations; it is not exposed by the generated connector link or OAuth resource metadata.
+
+Opening the generated `/mcp` URL directly on another device does not authenticate that device: it receives the OAuth challenge and must complete its own authorized client flow. A server cannot cryptographically prove that two separate ChatGPT sessions are the same physical device; device-level identity must be supplied by the client/platform.
+
 ---
 
 ## Step 5 — Start and Stop Dana
@@ -277,7 +285,7 @@ ChatGPT's current custom MCP app flow requires **Developer Mode** for the releva
 
 **Step 1 — Enable Developer Mode**
 
-Open **Settings → Security** and enable **Developer Mode** when your account exposes that option.
+Open **Settings → Security** and enable **Developer Mode** when your account exposes that option. The exact location can vary by plan/workspace; OpenAI currently documents **Settings → Apps → Advanced Settings** for some accounts and workspace-specific paths for others. citeturn0search0
 
 
 **Step 2 — Create the Dana MCP App**

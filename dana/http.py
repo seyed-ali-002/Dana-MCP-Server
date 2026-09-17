@@ -56,10 +56,10 @@ def _issuer(request: Request) -> str:
 
 
 def _resource_url(request: Request) -> str:
-    issuer = _issuer(request)
-    if settings.normalized_mode() == "local":
-        return f"{issuer}/{settings.require_auth_token()}{settings.mcp_path}"
-    return f"{issuer}{settings.mcp_path}"
+    # The canonical connection resource is always /mcp. Never advertise the
+    # legacy /TOKEN/mcp compatibility URL in OAuth metadata because doing so
+    # would reintroduce the durable bearer credential into discovery data.
+    return f"{_issuer(request)}{settings.mcp_path}"
 
 
 def _oauth_protected_resource_metadata(request: Request) -> dict[str, object]:
@@ -492,12 +492,18 @@ async def connector(request: Request):
         return unauthorized()
     host = settings.public_host or request.url.netloc
     scheme = "https" if settings.public_host else request.url.scheme
-    url = (
-        f"{scheme}://{host}{settings.mcp_path}"
-        if settings.normalized_mode() == "server"
-        else f"{scheme}://{host}/{token}{settings.mcp_path}"
-    )
-    return {"title": "Chatbot Connection Link", "url": url}
+    # Never expose Dana's durable bearer credential in the connection URL.
+    # ChatGPT-compatible connectors use OAuth/PKCE on the canonical /mcp
+    # resource; the old /TOKEN/mcp URL remains only as a local compatibility
+    # endpoint for already-configured clients. A copied connection URL therefore
+    # contains no reusable server credential.
+    url = f"{scheme}://{host}{settings.mcp_path}"
+    return {
+        "title": "Chatbot Connection Link",
+        "url": url,
+        "authentication": "OAuth 2.0 + PKCE",
+        "security": "The server token is never embedded in the connection URL.",
+    }
 
 
 # Local mode deliberately keeps the token in the public URL. The tokenized

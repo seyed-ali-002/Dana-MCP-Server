@@ -17,7 +17,7 @@ def test_local_tokenized_oauth_metadata_rfc_discovery():
     with TestClient(app) as client:
         response = client.get(f"/.well-known/oauth-protected-resource{token_path}")
         assert response.status_code == 200
-        assert response.json()["resource"].endswith(token_path)
+        assert response.json()["resource"].endswith(settings.mcp_path)
         assert response.json()["authorization_servers"]
 
 
@@ -26,7 +26,7 @@ def test_local_tokenized_oauth_metadata_path_local_alias():
     with TestClient(app) as client:
         response = client.get(f"/{token}/.well-known/oauth-protected-resource")
         assert response.status_code == 200
-        assert response.json()["resource"].endswith(_tokenized_path())
+        assert response.json()["resource"].endswith(settings.mcp_path)
 
 
 def test_tokenized_authorization_server_alias():
@@ -49,4 +49,4 @@ def test_tokenized_oauth_discovery_supports_endpoint_local_metadata():
     with TestClient(app) as client:
         response = client.get(f"{_tokenized_path()}/.well-known/oauth-protected-resource")
         assert response.status_code == 200
-        assert response.json()["resource"].endswith(_tokenized_path())
+        assert response.json()["resource"].endswith(settings.mcp_path)

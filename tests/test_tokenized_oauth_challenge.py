@@ -49,3 +49,27 @@ def test_tokenized_mcp_accepts_dana_bearer():
             },
         )
         assert response.status_code == 200
+
+
+def test_connector_link_never_contains_dana_bearer_token():
+    with TestClient(app) as client:
+        response = client.get(
+            "/connector",
+            headers={"Authorization": f"Bearer {settings.require_auth_token()}"},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["url"].endswith(settings.mcp_path)
+        assert settings.require_auth_token() not in payload["url"]
+        assert payload["authentication"] == "OAuth 2.0 + PKCE"
+
+
+def test_public_connection_url_requires_oauth_bearer():
+    with TestClient(app) as client:
+        response = client.post(
+            settings.mcp_path,
+            headers={"Accept": "application/json"},
+            json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        )
+        assert response.status_code == 401
+        assert "resource_metadata=" in response.headers["www-authenticate"]

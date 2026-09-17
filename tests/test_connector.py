@@ -17,7 +17,9 @@ def test_connector_requires_auth(monkeypatch):
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == "Chatbot Connection Link"
-        assert data["url"] == f"https://example.ts.net/{settings.auth_token}/mcp"
+        assert data["url"] == "https://example.ts.net/mcp"
+        assert settings.auth_token not in data["url"]
+        assert data["authentication"] == "OAuth 2.0 + PKCE"
         mcp_response = client.get(
             f"/{settings.auth_token}/mcp",
             headers={"Accept": "application/json, text/event-stream"},
