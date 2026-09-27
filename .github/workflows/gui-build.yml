@@ -66,6 +66,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repository for GitHub CLI release operations
+        uses: actions/checkout@v5
+
       - name: Download desktop bundles
         uses: actions/download-artifact@v4
         with:
