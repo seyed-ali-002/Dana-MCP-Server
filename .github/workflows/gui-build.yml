@@ -38,9 +38,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2
-      - name: Build Dana Desktop
-        shell: ${{ matrix.shell }}
-        run: ${{ matrix.build_script }}
+      - name: Build Dana Desktop (Linux)
+        if: startsWith(matrix.platform, 'ubuntu')
+        shell: bash
+        run: ./packaging/build_linux.sh
+      - name: Build Dana Desktop (Windows)
+        if: startsWith(matrix.platform, 'windows')
+        shell: pwsh
+        run: ./packaging/build_windows.ps1
+      - name: Build Dana Desktop (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        shell: bash
+        run: ./packaging/build_macos.sh
       - uses: actions/upload-artifact@v4
         with:
           name: Dana-${{ matrix.platform }}
