@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+.pytest_cache
+.ruff_cache
+.mypy_cache
+__pycache__
+*.pyc
+.dana
+report.html
+*.db
+*.db-shm
+*.db-wal
+.env
+docs/images/screenshots
+tests

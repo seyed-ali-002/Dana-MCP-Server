@@ -1,0 +1,37 @@
+services:
+  dana:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dana-mcp-server:local
+    container_name: dana-mcp-server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DANA_HOST: 0.0.0.0
+      DANA_PORT: 8765
+      DANA_RUNTIME_DIR: /data/dana
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - dana_runtime:/data/dana
+      - .:/workspace:rw
+    working_dir: /workspace
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  dana_runtime:

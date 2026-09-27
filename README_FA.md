@@ -113,6 +113,52 @@ tailscale funnel status
 
 ---
 
+## مسیر سریع — Docker (پیشنهادی)
+
+برای ساده‌ترین نصب، Docker اکنون Runtime پیشنهادی دانا است. کاربر لازم نیست Python، Virtualenv یا وابستگی‌های دانا را به‌صورت دستی نصب کند.
+
+بعد از نصب Docker Desktop در Windows/macOS یا Docker Engine به‌همراه Compose v2 در Linux، از داخل پوشه دانا اجرا کنید:
+
+```bash
+dana install
+```
+
+اگر دستور `dana` هنوز در PATH نیست:
+
+```bash
+python3 -m dana install
+```
+
+این دستور در صورت نیاز تنظیمات Local را ایجاد می‌کند، Image را می‌سازد، دانا را در پس‌زمینه اجرا می‌کند و Runtime را برای Restartهای بعدی پایدار نگه می‌دارد. سپس برای ایجاد Endpoint عمومی امن:
+
+```bash
+dana connect
+```
+
+دستورات روزمره:
+
+```bash
+dana start
+dana stop
+dana restart
+dana status
+dana logs
+dana update
+dana uninstall
+```
+
+فقط در صورتی از `dana uninstall --purge` استفاده کنید که بخواهید Volume مربوط به Runtime دانا نیز حذف شود.
+
+Container عمداً پورت `8765` را فقط روی `127.0.0.1` منتشر می‌کند. مرز عمومی همچنان Tailscale Funnel یا Reverse Proxy است. خود پروژه در `/workspace` در دسترس Container است و State مربوط به Runtime در Volume اختصاصی Docker نگهداری می‌شود.
+
+Docker لایه Runtime است و کاربر عادی نیازی به کار مستقیم با Docker Compose ندارد.
+
+### حالت جایگزین Native
+
+اگر Docker در سیستم موجود نباشد، `dana install` به‌صورت خودکار Installer فعلی دانا را اجرا می‌کند تا پروژه روی سیستم‌هایی که Docker ندارند نیز قابل استفاده باشد.
+
+---
+
 ## مرحله ۲ — دریافت پروژه
 
 ```bash
@@ -167,13 +213,13 @@ Dana
    └── Intelligence
 ```
 
-لینک اتصال معمولاً مشابه این است:
+Endpoint اتصال استاندارد دانا این است:
 
 ```text
-https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
+https://<machine>.<tailnet>.ts.net/mcp
 ```
 
-همان لینکی که Dashboard دانا نمایش می‌دهد را در MCP Connector وارد کنید.
+توکن دائمی احراز هویت دیگر داخل URL قرار نمی‌گیرد و Clientهای سازگار از OAuth 2.0 + PKCE استفاده می‌کنند.
 
 ### Server Mode
 

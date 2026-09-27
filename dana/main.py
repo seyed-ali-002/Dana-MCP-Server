@@ -25,7 +25,9 @@ def _public_url() -> str | None:
     authority = settings.public_host
     if settings.public_port and settings.public_port not in (80, 443):
         authority = f"{authority}:{settings.public_port}"
-    return f"https://{authority}/{settings.require_auth_token()}{settings.mcp_path}"
+    # Never advertise the durable bearer token in a connection URL. OAuth/PKCE
+    # discovery and authorization are performed on the canonical MCP resource.
+    return f"https://{authority}{settings.mcp_path}"
 
 
 def _runtime_dir() -> Path:

@@ -97,16 +97,89 @@ def _reexec_inside_dana_venv() -> None:
     os.execv(str(target), [str(target), "-m", "dana", *sys.argv[1:]])
 
 
+def _docker_env_ready() -> bool:
+    env_path = ROOT / ".env"
+    return env_path.exists() and bool(os.environ.get("DANA_AUTH_TOKEN") or any(
+        line.startswith("DANA_AUTH_TOKEN=") and line.split("=", 1)[1].strip()
+        for line in env_path.read_text(encoding="utf-8").splitlines()
+    ))
+
+
+def _docker_install() -> None:
+    from . import container
+    from .installer import write_env
+
+    if not _docker_env_ready():
+        workers = int(os.getenv("DANA_WORKERS", "5"))
+        workers = max(1, min(workers, 128))
+        write_env("local", workers=workers)
+    console.print("[cyan]Building Dana container...[/cyan]")
+    container.install()
+    console.print("[cyan]Starting Dana...[/cyan]")
+    container.start()
+    console.print("[bold green]✓ Dana is running.[/bold green]")
+    console.print("[cyan]Local MCP:[/cyan] http://127.0.0.1:8765/mcp")
+    console.print("[dim]Run 'dana connect' to expose it securely through Tailscale Funnel.[/dim]")
+
+
+def _docker_connect() -> None:
+    from . import container
+    from .installer import configure_tailscale_local, set_local_public_host
+
+    if not _docker_env_ready():
+        raise RuntimeError("Dana is not installed. Run 'dana install' first.")
+    from .config import settings
+    host = configure_tailscale_local(settings.require_auth_token(), port=8765)
+    set_local_public_host(host)
+    container.restart()
+    console.print(f"[bold green]✓ Secure MCP endpoint:[/bold green] https://{host}/mcp")
+
+
+def _handle_command(command: str) -> bool:
+    from . import container
+
+    if command == "install":
+        if container.is_available():
+            _docker_install()
+        else:
+            console.print("[yellow]Docker is unavailable; opening the native Dana installer.[/yellow]")
+            from .installer import main as installer_main
+            installer_main()
+        return True
+    if command == "connect":
+        _docker_connect()
+        return True
+    if command == "start":
+        container.start(); return True
+    if command == "stop":
+        container.stop(); return True
+    if command == "restart":
+        container.restart(); return True
+    if command == "status":
+        container.status(); return True
+    if command == "update":
+        container.update(); return True
+    if command == "logs":
+        container.logs(follow="--follow" in sys.argv[2:] or "-f" in sys.argv[2:]); return True
+    if command == "uninstall":
+        remove_data="--purge" in sys.argv[2:]
+        container.uninstall(remove_data=remove_data); return True
+    return False
+
+
 def main() -> None:
     _reexec_inside_dana_venv()
-    if len(sys.argv) > 1 and sys.argv[1] == "doctor":
+    command = sys.argv[1].lower() if len(sys.argv) > 1 else ""
+    if command and _handle_command(command):
+        return
+    if command == "doctor":
         from .doctor import main as doctor_main
         sys.argv = [sys.argv[0], *sys.argv[2:]]
         doctor_main()
         return
     if not os.environ.get("DANA_AUTH_TOKEN"):
         console.print("[bold red]Dana is not installed or configured.[/bold red]")
-        console.print("Run [bold cyan]python install.py[/bold cyan] first.")
+        console.print("Run [bold cyan]dana install[/bold cyan] first.")
         raise SystemExit(1)
     run_server()
 

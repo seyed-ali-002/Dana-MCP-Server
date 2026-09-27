@@ -88,7 +88,7 @@ tailscale funnel status
 
 The status command must show an active Funnel route before you continue with Dana. Tailscale documents `--bg` as the persistent mode and `tailscale funnel status` as the verification command. citeturn2search0turn2search5
 
-**Security:** Funnel publishes the selected local service to the public internet. Keep Dana's authentication enabled, do not share the tokenized MCP URL publicly, and do not expose sensitive services through Funnel. citeturn1search3turn0search12
+**Security:** Funnel publishes the selected local service to the public internet. Keep Dana's authentication enabled, do not share authenticated connection material, and do not expose sensitive services through Funnel. citeturn1search3turn0search12
 
 ### Windows
 
@@ -127,6 +127,52 @@ tailscale funnel 8765
 Approve the Funnel confirmation if prompted and verify with `tailscale funnel status`. On macOS, Funnel port sharing has platform-specific requirements; follow Tailscale's current Funnel documentation if the CLI reports a platform restriction. citeturn2search1
 
 > The Tailscale account must be allowed to use Funnel for Dana Local Mode.
+
+---
+
+## Fast path — Docker (recommended)
+
+For the simplest installation, Docker is now the preferred runtime. You do not need to create a Python virtual environment manually.
+
+After installing Docker Desktop (Windows/macOS) or Docker Engine + Compose v2 (Linux), from the Dana directory run:
+
+```bash
+dana install
+```
+
+If the `dana` command is not installed yet, use:
+
+```bash
+python3 -m dana install
+```
+
+The command creates the local configuration when needed, builds the image, starts Dana in the background, and keeps the runtime persistent across restarts. Then expose it securely with:
+
+```bash
+dana connect
+```
+
+Daily operations:
+
+```bash
+dana start
+dana stop
+dana restart
+dana status
+dana logs
+dana update
+dana uninstall
+```
+
+Use `dana uninstall --purge` only when you also want to remove the Docker-managed Dana runtime volume.
+
+The container intentionally binds port `8765` to `127.0.0.1` only. Tailscale Funnel or a reverse proxy remains the public boundary. The project directory is mounted as `/workspace`, while runtime databases/log state are stored in a dedicated Docker volume.
+
+Docker is the runtime layer; users do not need to interact with Docker Compose directly.
+
+### Native fallback
+
+If Docker is unavailable, `dana install` automatically opens Dana's existing native installer. This keeps the project usable on systems where Docker cannot be installed.
 
 ---
 
@@ -189,13 +235,13 @@ Dana
    └── Intelligence
 ```
 
-Dana displays a tokenized connection URL similar to:
+Dana exposes the canonical MCP endpoint:
 
 ```text
-https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
+https://<machine>.<tailnet>.ts.net/mcp
 ```
 
-Use the URL shown by Dana as the MCP connection URL.
+Dana no longer puts the long-lived authentication token in the connection URL. Compatible clients authenticate through OAuth 2.0 + PKCE.
 
 ### Server Mode — VPS or dedicated server
 
