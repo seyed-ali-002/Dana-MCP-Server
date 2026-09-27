@@ -1,7 +1,8 @@
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
-ROOT = Path(__file__).resolve().parents[1]
+SPEC_PATH = Path("packaging/dana-agent.spec").resolve()
+ROOT = SPEC_PATH.parents[1]
 datas, binaries, hiddenimports = collect_all("dana")
 
 a = Analysis(

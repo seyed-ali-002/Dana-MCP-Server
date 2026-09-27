@@ -28,3 +28,9 @@ Thumbs.db
 
 report.html
 .report-*
+
+
+# Local packaging/build outputs
+.build-venv/
+build/
+dist/
