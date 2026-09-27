@@ -24,6 +24,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if urlparse(self.path).path == "/api/setup/status":
             self._send(setup.status().to_dict()); return
+        if urlparse(self.path).path == "/api/setup/usage":
+            self._send(setup.token_usage()); return
         self._send({"error": "not_found"}, 404)
     def do_POST(self) -> None:
         action = {
