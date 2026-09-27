@@ -124,6 +124,52 @@ def status() -> SetupStatus:
         action, message = "enable_funnel", "Tailscale Funnel is not active."
     return SetupStatus(installed, backend, hostname, active, funnel_host, _dana_running(), public_url, action, message)
 
+def token_usage() -> dict[str, object]:
+    """Read lightweight token totals for the desktop control center."""
+    import sqlite3
+
+    candidates: list[Path] = []
+    for value in (
+        os.getenv("DANA_ANALYTICS_PATH"),
+        os.getenv("DANA_WORKSPACE"),
+        os.getenv("DANA_ROOT"),
+    ):
+        if value:
+            candidates.append(Path(value))
+    try:
+        candidates.append(Path.cwd())
+    except OSError:
+        pass
+    candidates.extend([Path(__file__).resolve().parents[1], Path.home() / ".dana"])
+
+    seen: set[Path] = set()
+    for base in candidates:
+        db = base if base.name == "analytics.db" else base / ".dana" / "analytics.db"
+        try:
+            db = db.resolve()
+        except OSError:
+            continue
+        if db in seen or not db.is_file():
+            continue
+        seen.add(db)
+        try:
+            with sqlite3.connect(db, timeout=0.5) as conn:
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), "
+                    "COALESCE(SUM(total_tokens),0), COUNT(*) FROM events"
+                ).fetchone()
+            return {
+                "available": True,
+                "input_tokens": int(row[0]),
+                "output_tokens": int(row[1]),
+                "total_tokens": int(row[2]),
+                "operations": int(row[3]),
+            }
+        except (sqlite3.Error, OSError):
+            continue
+    return {"available": False, "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "operations": 0}
+
+
 def verify_public_endpoint(host: str, timeout: float = 8.0) -> bool:
     import urllib.error
     url = f"https://{host}/mcp"
