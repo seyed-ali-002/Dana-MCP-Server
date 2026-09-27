@@ -49,84 +49,71 @@ Dana is built around three goals:
 
 # Installation and Connection
 
-## Step 1 — Install, sign in, and enable Tailscale Funnel
+## Step 1 — Graphical setup (recommended)
 
-For the easiest Local Mode setup, install [Tailscale](https://tailscale.com/) first and sign in on the machine that will run Dana. Dana uses Tailscale Funnel to expose a public HTTPS MCP endpoint.
+Dana now includes a graphical setup flow. The GUI handles the complete Local Mode network sequence:
+
+1. Detect Tailscale.
+2. Install Tailscale when it is missing.
+3. Open the Tailscale authentication flow.
+4. Wait for the device to become connected.
+5. Start Dana.
+6. Enable Tailscale Funnel.
+7. Open the Funnel approval flow when Tailscale requires it.
+8. Verify the public Funnel hostname.
+9. Verify Dana's `/mcp` endpoint.
+10. Keep the local runtime and Funnel state monitored.
+
+Launch it with:
+
+```bash
+python3 -m pip install -e .
+dana gui
+```
+
+`dana gui` launches the Tauri desktop application when a local development/release build is available. Installed Dana Desktop packages launch the same Tauri application directly.
+
+Packaged GUI installers are produced by the release pipeline for Windows, Linux, and macOS. The packaged Tauri application contains a Python setup agent as a bundled runtime component. The GUI never exposes its control API publicly; setup control is bound to localhost.
 
 ![Dana and Tailscale Funnel architecture](docs/images/tailscale-funnel.svg)
 
-**Important:** signing in to Tailscale is not the final step. Funnel must also be enabled and approved for the tailnet. Tailscale's current CLI uses the short form `tailscale funnel <target>`; Dana's default backend port is `8765`. citeturn2search0turn2search1
+Tailscale Funnel is disabled by default and requires MagicDNS, HTTPS certificates, and the appropriate Funnel permission in the tailnet. Dana detects the resulting approval requirement and opens the browser instead of treating it as a generic installation failure. Tailscale's current CLI supports `tailscale funnel --https=<port> --bg` and `tailscale funnel status --json`. citeturn2search0turn0search6
 
-### Linux
+### What the GUI automates
 
-Install Tailscale using the official instructions:
+**Windows**
+- Downloads and launches the current official Tailscale installer with elevation.
+- Opens Tailscale authentication in the browser.
+- Enables and verifies Funnel.
+- Starts Dana automatically.
 
-[Tailscale for Linux](https://tailscale.com/download/linux)
+**Linux**
+- Uses the official Tailscale installation script through the graphical `pkexec` elevation flow.
+- Starts/uses the Tailscale daemon.
+- Opens authentication/approval pages when required.
+- Starts Dana and Funnel automatically.
 
-Then start it and sign in:
+**macOS**
+- Opens the current official standalone Tailscale installer.
+- Uses the Tailscale GUI authentication flow.
+- Handles Funnel configuration after the device is connected.
+- Reports system-extension approval when macOS requires it.
+
+Tailscale recommends its standalone macOS package and documents explicit system-extension approval requirements on current macOS versions. citeturn2search0turn2search1turn2search7
+
+### CLI fallback
+
+The terminal workflow remains available for advanced users:
 
 ```bash
-sudo systemctl enable --now tailscaled
-sudo tailscale up
 tailscale status
-```
-
-After the device is connected, enable Funnel for Dana:
-
-```bash
-tailscale funnel 8765
-```
-
-Tailscale may open a confirmation/approval flow. **Approve Funnel** when prompted. The command maps the local Dana service to a public HTTPS Funnel endpoint. Funnel requires the tailnet's MagicDNS/HTTPS configuration and appropriate Funnel permission. citeturn2search1
-
-For persistent background operation, use:
-
-```bash
-tailscale funnel --bg 8765
+tailscale funnel --https=443 --bg 8765
 tailscale funnel status
 ```
 
-The status command must show an active Funnel route before you continue with Dana. Tailscale documents `--bg` as the persistent mode and `tailscale funnel status` as the verification command. citeturn2search0turn2search5
+Tailscale documents `--bg` as the persistent mode; a background Funnel resumes after Tailscale restarts. citeturn0search0
 
-**Security:** Funnel publishes the selected local service to the public internet. Keep Dana's authentication enabled, do not share authenticated connection material, and do not expose sensitive services through Funnel. citeturn1search3turn0search12
-
-### Windows
-
-Install Tailscale from:
-
-[Tailscale for Windows](https://tailscale.com/download/windows)
-
-Open the application, choose **Log in**, complete browser authentication, and confirm that the device is connected.
-
-Then open an elevated terminal and enable Dana's Funnel. If Dana is using the default port:
-
-```powershell
-tailscale funnel 8765
-```
-
-Approve the Funnel confirmation if Tailscale asks for it, then verify:
-
-```powershell
-tailscale funnel status
-```
-
-### macOS
-
-Install Tailscale from:
-
-[Tailscale for macOS](https://tailscale.com/download/mac)
-
-Sign in and confirm that the device is connected.
-
-Then enable Funnel for Dana:
-
-```bash
-tailscale funnel 8765
-```
-
-Approve the Funnel confirmation if prompted and verify with `tailscale funnel status`. On macOS, Funnel port sharing has platform-specific requirements; follow Tailscale's current Funnel documentation if the CLI reports a platform restriction. citeturn2search1
-
-> The Tailscale account must be allowed to use Funnel for Dana Local Mode.
+**Security:** Funnel publishes the selected local service to the public internet. Dana keeps authentication enabled and uses the canonical `/mcp` resource; do not share authenticated connection material. citeturn0search6
 
 ---
 

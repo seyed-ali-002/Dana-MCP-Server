@@ -39,77 +39,72 @@ GitHub: [Mohsen Samadinejad](https://github.com/samadinejad)
 
 # مراحل نصب و اتصال
 
-## مرحله ۱ — نصب، ورود و فعال‌سازی Tailscale Funnel
+## مرحله ۱ — نصب گرافیکی و راه‌اندازی خودکار
 
-برای ساده‌ترین حالت Local Mode ابتدا [Tailscale](https://tailscale.com/) را روی سیستمی که دانا اجرا می‌شود نصب و Login کنید. دانا برای ایجاد Endpoint عمومی HTTPS در Local Mode از Tailscale Funnel استفاده می‌کند.
+دانا اکنون یک Setup Wizard گرافیکی دارد که کل زنجیره Local Mode را مدیریت می‌کند:
+
+1. تشخیص Tailscale.
+2. نصب Tailscale در صورت نبودن.
+3. باز کردن Login و احراز هویت Tailscale.
+4. انتظار برای Connected شدن دستگاه.
+5. اجرای Dana.
+6. فعال‌سازی Tailscale Funnel.
+7. باز کردن صفحه تأیید Funnel در صورت نیاز.
+8. تشخیص hostname عمومی Funnel.
+9. بررسی Endpoint استاندارد `/mcp`.
+10. مانیتور کردن وضعیت Dana و Funnel.
+
+اجرای GUI:
+
+```bash
+python3 -m pip install -e .
+dana gui
+```
+
+دستور `dana gui` در صورت وجود Build محلی/Release نسخه دسکتاپ Tauri را اجرا می‌کند. بسته‌های نصب‌شده Dana Desktop نیز مستقیماً همین Tauri application را اجرا می‌کنند.
+
+نسخه‌های بسته‌بندی‌شده برای Windows، Linux و macOS از طریق Release pipeline ساخته می‌شوند. نسخه Tauri یک Setup Agent پایتونی را نیز داخل خود بسته‌بندی می‌کند. Control API مربوط به Setup فقط روی localhost فعال است و از طریق Funnel منتشر نمی‌شود.
 
 ![معماری دانا و Tailscale Funnel](docs/images/tailscale-funnel.svg)
 
-**نکته مهم:** فقط Login کردن به Tailscale کافی نیست. Funnel نیز باید فعال و تأیید شود. پورت پیش‌فرض Backend دانا `8765` است؛ بنابراین بعد از اتصال Tailscale دستور `tailscale funnel 8765` را اجرا کنید و اگر صفحه تأیید Funnel نمایش داده شد آن را تأیید کنید. citeturn2search1
+### چه چیزهایی خودکار می‌شوند؟
 
-### Linux
+**Windows**
+- دریافت Installer رسمی فعلی Tailscale.
+- اجرای آن با سطح دسترسی لازم.
+- باز کردن Login در مرورگر.
+- فعال‌سازی و بررسی Funnel.
+- اجرای خودکار Dana.
 
-[دانلود Tailscale برای Linux](https://tailscale.com/download/linux)
+**Linux**
+- اجرای Installer رسمی Tailscale از طریق `pkexec`.
+- استفاده از سرویس Tailscale.
+- باز کردن Login/Approval در صورت نیاز.
+- اجرای Dana و Funnel.
 
-سپس:
+**macOS**
+- باز کردن Installer رسمی Standalone Tailscale.
+- استفاده از Login گرافیکی Tailscale.
+- پیکربندی Funnel پس از اتصال.
+- اعلام نیاز به تأیید System Extension در صورت درخواست macOS.
+
+Tailscale نسخه Standalone برای macOS را توصیه می‌کند و برای System Extension در macOS جدید ممکن است تأیید صریح کاربر لازم باشد. citeturn2search0turn2search1turn2search7
+
+Funnel به MagicDNS، HTTPS و مجوز مناسب Tailnet نیاز دارد. اگر Tailscale نیاز به Approval داشته باشد، GUI آن را به‌عنوان یک مرحله تعاملی مدیریت می‌کند و صفحه مرورگر را باز می‌کند. citeturn0search6
+
+### CLI همچنان فعال است
+
+کاربر حرفه‌ای همچنان می‌تواند از Terminal استفاده کند:
 
 ```bash
-sudo systemctl enable --now tailscaled
-sudo tailscale up
 tailscale status
-```
-
-بعد از اتصال، Funnel دانا را فعال کنید:
-
-```bash
-tailscale funnel 8765
-```
-
-در اولین اجرا ممکن است Tailscale صفحه تأیید/فعال‌سازی Funnel را باز کند. **فعال‌سازی Funnel را تأیید کنید.** سپس برای اجرای دائمی در پس‌زمینه:
-
-```bash
-tailscale funnel --bg 8765
+tailscale funnel --https=443 --bg 8765
 tailscale funnel status
 ```
 
-باید در خروجی `tailscale funnel status` یک Route فعال برای دانا مشاهده شود. گزینه `--bg` باعث می‌شود Funnel بعد از پایان ترمینال نیز به کار ادامه دهد. citeturn2search0turn2search5
+گزینه `--bg` اجرای پایدار Funnel را فراهم می‌کند. citeturn0search0
 
-**امنیت:** Funnel سرویس انتخاب‌شده را روی اینترنت عمومی قابل دسترس می‌کند. احراز هویت دانا را فعال نگه دارید، اطلاعات احراز هویت و Session را عمومی نکنید و سرویس‌های حساس را از طریق Funnel منتشر نکنید. citeturn1search3turn0search12
-
-### Windows
-
-[دانلود Tailscale برای Windows](https://tailscale.com/download/windows)
-
-برنامه را نصب کنید، روی **Log in** بزنید و پس از ورود مطمئن شوید وضعیت **Connected** است.
-
-سپس در ترمینال Administrator این دستور را اجرا کنید:
-
-```powershell
-tailscale funnel 8765
-```
-
-اگر صفحه تأیید Funnel نمایش داده شد آن را تأیید کنید و سپس وضعیت را بررسی کنید:
-
-```powershell
-tailscale funnel status
-```
-
-### macOS
-
-[دانلود Tailscale برای macOS](https://tailscale.com/download/mac)
-
-برنامه را نصب و Login کنید و وضعیت اتصال را بررسی کنید.
-
-سپس:
-
-```bash
-tailscale funnel 8765
-tailscale funnel status
-```
-
-در اولین فعال‌سازی، تأیید Funnel را انجام دهید. در macOS محدودیت‌های نسخه/نوع نصب Tailscale را در مستندات فعلی بررسی کنید. citeturn2search1
-
-> حساب Tailscale باید اجازه استفاده از Funnel را داشته باشد.
+**امنیت:** Funnel سرویس را روی اینترنت عمومی قرار می‌دهد. احراز هویت Dana فعال باقی می‌ماند و Endpoint اصلی MCP روی `/mcp` است؛ اطلاعات احراز هویت و Session را عمومی نکنید. citeturn0search6
 
 ---
 

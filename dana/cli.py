@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -152,10 +153,58 @@ def _full_start() -> None:
         set_local_public_host(host)
         console.print(f"[bold green]✓ Secure MCP endpoint:[/bold green] https://{host}/mcp")
 
+def launch_gui() -> None:
+    """Launch the packaged Tauri desktop control center when available."""
+    candidates = [
+        ROOT / "ui" / "src-tauri" / "target" / "release" / ("Dana.exe" if os.name == "nt" else "Dana"),
+        ROOT / "ui" / "src-tauri" / "target" / "release" / "bundle" / "appimage" / "Dana.AppImage",
+    ]
+    if sys.platform == "darwin":
+        candidates.insert(0, ROOT / "ui" / "src-tauri" / "target" / "release" / "bundle" / "macos" / "Dana.app")
+    for candidate in candidates:
+        if candidate.exists():
+            if candidate.suffix == ".app":
+                subprocess.Popen(["open", str(candidate)])
+            else:
+                subprocess.Popen([str(candidate)], cwd=ROOT)
+            return
+    console.print("[yellow]Dana Desktop is not built in this checkout.[/yellow]")
+    console.print("[dim]Build it with the Tauri pipeline in packaging/ or install the Dana Desktop package.[/dim]")
+    raise SystemExit(1)
+
+
+
+
+def _launch_gui() -> None:
+    ui = ROOT / "ui"
+    force_tauri = "--tauri" in sys.argv[2:] or os.getenv("DANA_GUI_ENGINE", "").lower() == "tauri"
+    use_tauri = force_tauri or (
+        ui.exists()
+        and shutil.which("npm") is not None
+        and shutil.which("cargo") is not None
+        and "--native" not in sys.argv[2:]
+    )
+    if use_tauri:
+        if not shutil.which("npm"):
+            raise RuntimeError("Node.js/npm is required for the Tauri development GUI.")
+        if not ui.exists():
+            raise RuntimeError("Dana GUI sources are not installed.")
+        subprocess.run(["npm", "run", "tauri", "dev"], cwd=ui, check=True)
+        return
+    try:
+        from .gui import main as gui_main
+    except SystemExit:
+        raise
+    except Exception as exc:
+        raise RuntimeError("Dana GUI requires the optional GUI dependencies. Install with: pip install 'dana-mcp-server[gui]'") from exc
+    gui_main()
+
 
 def _handle_command(command: str) -> bool:
     from . import container
 
+    if command in {"gui", "setup"}:
+        _launch_gui(); return True
     if command in {"run", "start-all", "up"}:
         _full_start()
         return True
@@ -197,6 +246,9 @@ def main() -> None:
         from .doctor import main as doctor_main
         sys.argv = [sys.argv[0], *sys.argv[2:]]
         doctor_main()
+        return
+    if command in {"gui", "desktop"}:
+        launch_gui()
         return
     if not os.environ.get("DANA_AUTH_TOKEN"):
         console.print("[bold red]Dana is not installed or configured.[/bold red]")

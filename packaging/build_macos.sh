@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+./packaging/build_sidecar.sh
+
+cd ui
+npm install
+npm run build
+npm run tauri build
+
+mkdir -p ../dist/packages
+cp -a src-tauri/target/release/bundle/dmg/*.dmg ../dist/packages/ 2>/dev/null || true
