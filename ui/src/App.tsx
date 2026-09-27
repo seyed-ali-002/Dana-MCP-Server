@@ -30,6 +30,8 @@ type SetupLog = {
   message: string;
 };
 
+type AlertKind = "error" | "warning" | "success";
+
 const API = (port: number, path: string) => "http://127.0.0.1:" + port + path;
 
 
@@ -86,9 +88,16 @@ function App() {
       .then((p) => {
         if (!alive) return;
         setPort(p);
+        setError("");
         refresh(p);
       })
-      .catch((error) => setMessage(String(error)));
+      .catch((error) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        setError(detail.includes("Dana project root was not found")
+          ? "Dana could not locate its bundled setup service. Reinstall the latest Dana package; no DANA_ROOT configuration should be required for an installed build."
+          : detail);
+        setMessage("Dana setup service could not be started.");
+      });
     return () => { alive = false; };
   }, []);
 
@@ -163,14 +172,23 @@ function App() {
               </div><div className="hero-orb"><div className="orb-core"><img src={logo} alt="Dana" /></div></div>
             </section>
 
-            {error && <section className="error-card glass"><div className="error-icon">!</div><div><strong>Setup error</strong><p>{error}</p></div><button className="secondary" onClick={() => { setError(""); refresh(); }}>Retry</button></section>}
+            {error && (
+              <section className="alert-banner glass alert-error" role="alert">
+                <div className="alert-icon">!</div>
+                <div className="alert-copy"><strong>Setup error</strong><p>{error}</p></div>
+                <div className="alert-actions">
+                  <button className="secondary" onClick={() => { setError(""); refresh(); }}>Retry</button>
+                  <button className="alert-close" aria-label="Dismiss error" onClick={() => setError("")}>×</button>
+                </div>
+              </section>
+            )}
 
             <section className="usage-card glass"><div><span className="eyebrow">TOKEN USAGE</span><strong>{usage?.available ? usage.total_tokens.toLocaleString() : "—"}</strong><span className="usage-caption">{usage?.available ? "total recorded tokens" : "No analytics data yet"}</span></div><div className="usage-stats"><span>Input <b>{usage?.available ? usage.input_tokens.toLocaleString() : "—"}</b></span><span>Output <b>{usage?.available ? usage.output_tokens.toLocaleString() : "—"}</b></span><span>Operations <b>{usage?.available ? usage.operations.toLocaleString() : "—"}</b></span></div></section>
 
             <div className="grid">
-              <section className="card glass"><div className="card-head"><span>01</span><strong>Tailscale</strong><b className={status?.tailscale_installed ? "state ok" : "state"}>{status?.tailscale_installed ? "INSTALLED" : "REQUIRED"}</b></div><p>Install and authenticate Tailscale. Dana opens the browser login flow automatically when required.</p><div className="meta">{status?.tailscale_backend || "Not connected"}</div></section>
-              <section className="card glass"><div className="card-head"><span>02</span><strong>Dana Runtime</strong><b className={status?.dana_running ? "state ok" : "state"}>{status?.dana_running ? "ONLINE" : "PENDING"}</b></div><p>Start the local MCP service using Docker when available, with native Python as a fallback.</p><div className="meta">127.0.0.1:8765</div></section>
-              <section className="card glass"><div className="card-head"><span>03</span><strong>Funnel</strong><b className={status?.funnel_active ? "state ok" : "state"}>{status?.funnel_active ? "ACTIVE" : "APPROVAL"}</b></div><p>Expose only the canonical HTTPS origin. Funnel approval is always an explicit user action.</p><div className="meta">{status?.funnel_hostname || "Not configured"}</div></section>
+              <section className="card glass"><div className="card-head"><span>01</span><strong>Tailscale</strong><b className={status?.tailscale_installed ? "state success" : "state warning"}>{status?.tailscale_installed ? "INSTALLED" : "REQUIRED"}</b></div><p>Install and authenticate Tailscale. Dana opens the browser login flow automatically when required.</p><div className="meta">{status?.tailscale_backend || "Not connected"}</div></section>
+              <section className="card glass"><div className="card-head"><span>02</span><strong>Dana Runtime</strong><b className={status?.dana_running ? "state success" : "state warning"}>{status?.dana_running ? "ONLINE" : "PENDING"}</b></div><p>Start the local MCP service using Docker when available, with native Python as a fallback.</p><div className="meta">127.0.0.1:8765</div></section>
+              <section className="card glass"><div className="card-head"><span>03</span><strong>Funnel</strong><b className={status?.funnel_active ? "state success" : "state warning"}>{status?.funnel_active ? "ACTIVE" : "APPROVAL"}</b></div><p>Expose only the canonical HTTPS origin. Funnel approval is always an explicit user action.</p><div className="meta">{status?.funnel_hostname || "Not configured"}</div></section>
             </div>
 
             <section className="progress-card glass"><div className="progress-top"><div><span className="eyebrow">SETUP PROGRESS</span><strong>{progress}%</strong></div><span>{message}</span></div><div className="track"><div className="track-fill" style={{ width: progress + "%" }} /></div><div className="steps"><span className={status?.tailscale_installed ? "done" : ""}>Tailscale</span><span className={status?.tailscale_backend.toLowerCase() === "running" ? "done" : ""}>Authentication</span><span className={status?.dana_running ? "done" : ""}>Dana</span><span className={status?.funnel_active ? "done" : ""}>Funnel</span></div></section>
@@ -181,7 +199,7 @@ function App() {
             <p className="logs-description">Every setup action, authentication attempt, Funnel approval and runtime launch is recorded here so failures are visible instead of silently stopping.</p>
             <div className="log-list">
               {logs.length === 0 ? <div className="log-empty">No setup events recorded yet.</div> : logs.slice().reverse().map((entry, index) => (
-                <div className={"log-row " + (entry.level === "error" ? "log-error" : "")} key={entry.time + entry.message + index}>
+                <div className={"log-row log-" + entry.level} key={entry.time + entry.message + index}>
                   <span className="log-time">{entry.time}</span><span className={"log-level " + entry.level}>{entry.level.toUpperCase()}</span><span className="log-message">{entry.message}</span>
                 </div>
               ))}
