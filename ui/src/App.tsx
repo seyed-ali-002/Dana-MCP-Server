@@ -26,10 +26,6 @@ type TokenUsage = {
 
 const API = (port: number, path: string) => "http://127.0.0.1:" + port + path;
 
-async function post(port: number, path: string) {
-  const response = await fetch(API(port, path), { method: "POST" });
-  return response.json();
-}
 
 function App() {
   const [port, setPort] = useState<number | null>(null);
