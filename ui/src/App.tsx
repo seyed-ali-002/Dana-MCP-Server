@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import logo from "../src-tauri/icons/icon.png";
 import "./App.css";
 
 type Status = {
@@ -13,6 +14,14 @@ type Status = {
   mcp_url: string;
   action_required: string;
   message: string;
+};
+
+type TokenUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  operations: number;
+  available: boolean;
 };
 
 const API = (port: number, path: string) => "http://127.0.0.1:" + port + path;
@@ -30,6 +39,8 @@ function App() {
   const [publicAcknowledged, setPublicAcknowledged] = useState(false);
   const [message, setMessage] = useState("Starting Dana setup service…");
   const [activeView, setActiveView] = useState("Setup");
+  const [error, setError] = useState("");
+  const [usage, setUsage] = useState<TokenUsage | null>(null);
 
   const ready = Boolean(status?.dana_running && status?.funnel_active);
   const progress = useMemo(() => {
@@ -44,10 +55,17 @@ function App() {
   async function refresh(p = port) {
     if (!p) return;
     try {
-      const next = await fetch(API(p, "/api/setup/status")).then((r) => r.json());
+      const response = await fetch(API(p, "/api/setup/status"));
+      const next = await response.json();
+      if (!response.ok) throw new Error(next.message || next.error || `Setup service returned HTTP ${response.status}`);
       setStatus(next);
+      try {
+        const usageResponse = await fetch(API(p, "/api/setup/usage"));
+        if (usageResponse.ok) setUsage(await usageResponse.json());
+      } catch { }
       setMessage(next.message || (next.mcp_url ? "Endpoint: " + next.mcp_url : "Dana is ready for setup."));
-    } catch {
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
       setMessage("Waiting for the local setup service…");
     }
   }
@@ -73,14 +91,21 @@ function App() {
   async function run(path: string) {
     if (!port || busy) return;
     setBusy(true);
+    setError("");
     try {
-      const result = await post(port, path);
+      const response = await fetch(API(port, path), { method: "POST" });
+      const raw = await response.text();
+      let result: Record<string, unknown> = {};
+      try { result = raw ? JSON.parse(raw) : {}; } catch { result = { message: raw }; }
+      if (!response.ok || result.ok === false) throw new Error(String(result.message || result.error || `Setup action failed (HTTP ${response.status})`));
       setMessage(String(result.message || "Step completed."));
       await refresh();
-      if (result.auth_url) await openUrl(result.auth_url);
-      if (result.url) setMessage("Ready: " + result.url + "/mcp");
-    } catch (error) {
-      setMessage(String(error));
+      if (typeof result.auth_url === "string" && result.auth_url) await openUrl(result.auth_url);
+      if (typeof result.url === "string" && result.url) setMessage("Ready: " + result.url.replace(/\/$/, "") + "/mcp");
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setError(detail);
+      setMessage("Setup action failed. See the error panel below.");
     } finally {
       setBusy(false);
     }
@@ -97,7 +122,7 @@ function App() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand"><div className="brand-mark">D</div><div><strong>DANA</strong><span>MCP Control Center</span></div></div>
+        <div className="brand"><div className="brand-mark"><img src={logo} alt="Dana" /></div><div><strong>DANA</strong><span>MCP Control Center</span></div></div>
         <nav>
           {["Setup", "Dashboard", "Connections", "Runtime", "Security", "Logs"].map((item) => (
             <button key={item} className={activeView === item ? "nav-item active" : "nav-item"} onClick={() => setActiveView(item)}>
@@ -121,8 +146,12 @@ function App() {
                 <h2>Bring Dana online without the terminal.</h2>
                 <p>Python runtime, Tailscale, Funnel, Dana and the public MCP endpoint are coordinated from one setup flow.</p>
                 <button className="primary" disabled={busy || ready} onClick={continueSetup}>{busy ? "Working…" : ready ? "Dana is ready" : "Continue setup"}</button>
-              </div><div className="hero-orb"><div className="orb-core">D</div></div>
+              </div><div className="hero-orb"><div className="orb-core"><img src={logo} alt="Dana" /></div></div>
             </section>
+
+            {error && <section className="error-card glass"><div className="error-icon">!</div><div><strong>Setup error</strong><p>{error}</p></div><button className="secondary" onClick={() => { setError(""); refresh(); }}>Retry</button></section>}
+
+            <section className="usage-card glass"><div><span className="eyebrow">TOKEN USAGE</span><strong>{usage?.available ? usage.total_tokens.toLocaleString() : "—"}</strong><span className="usage-caption">{usage?.available ? "total recorded tokens" : "No analytics data yet"}</span></div><div className="usage-stats"><span>Input <b>{usage?.available ? usage.input_tokens.toLocaleString() : "—"}</b></span><span>Output <b>{usage?.available ? usage.output_tokens.toLocaleString() : "—"}</b></span><span>Operations <b>{usage?.available ? usage.operations.toLocaleString() : "—"}</b></span></div></section>
 
             <div className="grid">
               <section className="card glass"><div className="card-head"><span>01</span><strong>Tailscale</strong><b className={status?.tailscale_installed ? "state ok" : "state"}>{status?.tailscale_installed ? "INSTALLED" : "REQUIRED"}</b></div><p>Install and authenticate Tailscale. Dana opens the browser login flow automatically when required.</p><div className="meta">{status?.tailscale_backend || "Not connected"}</div></section>
