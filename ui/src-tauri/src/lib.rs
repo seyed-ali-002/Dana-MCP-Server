@@ -54,10 +54,19 @@ fn start_setup_service(app: AppHandle) -> Result<u16, String> {
         resource_dir.join("dana-agent")
     };
 
-    let mut command = if bundled.exists() {
-        Command::new(bundled)
+    let bundled_candidates = [
+        resource_dir.join("dana-agent"),
+        resource_dir.join("resources").join("dana-agent"),
+        app.path().executable_dir().ok().map(|p| p.join("resources").join("dana-agent")).unwrap_or_default(),
+    ];
+    let bundled = bundled_candidates.into_iter().find(|p| p.is_file());
+
+    let mut command = if let Some(bundled) = bundled {
+        let mut cmd = Command::new(bundled);
+        cmd.current_dir(&resource_dir);
+        cmd
     } else {
-        let root = find_project_root().ok_or("Dana project root was not found. Set DANA_ROOT for development.")?;
+        let root = find_project_root().ok_or("Dana bundled runtime was not found. Set DANA_ROOT only for source development.")?;
         let (python, prefix) = python_command(&root).ok_or("Python runtime was not found.")?;
         let mut cmd = Command::new(python);
         for arg in prefix { cmd.arg(arg); }
