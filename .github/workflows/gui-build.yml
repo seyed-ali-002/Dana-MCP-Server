@@ -142,62 +142,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --tags --force origin
-          existing="$(git tag --points-at "${GITHUB_SHA}" | grep -E '^v0\\.1\\.0-build\\.[0-9]+
-
-      - name: Create GitHub Release with detailed notes
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
-          REPOSITORY: ${{ github.repository }}
-          TARGET_SHA: ${{ github.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t files < <(find release -maxdepth 1 -type f -print)
-          if (( ${#files[@]} == 0 )); then
-            echo "No release assets found." >&2
-            exit 1
-          fi
-
-          previous_tag="$(git tag --list 'v0.1.0-build.*' | sed -E '/^v0\\.1\\.0-build\\.[0-9]+$/!d' | sort -V | tail -1)"
-          notes_file="$(mktemp)"
-          {
-            echo "## Highlights"
-            echo
-            if [[ -n "$previous_tag" ]]; then
-              git log --format='- %s' "${previous_tag}..${TARGET_SHA}" | head -80
-            else
-              git log --format='- %s' "${TARGET_SHA}" -n 80
-            fi
-            echo
-            echo "## Release contents"
-            echo
-            echo "- Linux: Debian package and AppImage"
-            echo "- Windows: MSI and executable"
-            echo "- macOS: DMG and app archive"
-            echo
-            echo "## Notes"
-            echo
-            echo "- Release numbers are sequential and are based on published build tags, not GitHub Actions run numbers."
-            echo "- Failed or cancelled builds do not consume a release number."
-            if [[ -n "$previous_tag" ]]; then
-              echo
-              echo "**Full Changelog**: https://github.com/${REPOSITORY}/compare/${previous_tag}...${RELEASE_TAG}"
-            fi
-          } > "$notes_file"
-
-          if gh release view "${RELEASE_TAG}" --repo "${REPOSITORY}" >/dev/null 2>&1; then
-            echo "Release ${RELEASE_TAG} already exists; uploading rebuilt assets."
-            gh release upload "${RELEASE_TAG}" "${files[@]}" --repo "${REPOSITORY}" --clobber
-          else
-            gh release create "${RELEASE_TAG}" "${files[@]}" \
-              --repo "${REPOSITORY}" \
-              --target "${TARGET_SHA}" \
-              --title "Dana ${RELEASE_TAG}" \
-              --notes-file "$notes_file"
-          fi
-          rm -f "$notes_file"
- | sort -V | tail -1 || true)"
+          existing="$(git tag --points-at "${GITHUB_SHA}" | grep -E '^v0\\.1\\.0-build\\.[0-9]+$' | sort -V | tail -1 || true)"
           if [[ -n "$existing" ]]; then
             tag="$existing"
             echo "This commit already has release tag: ${tag}"
