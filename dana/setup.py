@@ -10,6 +10,8 @@ import tempfile
 import time
 import urllib.request
 import webbrowser
+from collections import deque
+from datetime import datetime, timezone
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
@@ -20,6 +22,20 @@ from .installer import configure_tailscale_local, _ensure_tailscale_ready, _tail
 TAILSCALE_DOWNLOAD = "https://tailscale.com/download"
 TAILSCALE_PACKAGES = "https://pkgs.tailscale.com/stable/"
 TAILSCALE_INSTALL_SCRIPT = "https://tailscale.com/install.sh"
+
+_SETUP_LOGS: deque[dict[str, str]] = deque(maxlen=250)
+
+
+def _setup_log(message: str, level: str = "info") -> None:
+    _SETUP_LOGS.append({
+        "time": datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S"),
+        "level": level,
+        "message": message,
+    })
+
+
+def setup_logs() -> dict[str, object]:
+    return {"logs": list(_SETUP_LOGS)}
 
 @dataclass
 class SetupStatus:
@@ -184,7 +200,9 @@ def verify_public_endpoint(host: str, timeout: float = 8.0) -> bool:
 
 
 def install_tailscale() -> dict[str, object]:
+    _setup_log("Starting Tailscale installation.")
     if command_exists("tailscale"):
+        _setup_log("Tailscale is already installed.")
         return {"ok": True, "installed": True, "message": "Tailscale is already installed."}
     system = platform.system().lower()
     if system == "linux":
@@ -193,10 +211,15 @@ def install_tailscale() -> dict[str, object]:
         try:
             target = Path(tempfile.gettempdir()) / "tailscale-install.sh"
             urllib.request.urlretrieve(TAILSCALE_INSTALL_SCRIPT, target)
+            _setup_log("Launching the privileged Tailscale installer.")
             result = _run(["pkexec", "sh", str(target)], timeout=240)
+            output = (result.stderr or result.stdout or "").strip()
             if result.returncode != 0:
-                return {"ok": False, "message": (result.stderr or result.stdout).strip()}
-            return {"ok": command_exists("tailscale"), "message": "Tailscale installation finished."}
+                _setup_log("Tailscale installation failed: " + (output or f"installer exited with code {result.returncode}"), "error")
+                return {"ok": False, "message": output or f"Installer exited with code {result.returncode}"}
+            installed = command_exists("tailscale")
+            _setup_log("Tailscale installation finished." if installed else "Installer completed but the tailscale command was not found.", "info" if installed else "error")
+            return {"ok": installed, "message": "Tailscale installation finished." if installed else "Tailscale was not found after installation."}
         except Exception as exc:
             return {"ok": False, "message": str(exc), "url": TAILSCALE_DOWNLOAD}
     if system == "windows": return _install_windows()
@@ -238,22 +261,32 @@ def _install_macos() -> dict[str, object]:
         return {"ok": False, "message": str(exc), "url": TAILSCALE_DOWNLOAD}
 
 def login_tailscale() -> dict[str, object]:
+    _setup_log("Checking Tailscale authentication.")
     if not command_exists("tailscale"):
+        _setup_log("Cannot authenticate because Tailscale is not installed.", "error")
         return {"ok": False, "action_required": "install_tailscale", "message": "Install Tailscale first."}
     result = _run(["tailscale", "up"], timeout=20)
     output = (result.stdout or "") + "\n" + (result.stderr or "")
     auth_url = _find_auth_url(output)
-    if auth_url: _open(auth_url)
+    if auth_url:
+        _setup_log("Tailscale requested browser authentication. Opening the login page.")
+        _open(auth_url)
     if result.returncode == 0:
+        _setup_log("Tailscale authentication completed.")
         return {"ok": True, "message": "Tailscale is connected.", "auth_url": auth_url or ""}
-    return {"ok": False, "pending": bool(auth_url), "message": output.strip(), "auth_url": auth_url or ""}
+    details = output.strip() or f"tailscale up exited with code {result.returncode}"
+    _setup_log("Tailscale authentication is pending." if auth_url else "Tailscale authentication failed: " + details, "info" if auth_url else "error")
+    return {"ok": bool(auth_url), "pending": bool(auth_url), "message": "Complete Tailscale authentication in the browser, then return to Dana." if auth_url else details, "auth_url": auth_url or ""}
 
 def enable_funnel(port: int = 8765) -> dict[str, object]:
+    _setup_log("Starting Tailscale Funnel setup.")
     if not command_exists("tailscale"):
+        _setup_log("Cannot enable Funnel because Tailscale is not installed.", "error")
         return {"ok": False, "action_required": "install_tailscale", "message": "Install Tailscale first."}
     try:
         _ensure_tailscale_ready()
     except RuntimeError as exc:
+        _setup_log("Tailscale is not ready for Funnel: " + str(exc), "error")
         return {"ok": False, "action_required": "login_tailscale", "message": str(exc)}
     try:
         host = configure_tailscale_local(settings.auth_token, port=port, funnel_port=443)
@@ -261,21 +294,28 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
         details = str(exc)
         auth_url = _find_auth_url(details)
         if auth_url:
+            _setup_log("Tailscale requested Funnel approval in the browser. Opening the approval page.")
             _open(auth_url)
-            return {"ok": False, "pending": True, "action_required": "enable_funnel", "message": "Approve Funnel in the Tailscale browser flow, then return to Dana.", "auth_url": auth_url}
+            return {"ok": True, "pending": True, "action_required": "enable_funnel", "message": "Approve Funnel in the Tailscale browser flow, then return to Dana.", "auth_url": auth_url}
+        _setup_log("Funnel configuration failed: " + details, "error")
         return {"ok": False, "message": details}
     write_env("local", workers=settings.workers)
     set_local_public_host(host)
     verified = verify_public_endpoint(host)
+    _setup_log(f"Funnel is active on {host}; endpoint verification: {'passed' if verified else 'pending'}.")
     return {"ok": True, "hostname": host, "url": f"https://{host}/mcp", "endpoint_verified": verified, "message": "Dana MCP endpoint verified." if verified else "Funnel is active; MCP endpoint is still warming up."}
 
 def start_dana() -> dict[str, object]:
-    if _dana_running(): return {"ok": True, "message": "Dana is already running."}
+    _setup_log("Starting Dana runtime.")
+    if _dana_running():
+        _setup_log("Dana runtime is already running.")
+        return {"ok": True, "message": "Dana is already running."}
     root = Path(__file__).resolve().parents[1]
     try:
         from . import container
         if container.is_available():
             container.start()
+            _setup_log("Dana Docker runtime started.")
             return {"ok": True, "message": "Dana Docker runtime started."}
     except Exception:
         pass
@@ -288,6 +328,7 @@ def start_dana() -> dict[str, object]:
     else:
         command = [str(python), "-m", "dana.main"]
     subprocess.Popen(command, cwd=root, stdout=handle, stderr=subprocess.STDOUT, start_new_session=True)
+    _setup_log("Dana server process launched; waiting for the local MCP port.")
     return {"ok": True, "message": "Dana server is starting."}
 
 def bootstrap(progress: Callable[[str], None] | None = None) -> dict[str, object]:

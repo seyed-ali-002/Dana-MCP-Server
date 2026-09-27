@@ -24,6 +24,12 @@ type TokenUsage = {
   available: boolean;
 };
 
+type SetupLog = {
+  time: string;
+  level: string;
+  message: string;
+};
+
 const API = (port: number, path: string) => "http://127.0.0.1:" + port + path;
 
 
@@ -37,6 +43,7 @@ function App() {
   const [activeView, setActiveView] = useState("Setup");
   const [error, setError] = useState("");
   const [usage, setUsage] = useState<TokenUsage | null>(null);
+  const [logs, setLogs] = useState<SetupLog[]>([]);
 
   const ready = Boolean(status?.dana_running && status?.funnel_active);
   const progress = useMemo(() => {
@@ -58,6 +65,13 @@ function App() {
       try {
         const usageResponse = await fetch(API(p, "/api/setup/usage"));
         if (usageResponse.ok) setUsage(await usageResponse.json());
+      } catch { }
+      try {
+        const logsResponse = await fetch(API(p, "/api/setup/logs"));
+        if (logsResponse.ok) {
+          const payload = await logsResponse.json();
+          setLogs(Array.isArray(payload.logs) ? payload.logs : []);
+        }
       } catch { }
       setMessage(next.message || (next.mcp_url ? "Endpoint: " + next.mcp_url : "Dana is ready for setup."));
     } catch (err) {
@@ -93,7 +107,7 @@ function App() {
       const raw = await response.text();
       let result: Record<string, unknown> = {};
       try { result = raw ? JSON.parse(raw) : {}; } catch { result = { message: raw }; }
-      if (!response.ok || result.ok === false) throw new Error(String(result.message || result.error || `Setup action failed (HTTP ${response.status})`));
+      if (!response.ok || (result.ok === false && !result.pending)) throw new Error(String(result.message || result.error || `Setup action failed (HTTP ${response.status})`));
       setMessage(String(result.message || "Step completed."));
       await refresh();
       if (typeof result.auth_url === "string" && result.auth_url) await openUrl(result.auth_url);
@@ -108,7 +122,11 @@ function App() {
   }
 
   async function continueSetup() {
-    if (!status) return;
+    if (!status) {
+      setError("Setup status is not available yet. Refreshing the local setup service…");
+      await refresh();
+      return;
+    }
     if (!status.tailscale_installed) return run("/api/setup/install-tailscale");
     if (status.tailscale_backend.toLowerCase() !== "running") return run("/api/setup/login-tailscale");
     if (!status.dana_running) return run("/api/setup/start-dana");
@@ -141,7 +159,7 @@ function App() {
               <div className="hero-glow" /><div className="hero-copy"><span className="kicker">ONE-CLICK DEPLOYMENT</span>
                 <h2>Bring Dana online without the terminal.</h2>
                 <p>Python runtime, Tailscale, Funnel, Dana and the public MCP endpoint are coordinated from one setup flow.</p>
-                <button className="primary" disabled={busy || ready} onClick={continueSetup}>{busy ? "Working…" : ready ? "Dana is ready" : "Continue setup"}</button>
+                <button className="primary" disabled={busy || ready || !status} onClick={continueSetup}>{busy ? "Working…" : ready ? "Dana is ready" : !status ? "Loading setup…" : "Continue setup"}</button>
               </div><div className="hero-orb"><div className="orb-core"><img src={logo} alt="Dana" /></div></div>
             </section>
 
@@ -157,6 +175,18 @@ function App() {
 
             <section className="progress-card glass"><div className="progress-top"><div><span className="eyebrow">SETUP PROGRESS</span><strong>{progress}%</strong></div><span>{message}</span></div><div className="track"><div className="track-fill" style={{ width: progress + "%" }} /></div><div className="steps"><span className={status?.tailscale_installed ? "done" : ""}>Tailscale</span><span className={status?.tailscale_backend.toLowerCase() === "running" ? "done" : ""}>Authentication</span><span className={status?.dana_running ? "done" : ""}>Dana</span><span className={status?.funnel_active ? "done" : ""}>Funnel</span></div></section>
           </>
+        ) : activeView === "Logs" ? (
+          <section className="logs-panel glass">
+            <div className="logs-head"><div><span className="eyebrow">SETUP & REGISTRATION LOG</span><h2>What Dana is doing</h2></div><button className="secondary" onClick={() => refresh()}>Refresh</button></div>
+            <p className="logs-description">Every setup action, authentication attempt, Funnel approval and runtime launch is recorded here so failures are visible instead of silently stopping.</p>
+            <div className="log-list">
+              {logs.length === 0 ? <div className="log-empty">No setup events recorded yet.</div> : logs.slice().reverse().map((entry, index) => (
+                <div className={"log-row " + (entry.level === "error" ? "log-error" : "")} key={entry.time + entry.message + index}>
+                  <span className="log-time">{entry.time}</span><span className={"log-level " + entry.level}>{entry.level.toUpperCase()}</span><span className="log-message">{entry.message}</span>
+                </div>
+              ))}
+            </div>
+          </section>
         ) : (
           <section className="empty glass"><div className="empty-icon">◈</div><h2>{activeView}</h2><p>This control-plane section is wired to the same Dana runtime. Setup is the first fully automated workflow.</p><button className="secondary" onClick={() => setActiveView("Setup")}>Back to setup</button></section>
         )}

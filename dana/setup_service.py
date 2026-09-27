@@ -26,6 +26,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(setup.status().to_dict()); return
         if urlparse(self.path).path == "/api/setup/usage":
             self._send(setup.token_usage()); return
+        if urlparse(self.path).path == "/api/setup/logs":
+            self._send(setup.setup_logs()); return
         self._send({"error": "not_found"}, 404)
     def do_POST(self) -> None:
         action = {
@@ -37,8 +39,11 @@ class Handler(BaseHTTPRequestHandler):
         }.get(urlparse(self.path).path)
         if not action:
             self._send({"error": "not_found"}, 404); return
-        try: self._send(action())
-        except Exception as exc: self._send({"ok": False, "message": str(exc)}, 500)
+        try:
+            self._send(action())
+        except Exception as exc:
+            setup._setup_log(f"Unhandled setup error: {exc}", "error")
+            self._send({"ok": False, "message": str(exc)}, 500)
     def log_message(self, _format: str, *_args: object) -> None:
         return
 
