@@ -144,10 +144,15 @@ def install_tailscale() -> dict[str, object]:
     if system == "linux":
         if not shutil.which("pkexec"):
             return {"ok": False, "action_required": "manual_install", "message": "A graphical privilege helper (pkexec) is required for a fully graphical Linux installation.", "url": TAILSCALE_DOWNLOAD}
-        result = _run(["pkexec", "sh", "-c", f"curl -fsSL {TAILSCALE_INSTALL_SCRIPT} | sh"], timeout=180)
-        if result.returncode != 0:
-            return {"ok": False, "message": (result.stderr or result.stdout).strip()}
-        return {"ok": command_exists("tailscale"), "message": "Tailscale installation finished."}
+        try:
+            target = Path(tempfile.gettempdir()) / "tailscale-install.sh"
+            urllib.request.urlretrieve(TAILSCALE_INSTALL_SCRIPT, target)
+            result = _run(["pkexec", "sh", str(target)], timeout=240)
+            if result.returncode != 0:
+                return {"ok": False, "message": (result.stderr or result.stdout).strip()}
+            return {"ok": command_exists("tailscale"), "message": "Tailscale installation finished."}
+        except Exception as exc:
+            return {"ok": False, "message": str(exc), "url": TAILSCALE_DOWNLOAD}
     if system == "windows": return _install_windows()
     if system == "darwin": return _install_macos()
     return {"ok": False, "action_required": "manual_install", "message": f"Unsupported OS: {system}", "url": TAILSCALE_DOWNLOAD}
