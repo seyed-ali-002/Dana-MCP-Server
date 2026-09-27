@@ -4,7 +4,10 @@ on:
   workflow_dispatch:
   push:
     branches: ["main"]
-    tags: ["v*"]
+
+concurrency:
+  group: dana-desktop-release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -114,6 +117,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repository for release metadata
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
       - name: Download desktop release assets
         uses: actions/download-artifact@v8
         with:
@@ -128,19 +136,24 @@ jobs:
           find release -maxdepth 1 -type f -print
           test -n "$(find release -maxdepth 1 -type f -print -quit)"
 
-      - name: Determine release tag
+      - name: Determine next sequential release tag
         id: release_tag
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" == v* ]]; then
-            tag="${GITHUB_REF_NAME}"
+          git fetch --tags --force origin
+          latest="$(git tag --list 'v0.1.0-build.*' | sed -nE 's/^v0\\.1\\.0-build\\.([0-9]+)$/\\1/p' | sort -n | tail -1)"
+          if [[ -z "$latest" ]]; then
+            next=1
           else
-            tag="v0.1.0-build.${GITHUB_RUN_NUMBER}"
+            next=$((latest + 1))
           fi
+          tag="v0.1.0-build.${next}"
+          echo "Previous build number: ${latest:-none}"
+          echo "Next release tag: ${tag}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release with detailed notes
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
@@ -155,8 +168,41 @@ jobs:
             exit 1
           fi
 
+          previous_tag="$(git tag --list 'v0.1.0-build.*' | sed -E '/^v0\\.1\\.0-build\\.[0-9]+$/!d' | sort -V | tail -1)"
+          notes_file="$(mktemp)"
+          {
+            echo "## Highlights"
+            echo
+            if [[ -n "$previous_tag" ]]; then
+              git log --format='- %s' "${previous_tag}..${TARGET_SHA}" | head -80
+            else
+              git log --format='- %s' "${TARGET_SHA}" -n 80
+            fi
+            echo
+            echo "## Release contents"
+            echo
+            echo "- Linux: Debian package and AppImage"
+            echo "- Windows: MSI and executable"
+            echo "- macOS: DMG and app archive"
+            echo
+            echo "## Notes"
+            echo
+            echo "- Release numbers are sequential and are based on published build tags, not GitHub Actions run numbers."
+            echo "- Failed or cancelled builds do not consume a release number."
+            if [[ -n "$previous_tag" ]]; then
+              echo
+              echo "**Full Changelog**: https://github.com/${REPOSITORY}/compare/${previous_tag}...${RELEASE_TAG}"
+            fi
+          } > "$notes_file"
+
           if gh release view "${RELEASE_TAG}" --repo "${REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" "${files[@]}"               --repo "${REPOSITORY}"               --clobber
+            echo "Release ${RELEASE_TAG} already exists; uploading rebuilt assets."
+            gh release upload "${RELEASE_TAG}" "${files[@]}" --repo "${REPOSITORY}" --clobber
           else
-            gh release create "${RELEASE_TAG}" "${files[@]}"               --repo "${REPOSITORY}"               --target "${TARGET_SHA}"               --title "Dana ${RELEASE_TAG}"               --generate-notes
+            gh release create "${RELEASE_TAG}" "${files[@]}" \
+              --repo "${REPOSITORY}" \
+              --target "${TARGET_SHA}" \
+              --title "Dana ${RELEASE_TAG}" \
+              --notes-file "$notes_file"
           fi
+          rm -f "$notes_file"
