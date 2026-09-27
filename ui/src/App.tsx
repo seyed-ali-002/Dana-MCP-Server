@@ -163,14 +163,6 @@ function App() {
 
         {activeView === "Setup" ? (
           <>
-            <section className="hero glass">
-              <div className="hero-glow" /><div className="hero-copy"><span className="kicker">ONE-CLICK DEPLOYMENT</span>
-                <h2>Bring Dana online without the terminal.</h2>
-                <p>Python runtime, Tailscale, Funnel, Dana and the public MCP endpoint are coordinated from one setup flow.</p>
-                <button className="primary" disabled={busy || ready || !status} onClick={continueSetup}>{busy ? "Working…" : ready ? "Dana is ready" : !status ? "Loading setup…" : "Continue setup"}</button>
-              </div><div className="hero-orb"><div className="orb-core"><img src={logo} alt="Dana" /></div></div>
-            </section>
-
             {error && (
               <section className="alert-banner glass alert-error" role="alert">
                 <div className="alert-icon">!</div>
@@ -181,6 +173,15 @@ function App() {
                 </div>
               </section>
             )}
+
+
+            <section className="hero glass">
+              <div className="hero-glow" /><div className="hero-copy"><span className="kicker">ONE-CLICK DEPLOYMENT</span>
+                <h2>Bring Dana online without the terminal.</h2>
+                <p>Python runtime, Tailscale, Funnel, Dana and the public MCP endpoint are coordinated from one setup flow.</p>
+                <button className="primary" disabled={busy || ready || !status} onClick={continueSetup}>{busy ? "Working…" : ready ? "Dana is ready" : !status ? "Loading setup…" : "Continue setup"}</button>
+              </div><div className="hero-orb"><div className="orb-core"><img src={logo} alt="Dana" /></div></div>
+            </section>
 
             <section className="usage-card glass"><div><span className="eyebrow">TOKEN USAGE</span><strong>{usage?.available ? usage.total_tokens.toLocaleString() : "—"}</strong><span className="usage-caption">{usage?.available ? "total recorded tokens" : "No analytics data yet"}</span></div><div className="usage-stats"><span>Input <b>{usage?.available ? usage.input_tokens.toLocaleString() : "—"}</b></span><span>Output <b>{usage?.available ? usage.output_tokens.toLocaleString() : "—"}</b></span><span>Operations <b>{usage?.available ? usage.operations.toLocaleString() : "—"}</b></span></div></section>
 
