@@ -74,7 +74,7 @@ tailscale funnel status
 
 باید در خروجی `tailscale funnel status` یک Route فعال برای دانا مشاهده شود. گزینه `--bg` باعث می‌شود Funnel بعد از پایان ترمینال نیز به کار ادامه دهد. citeturn2search0turn2search5
 
-**امنیت:** Funnel سرویس انتخاب‌شده را روی اینترنت عمومی قابل دسترس می‌کند. احراز هویت دانا را فعال نگه دارید، URL شامل Token را عمومی نکنید و سرویس‌های حساس را از طریق Funnel منتشر نکنید. citeturn1search3turn0search12
+**امنیت:** Funnel سرویس انتخاب‌شده را روی اینترنت عمومی قابل دسترس می‌کند. احراز هویت دانا را فعال نگه دارید، اطلاعات احراز هویت و Session را عمومی نکنید و سرویس‌های حساس را از طریق Funnel منتشر نکنید. citeturn1search3turn0search12
 
 ### Windows
 
@@ -113,29 +113,48 @@ tailscale funnel status
 
 ---
 
-## مسیر سریع — Docker (پیشنهادی)
+## مرحله ۲ — دریافت پروژه و اجرای Docker (پیشنهادی)
 
-برای ساده‌ترین نصب، Docker اکنون Runtime پیشنهادی دانا است. کاربر لازم نیست Python، Virtualenv یا وابستگی‌های دانا را به‌صورت دستی نصب کند.
+برای ساده‌ترین Runtime، Docker لایه استقرار پیشنهادی دانا است. لازم نیست Virtualenv دانا را دستی بسازید؛ اما برای آماده‌سازی Runtime باید پکیج Python دانا یک‌بار نصب شود.
 
-بعد از نصب Docker Desktop در Windows/macOS یا Docker Engine به‌همراه Compose v2 در Linux، فقط یک دستور اجرا کنید:
+ابتدا پروژه را دریافت کنید:
+
+```bash
+git clone https://github.com/seyed-ali-002/Dana-MCP-Server.git
+cd Dana-MCP-Server
+```
+
+بعد از نصب Docker Desktop در Windows/macOS یا Docker Engine به‌همراه Compose v2 در Linux، ابتدا پکیج Python دانا را یک‌بار نصب کنید تا CLI در دسترس باشد:
+
+```bash
+python3 -m pip install -e .
+```
+
+در Windows:
+
+```powershell
+py -3 -m pip install -e .
+```
+
+سپس کل جریان Docker را اجرا کنید:
 
 ```bash
 dana run
 ```
 
-`dana run` کل فرایند را انجام می‌دهد: تنظیمات را آماده می‌کند، Dana را Build و Start می‌کند، Tailscale Funnel را تنظیم و فعال می‌کند و در پایان Endpoint نهایی `/mcp` را نمایش می‌دهد. `dana up` و `dana start-all` نیز Alias همین فرایند کامل هستند.
+`dana run` کل فرایند را انجام می‌دهد: تنظیمات را آماده می‌کند، Dana را Build و Start می‌کند، Tailscale Funnel را تنظیم و فعال می‌کند و در پایان Endpoint استاندارد `/mcp` را نمایش می‌دهد. `dana up` و `dana start-all` نیز Alias همین فرایند کامل هستند.
 
-اگر دستور `dana` هنوز در PATH نیست:
+در یک Clone خام، مرحله نصب پکیج بالا تنها Bootstrap مربوط به Python است؛ Runtime و تنظیمات موردنیاز Dana توسط جریان CLI آماده می‌شوند.
 
-```bash
-python3 -m dana run
-```
 
-این دستور در صورت نیاز تنظیمات Local را ایجاد می‌کند، Image را می‌سازد، دانا را در پس‌زمینه اجرا می‌کند و Runtime را برای Restartهای بعدی پایدار نگه می‌دارد. سپس برای ایجاد Endpoint عمومی امن:
+برای عملیات Docker به‌صورت مرحله‌ای:
 
 ```bash
+dana install
 dana connect
 ```
+
+دستور `dana install` Runtime Docker را Build/Start می‌کند و Funnel حالت Local را نیز تنظیم می‌کند. دستور `dana connect` زمانی کاربرد دارد که Runtime از قبل نصب است و فقط می‌خواهید Endpoint عمومی را ایجاد یا مجدداً تنظیم کنید.
 
 دستورات روزمره:
 
@@ -151,7 +170,7 @@ dana uninstall
 
 فقط در صورتی از `dana uninstall --purge` استفاده کنید که بخواهید Volume مربوط به Runtime دانا نیز حذف شود.
 
-Container عمداً پورت `8765` را فقط روی `127.0.0.1` منتشر می‌کند. مرز عمومی همچنان Tailscale Funnel یا Reverse Proxy است. خود پروژه در `/workspace` در دسترس Container است و State مربوط به Runtime در Volume اختصاصی Docker نگهداری می‌شود.
+Container عمداً پورت `8765` را فقط روی `127.0.0.1` منتشر می‌کند. مرز عمومی همچنان Tailscale Funnel یا Reverse Proxy است. خود پروژه در `/workspace` در دسترس Container است و State مربوط به Runtime در Volume اختصاصی Docker نگهداری می‌شود. این حالت به‌صورت پیش‌فرض دسترسی عمومی و نامحدود به کل سیستم میزبان نمی‌دهد؛ عملیات Host-level باید از Native Mode یا یک Host Bridge کنترل‌شده انجام شود.
 
 Docker لایه Runtime است و کاربر عادی نیازی به کار مستقیم با Docker Compose ندارد.
 
@@ -161,14 +180,9 @@ Docker لایه Runtime است و کاربر عادی نیازی به کار م�
 
 ---
 
-## مرحله ۲ — دریافت پروژه
+## مرحله ۳ — نصب Native (بدون Docker)
 
-```bash
-git clone https://github.com/seyed-ali-002/Dana-MCP-Server.git
-cd Dana-MCP-Server
-```
-
-## مرحله ۳ — اجرای Installer
+اگر Docker در دسترس نیست، از Installer اصلی دانا استفاده کنید:
 
 ### Linux / macOS
 
@@ -178,9 +192,11 @@ python3 install.py
 
 ### Windows
 
-```bat
-python install.py
+```powershell
+py -3 install.py
 ```
+
+در Windows، فایل `run.bat` نیز Runtime مربوط به Python را به‌صورت امن پیدا می‌کند و با مسیرهای شامل فاصله، مانند مسیرهای دارای نام کاربری با فاصله، سازگار است.
 
 Installer به‌صورت تعاملی:
 

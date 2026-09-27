@@ -130,35 +130,48 @@ Approve the Funnel confirmation if prompted and verify with `tailscale funnel st
 
 ---
 
-## Fast path — Docker (recommended)
+## Step 2 — Get the project and start with Docker (recommended)
 
-For the simplest installation, Docker is now the preferred runtime. You do not need to create a Python virtual environment manually.
+For the simplest runtime, Docker is the preferred deployment layer. You do not need to create a Python virtual environment manually, but the Dana Python package must be installed once so the CLI can prepare the runtime.
 
-After installing Docker Desktop (Windows/macOS) or Docker Engine + Compose v2 (Linux), from the Dana directory run one command:
+Clone the repository first:
+
+```bash
+git clone https://github.com/seyed-ali-002/Dana-MCP-Server.git
+cd Dana-MCP-Server
+```
+
+After installing Docker Desktop (Windows/macOS) or Docker Engine + Compose v2 (Linux), install Dana's Python package once so the CLI is available:
+
+```bash
+python3 -m pip install -e .
+```
+
+On Windows:
+
+```powershell
+py -3 -m pip install -e .
+```
+
+Then run the complete Docker flow:
 
 ```bash
 dana run
 ```
 
-`dana run` performs the full startup flow: prepares configuration, builds/starts Dana, configures Tailscale Funnel, and prints the final `/mcp` endpoint. `dana up` and `dana start-all` are aliases for the same full flow.
+`dana run` performs the full startup flow: prepares configuration, builds/starts Dana, configures Tailscale Funnel, and prints the canonical `/mcp` endpoint. `dana up` and `dana start-all` are aliases for the same full flow.
 
-If the `dana` command is not installed yet, use:
+For a fresh checkout, the package-install step above is the only Python bootstrap required; Dana creates its runtime environment/configuration as part of the CLI flow.
 
-```bash
-python3 -m dana run
-```
 
-If the `dana` command is not installed yet, use:
+For lower-level Docker operations:
 
 ```bash
-python3 -m dana install
-```
-
-The command creates the local configuration when needed, builds the image, starts Dana in the background, and keeps the runtime persistent across restarts. Then expose it securely with:
-
-```bash
+dana install
 dana connect
 ```
+
+`dana install` builds/starts the Docker runtime and also configures the Local Mode Funnel. `dana connect` is useful when the runtime is already installed and you only need to (re)configure the public endpoint.
 
 Daily operations:
 
@@ -174,7 +187,7 @@ dana uninstall
 
 Use `dana uninstall --purge` only when you also want to remove the Docker-managed Dana runtime volume.
 
-The container intentionally binds port `8765` to `127.0.0.1` only. Tailscale Funnel or a reverse proxy remains the public boundary. The project directory is mounted as `/workspace`, while runtime databases/log state are stored in a dedicated Docker volume.
+The container intentionally binds port `8765` to `127.0.0.1` only. Tailscale Funnel or a reverse proxy remains the public boundary. The project directory is mounted as `/workspace`, while runtime databases/log state are stored in a dedicated Docker volume. This Docker runtime does not provide unrestricted access to the entire host OS; host-level operations require Native Mode or a separately designed, controlled Host Bridge.
 
 Docker is the runtime layer; users do not need to interact with Docker Compose directly.
 
@@ -184,14 +197,9 @@ If Docker is unavailable, `dana install` automatically opens Dana's existing nat
 
 ---
 
-## Step 2 — Clone Dana
+## Step 3 — Native installation (without Docker)
 
-```bash
-git clone https://github.com/seyed-ali-002/Dana-MCP-Server.git
-cd Dana-MCP-Server
-```
-
-## Step 3 — Run the Installer
+If Docker is unavailable, use the existing native installer:
 
 ### Linux / macOS
 
@@ -201,9 +209,11 @@ python3 install.py
 
 ### Windows
 
-```bat
-python install.py
+```powershell
+py -3 install.py
 ```
+
+The Windows `run.bat` launcher also resolves the Python runtime safely when the project path or Windows username contains spaces.
 
 The interactive installer:
 
@@ -215,7 +225,7 @@ The interactive installer:
 - configures networking for the selected deployment mode
 - checks required services before startup
 
-For first-time setup, the Installer is the recommended path.
+For native deployment, the interactive Installer is the recommended first-time setup path.
 
 ---
 
