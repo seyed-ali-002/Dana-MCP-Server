@@ -174,7 +174,7 @@ jobs:
             exit 1
           fi
 
-          previous_tag="$(git tag --list 'v0.1.0-build.*' | sed -E '/^v0\\.1\\.0-build\\.[0-9]+$/!d' | sort -V | tail -1)"
+          previous_tag="$(git tag --list 'v0.1.0-build.*' | sed -E '/^v0\\.1\\.0-build\\.[0-9]+$/!d' | grep -Fxv "${RELEASE_TAG}" | sort -V | tail -1 || true)"
           notes_file="$(mktemp)"
           {
             echo "## Highlights"
