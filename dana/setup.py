@@ -218,7 +218,7 @@ def install_tailscale() -> dict[str, object]:
                 _setup_log("Tailscale installation failed: " + (output or f"installer exited with code {result.returncode}"), "error")
                 return {"ok": False, "message": output or f"Installer exited with code {result.returncode}"}
             installed = command_exists("tailscale")
-            _setup_log("Tailscale installation finished." if installed else "Installer completed but the tailscale command was not found.", "info" if installed else "error")
+            _setup_log("Tailscale installation finished.", "success" if installed else "error")
             return {"ok": installed, "message": "Tailscale installation finished." if installed else "Tailscale was not found after installation."}
         except Exception as exc:
             return {"ok": False, "message": str(exc), "url": TAILSCALE_DOWNLOAD}
@@ -272,10 +272,10 @@ def login_tailscale() -> dict[str, object]:
         _setup_log("Tailscale requested browser authentication. Opening the login page.")
         _open(auth_url)
     if result.returncode == 0:
-        _setup_log("Tailscale authentication completed.")
+        _setup_log("Tailscale authentication completed.", "success")
         return {"ok": True, "message": "Tailscale is connected.", "auth_url": auth_url or ""}
     details = output.strip() or f"tailscale up exited with code {result.returncode}"
-    _setup_log("Tailscale authentication is pending." if auth_url else "Tailscale authentication failed: " + details, "info" if auth_url else "error")
+    _setup_log("Tailscale authentication is pending." if auth_url else "Tailscale authentication failed: " + details, "warning" if auth_url else "error")
     return {"ok": bool(auth_url), "pending": bool(auth_url), "message": "Complete Tailscale authentication in the browser, then return to Dana." if auth_url else details, "auth_url": auth_url or ""}
 
 def enable_funnel(port: int = 8765) -> dict[str, object]:
@@ -302,7 +302,7 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
     write_env("local", workers=settings.workers)
     set_local_public_host(host)
     verified = verify_public_endpoint(host)
-    _setup_log(f"Funnel is active on {host}; endpoint verification: {'passed' if verified else 'pending'}.")
+    _setup_log(f"Funnel is active on {host}; endpoint verification: {'passed' if verified else 'pending'}.", "success" if verified else "warning")
     return {"ok": True, "hostname": host, "url": f"https://{host}/mcp", "endpoint_verified": verified, "message": "Dana MCP endpoint verified." if verified else "Funnel is active; MCP endpoint is still warming up."}
 
 def start_dana() -> dict[str, object]:
@@ -315,7 +315,7 @@ def start_dana() -> dict[str, object]:
         from . import container
         if container.is_available():
             container.start()
-            _setup_log("Dana Docker runtime started.")
+            _setup_log("Dana Docker runtime started.", "success")
             return {"ok": True, "message": "Dana Docker runtime started."}
     except Exception:
         pass
@@ -328,7 +328,7 @@ def start_dana() -> dict[str, object]:
     else:
         command = [str(python), "-m", "dana.main"]
     subprocess.Popen(command, cwd=root, stdout=handle, stderr=subprocess.STDOUT, start_new_session=True)
-    _setup_log("Dana server process launched; waiting for the local MCP port.")
+    _setup_log("Dana server process launched; waiting for the local MCP port.", "success")
     return {"ok": True, "message": "Dana server is starting."}
 
 def bootstrap(progress: Callable[[str], None] | None = None) -> dict[str, object]:
