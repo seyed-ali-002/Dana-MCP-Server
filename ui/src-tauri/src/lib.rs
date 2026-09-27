@@ -48,12 +48,6 @@ fn start_setup_service(app: AppHandle) -> Result<u16, String> {
     }
 
     let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
-    let bundled = if cfg!(windows) {
-        resource_dir.join("dana-agent.exe")
-    } else {
-        resource_dir.join("dana-agent")
-    };
-
     let bundled_candidates = [
         resource_dir.join("dana-agent"),
         resource_dir.join("resources").join("dana-agent"),
