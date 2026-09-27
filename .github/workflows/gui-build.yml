@@ -16,14 +16,8 @@ jobs:
       matrix:
         include:
           - platform: ubuntu-22.04
-            shell: bash
-            build_script: ./packaging/build_linux.sh
           - platform: windows-latest
-            shell: pwsh
-            build_script: ./packaging/build_windows.ps1
           - platform: macos-latest
-            shell: bash
-            build_script: ./packaging/build_macos.sh
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v5
@@ -34,54 +28,105 @@ jobs:
         with:
           node-version: lts/*
       - uses: dtolnay/rust-toolchain@stable
+
       - name: Install Linux dependencies
         if: startsWith(matrix.platform, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2
+
       - name: Build Dana Desktop (Linux)
         if: startsWith(matrix.platform, 'ubuntu')
         shell: bash
         run: bash ./packaging/build_linux.sh
+
       - name: Build Dana Desktop (Windows)
         if: startsWith(matrix.platform, 'windows')
         shell: pwsh
         run: ./packaging/build_windows.ps1
+
       - name: Build Dana Desktop (macOS)
         if: startsWith(matrix.platform, 'macos')
         shell: bash
         run: bash ./packaging/build_macos.sh
-      - uses: actions/upload-artifact@v4
+
+      # Only publish actual distributable installers/packages. Do not upload the
+      # entire Tauri bundle tree because it contains duplicate internal files
+      # such as ui.png/AppRun and those cannot coexist as GitHub Release assets.
+      - name: Prepare Linux release assets
+        if: startsWith(matrix.platform, 'ubuntu')
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release-assets
+          shopt -s nullglob
+          files=(
+            ui/src-tauri/target/release/bundle/deb/*.deb
+            ui/src-tauri/target/release/bundle/appimage/*.AppImage
+          )
+          for file in "${files[@]}"; do
+            cp "$file" "dist/release-assets/Dana-Linux-$(basename "$file")"
+          done
+          test -n "$(find dist/release-assets -type f -print -quit)"
+
+      - name: Prepare Windows release assets
+        if: startsWith(matrix.platform, 'windows')
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path "dist/release-assets" | Out-Null
+          $files = Get-ChildItem "ui/src-tauri/target/release/bundle" -Recurse -File |
+            Where-Object { $_.Extension -in ".msi", ".exe" }
+          foreach ($file in $files) {
+            Copy-Item $file.FullName "dist/release-assets/Dana-Windows-$([System.IO.Path]::GetFileName($file.FullName))"
+          }
+          if (-not (Get-ChildItem "dist/release-assets" -File)) {
+            throw "No Windows installer assets were produced."
+          }
+
+      - name: Prepare macOS release assets
+        if: startsWith(matrix.platform, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/release-assets
+          shopt -s nullglob
+          files=(
+            ui/src-tauri/target/release/bundle/dmg/*.dmg
+            ui/src-tauri/target/release/bundle/macos/*.app.tar.gz
+          )
+          for file in "${files[@]}"; do
+            cp "$file" "dist/release-assets/Dana-macOS-$(basename "$file")"
+          done
+          test -n "$(find dist/release-assets -type f -print -quit)"
+
+      - name: Upload distributable release assets
+        uses: actions/upload-artifact@v7
         with:
           name: Dana-${{ matrix.platform }}
-          path: ui/src-tauri/target/release/bundle/**
+          path: dist/release-assets/*
           if-no-files-found: error
 
   release:
-    # Publish automatically for main pushes after all desktop builds pass.
-    # Version tags are also supported and use the tag as the release name.
     if: needs.build.result == 'success'
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout repository for GitHub CLI release operations
-        uses: actions/checkout@v5
-
-      - name: Download desktop bundles
-        uses: actions/download-artifact@v4
+      - name: Download desktop release assets
+        uses: actions/download-artifact@v8
         with:
           pattern: Dana-*
           path: release
           merge-multiple: true
 
-      - name: Verify release files
+      - name: Verify release assets
         shell: bash
         run: |
           set -euo pipefail
-          find release -type f -print
-          test -n "$(find release -type f -print -quit)"
+          find release -maxdepth 1 -type f -print
+          test -n "$(find release -maxdepth 1 -type f -print -quit)"
 
       - name: Determine release tag
         id: release_tag
@@ -99,14 +144,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t files < <(find release -type f)
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" "${files[@]}" --clobber
+          mapfile -t files < <(find release -maxdepth 1 -type f -print)
+          if (( ${#files[@]} == 0 )); then
+            echo "No release assets found." >&2
+            exit 1
+          fi
+
+          if gh release view "${RELEASE_TAG}" --repo "${REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "${files[@]}"               --repo "${REPOSITORY}"               --clobber
           else
-            gh release create "${RELEASE_TAG}" "${files[@]}" \
-              --title "Dana ${RELEASE_TAG}" \
-              --generate-notes
+            gh release create "${RELEASE_TAG}" "${files[@]}"               --repo "${REPOSITORY}"               --target "${TARGET_SHA}"               --title "Dana ${RELEASE_TAG}"               --generate-notes
           fi
