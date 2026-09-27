@@ -117,16 +117,18 @@ tailscale funnel status
 
 برای ساده‌ترین نصب، Docker اکنون Runtime پیشنهادی دانا است. کاربر لازم نیست Python، Virtualenv یا وابستگی‌های دانا را به‌صورت دستی نصب کند.
 
-بعد از نصب Docker Desktop در Windows/macOS یا Docker Engine به‌همراه Compose v2 در Linux، از داخل پوشه دانا اجرا کنید:
+بعد از نصب Docker Desktop در Windows/macOS یا Docker Engine به‌همراه Compose v2 در Linux، فقط یک دستور اجرا کنید:
 
 ```bash
-dana install
+dana run
 ```
+
+`dana run` کل فرایند را انجام می‌دهد: تنظیمات را آماده می‌کند، Dana را Build و Start می‌کند، Tailscale Funnel را تنظیم و فعال می‌کند و در پایان Endpoint نهایی `/mcp` را نمایش می‌دهد. `dana up` و `dana start-all` نیز Alias همین فرایند کامل هستند.
 
 اگر دستور `dana` هنوز در PATH نیست:
 
 ```bash
-python3 -m dana install
+python3 -m dana run
 ```
 
 این دستور در صورت نیاز تنظیمات Local را ایجاد می‌کند، Image را می‌سازد، دانا را در پس‌زمینه اجرا می‌کند و Runtime را برای Restartهای بعدی پایدار نگه می‌دارد. سپس برای ایجاد Endpoint عمومی امن:

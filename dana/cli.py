@@ -119,7 +119,8 @@ def _docker_install() -> None:
     container.start()
     console.print("[bold green]✓ Dana is running.[/bold green]")
     console.print("[cyan]Local MCP:[/cyan] http://127.0.0.1:8765/mcp")
-    console.print("[dim]Run 'dana connect' to expose it securely through Tailscale Funnel.[/dim]")
+    console.print("[cyan]Configuring Tailscale Funnel...[/cyan]")
+    _docker_connect()
 
 
 def _docker_connect() -> None:
@@ -135,9 +136,29 @@ def _docker_connect() -> None:
     console.print(f"[bold green]✓ Secure MCP endpoint:[/bold green] https://{host}/mcp")
 
 
+def _full_start() -> None:
+    """Install/start Dana and configure its public Funnel endpoint in one step."""
+    from . import container
+    if container.is_available():
+        _docker_install()
+        return
+    # Native fallback: start the existing runtime, then configure Funnel if possible.
+    from .installer import main as installer_main
+    installer_main()
+    if shutil.which("tailscale"):
+        from .config import settings
+        from .installer import configure_tailscale_local, set_local_public_host
+        host = configure_tailscale_local(settings.require_auth_token(), port=settings.port)
+        set_local_public_host(host)
+        console.print(f"[bold green]✓ Secure MCP endpoint:[/bold green] https://{host}/mcp")
+
+
 def _handle_command(command: str) -> bool:
     from . import container
 
+    if command in {"run", "start-all", "up"}:
+        _full_start()
+        return True
     if command == "install":
         if container.is_available():
             _docker_install()

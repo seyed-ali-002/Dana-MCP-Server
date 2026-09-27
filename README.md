@@ -134,10 +134,18 @@ Approve the Funnel confirmation if prompted and verify with `tailscale funnel st
 
 For the simplest installation, Docker is now the preferred runtime. You do not need to create a Python virtual environment manually.
 
-After installing Docker Desktop (Windows/macOS) or Docker Engine + Compose v2 (Linux), from the Dana directory run:
+After installing Docker Desktop (Windows/macOS) or Docker Engine + Compose v2 (Linux), from the Dana directory run one command:
 
 ```bash
-dana install
+dana run
+```
+
+`dana run` performs the full startup flow: prepares configuration, builds/starts Dana, configures Tailscale Funnel, and prints the final `/mcp` endpoint. `dana up` and `dana start-all` are aliases for the same full flow.
+
+If the `dana` command is not installed yet, use:
+
+```bash
+python3 -m dana run
 ```
 
 If the `dana` command is not installed yet, use:

@@ -15,6 +15,21 @@ def venv_python() -> Path:
     return ROOT / ".venv" / "bin" / "python"
 
 
+def python_command() -> list[str]:
+    """Resolve the project interpreter without reconstructing paths from CWD."""
+    python = venv_python()
+    if python.is_file():
+        return [str(python)]
+    if platform.system().lower() == "windows":
+        for launcher in (("py", "-3"), ("python",)):
+            try:
+                subprocess.run([*launcher, "--version"], check=True, capture_output=True, timeout=5)
+                return list(launcher)
+            except (OSError, subprocess.SubprocessError):
+                continue
+    raise FileNotFoundError(f"Dana Python runtime not found: {python}")
+
+
 def dana_listener_pids() -> set[int]:
     if platform.system().lower() == "windows":
         return set()
@@ -51,7 +66,7 @@ def is_dana_process(pid: int) -> bool:
 
 def main() -> None:
     python = venv_python()
-    if not python.exists():
+    if not python.exists() and platform.system().lower() != "windows":
         print("Dana is not installed.")
         print("Run python install.py first.")
         raise SystemExit(1)
@@ -66,7 +81,8 @@ def main() -> None:
         print("Run python install.py first.")
         raise SystemExit(1)
 
-    os.execv(str(python), [str(python), "-m", "dana.main"])
+    command = python_command()
+    os.execv(command[0], [*command, "-m", "dana.main"])
 
 
 if __name__ == "__main__":
