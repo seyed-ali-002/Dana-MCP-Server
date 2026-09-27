@@ -3,6 +3,7 @@ name: Dana Desktop Releases
 on:
   workflow_dispatch:
   push:
+    branches: ["main"]
     tags: ["v*"]
 
 permissions:
