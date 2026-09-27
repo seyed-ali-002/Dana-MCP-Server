@@ -5,7 +5,7 @@ Set-Location $Root
 ./packaging/build_sidecar.ps1
 
 Set-Location ui
-npm install
+npm ci
 npm run build
 npm run tauri build
 

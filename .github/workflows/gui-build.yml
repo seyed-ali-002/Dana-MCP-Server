@@ -42,7 +42,7 @@ jobs:
       - name: Build Dana Desktop (Linux)
         if: startsWith(matrix.platform, 'ubuntu')
         shell: bash
-        run: ./packaging/build_linux.sh
+        run: bash ./packaging/build_linux.sh
       - name: Build Dana Desktop (Windows)
         if: startsWith(matrix.platform, 'windows')
         shell: pwsh
@@ -50,8 +50,41 @@ jobs:
       - name: Build Dana Desktop (macOS)
         if: startsWith(matrix.platform, 'macos')
         shell: bash
-        run: ./packaging/build_macos.sh
+        run: bash ./packaging/build_macos.sh
       - uses: actions/upload-artifact@v4
         with:
           name: Dana-${{ matrix.platform }}
           path: ui/src-tauri/target/release/bundle/**
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download desktop bundles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Dana-*
+          path: release
+          merge-multiple: true
+
+      - name: Verify release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          find release -type f -print
+          test -n "$(find release -type f -print -quit)"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find release -type f)
+          gh release create "${GITHUB_REF_NAME}" "${files[@]}" \
+            --title "Dana ${GITHUB_REF_NAME}" \
+            --generate-notes
