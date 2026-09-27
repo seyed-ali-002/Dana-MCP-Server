@@ -30,7 +30,6 @@ type SetupLog = {
   message: string;
 };
 
-type AlertKind = "error" | "warning" | "success";
 
 const API = (port: number, path: string) => "http://127.0.0.1:" + port + path;
 
