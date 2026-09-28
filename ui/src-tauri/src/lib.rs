@@ -1,4 +1,3 @@
-use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
@@ -68,31 +67,42 @@ fn start_setup_service(app: AppHandle) -> Result<u16, String> {
         cmd
     };
 
+    // A file-based handshake is used instead of stdout. Bundled sidecars may
+    // emit bootloader/runtime output before application startup, and Windows
+    // suppresses console output for GUI-launched processes.
+    let port_file = std::env::temp_dir().join(format!("dana-setup-port-{}.txt", std::process::id()));
+    let _ = std::fs::remove_file(&port_file);
+    command.env("DANA_SETUP_PORT_FILE", &port_file);
+
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000);
     }
-    command.stdout(Stdio::piped()).stderr(Stdio::null());
+    command.stdout(Stdio::null()).stderr(Stdio::null());
     let mut child = command.spawn().map_err(|e| format!("Could not start setup service: {e}"))?;
-    let stdout = child.stdout.take().ok_or("Setup service did not expose stdout.")?;
-    let mut reader = BufReader::new(stdout);
-    let mut line = String::new();
+
     let mut port = None;
-    for _ in 0..40 {
-        line.clear();
-        let read = reader.read_line(&mut line).map_err(|e| format!("Could not read setup service port: {e}"))?;
-        if read == 0 {
-            break;
+    for _ in 0..100 {
+        if let Ok(contents) = std::fs::read_to_string(&port_file) {
+            if let Ok(value) = contents.trim().parse::<u16>() {
+                if value != 0 {
+                    port = Some(value);
+                    break;
+                }
+            }
         }
-        if let Some(value) = line.trim().strip_prefix("DANA_SETUP_PORT=") {
-            port = value.parse::<u16>().ok();
-            break;
+        if let Some(status) = child.try_wait().map_err(|e| format!("Could not check setup service: {e}"))? {
+            let _ = std::fs::remove_file(&port_file);
+            return Err(format!("Setup service exited before announcing its port (status: {status})."));
         }
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
+
+    let _ = std::fs::remove_file(&port_file);
     let port = port.ok_or_else(|| {
         let _ = child.kill();
-        format!("Invalid setup service port. Setup service did not announce a valid port.")
+        format!("Invalid setup service port. Setup service did not start its local API within 5 seconds.")
     })?;
 
     *SETUP_AGENT.lock().map_err(|e| e.to_string())? = Some(child);
