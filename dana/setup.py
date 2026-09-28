@@ -86,44 +86,56 @@ def _find_funnel_hostname(value: object) -> str | None:
     return None
 
 def _funnel_status() -> tuple[bool, str]:
-    """Read Funnel state across current and legacy Tailscale CLI schemas."""
+    """Read Funnel state across current Tailscale CLI schemas."""
     try:
         result = _run(["tailscale", "funnel", "status", "--json"], timeout=10)
         raw = (result.stdout or "") + "\n" + (result.stderr or "")
     except (OSError, subprocess.TimeoutExpired):
         return False, ""
 
-    hostname = ""
     payload: object = None
     try:
         payload = json.loads(result.stdout)
-        hostname = _find_funnel_hostname(payload) or ""
     except json.JSONDecodeError:
-        pass
+        payload = None
 
+    hostname = _find_funnel_hostname(payload) or _find_funnel_hostname(raw) or ""
     if not hostname:
-        hostname = _find_funnel_hostname(raw) or _tailscale_hostname_from_status() or ""
+        hostname = _tailscale_hostname_from_status() or ""
 
     def contains_local_target(value: object) -> bool:
         text = json.dumps(value, ensure_ascii=False).lower() if not isinstance(value, str) else value.lower()
-        return (f"127.0.0.1:{settings.port}" in text or f"localhost:{settings.port}" in text or f":{settings.port}" in text or str(settings.port) in text)
+        return any(target in text for target in (
+            f"http://127.0.0.1:{settings.port}",
+            f"http://localhost:{settings.port}",
+            f"127.0.0.1:{settings.port}",
+            f"localhost:{settings.port}",
+            f":{settings.port}",
+        ))
 
     active = False
     if isinstance(payload, dict):
-        allow = payload.get("AllowFunnel")
-        if isinstance(allow, dict):
-            active = any(bool(value) for value in allow.values())
-        elif isinstance(allow, bool):
-            active = allow
         web = payload.get("Web")
-        if web and contains_local_target(web):
+        allow = payload.get("AllowFunnel")
+        allow_for_host = False
+        if isinstance(allow, dict):
+            allow_for_host = any(
+                bool(value) and (not hostname or hostname in str(key))
+                for key, value in allow.items()
+            )
+        elif isinstance(allow, bool):
+            allow_for_host = allow
+
+        # Current Tailscale status is Web -> <host>:443 -> Handlers -> Proxy.
+        if web and contains_local_target(web) and (allow_for_host or hostname):
             active = True
-        if web and hostname and not active:
-            active = True
+        elif allow_for_host and web:
+            active = contains_local_target(web)
 
     lowered = raw.lower()
-    if not active:
-        active = (result.returncode == 0 and bool(hostname) and ("available on the internet" in lowered or "proxy http://" in lowered) and (f"127.0.0.1:{settings.port}" in lowered or f"localhost:{settings.port}" in lowered or f":{settings.port}" in lowered))
+    has_public_marker = "available on the internet" in lowered or "# funnel on:" in lowered
+    if not active and result.returncode == 0 and hostname and has_public_marker and contains_local_target(raw):
+        active = True
 
     if active:
         return True, hostname
@@ -133,7 +145,12 @@ def _funnel_status() -> tuple[bool, str]:
         text = (plain.stdout or "") + "\n" + (plain.stderr or "")
         plain_host = _find_funnel_hostname(text) or hostname
         plain_lower = text.lower()
-        plain_active = (plain.returncode == 0 and bool(plain_host) and ("available on the internet" in plain_lower or "proxy http://" in plain_lower) and (f"127.0.0.1:{settings.port}" in plain_lower or f"localhost:{settings.port}" in plain_lower or f":{settings.port}" in plain_lower))
+        plain_active = (
+            plain.returncode == 0
+            and bool(plain_host)
+            and ("available on the internet" in plain_lower or "# funnel on:" in plain_lower)
+            and contains_local_target(text)
+        )
         return bool(plain_active), plain_host if plain_active else hostname
     except (OSError, subprocess.TimeoutExpired):
         return False, hostname
@@ -174,8 +191,7 @@ def status() -> SetupStatus:
                 hostname = str(payload.get("Self", {}).get("DNSName", "")).rstrip(".")
         except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
             pass
-    funnel_host = _funnel_hostname() if installed else ""
-    active = _funnel_active() if installed else False
+    active, funnel_host = _funnel_status() if installed else (False, "")
     public_host = funnel_host if active else ""
     local_url = f"http://127.0.0.1:{settings.port}/mcp"
     public_url = f"https://{public_host}/mcp" if public_host else ""
@@ -438,7 +454,7 @@ def start_dana() -> dict[str, object]:
     }
 
 def stop_dana() -> dict[str, object]:
-    """Stop the Dana instance owned by the desktop setup flow."""
+    """Stop Dana and remove the desktop-owned Funnel route."""
     global _DANA_PROCESS
     stopped = False
 
@@ -466,6 +482,18 @@ def stop_dana() -> dict[str, object]:
             stopped = True
     except Exception:
         pass
+
+    # Funnel was started with --bg, so it survives independently of Dana.
+    # Remove only the HTTPS 443 route used by Dana.
+    if command_exists("tailscale"):
+        try:
+            funnel_stop = _run(["tailscale", "funnel", "--https=443", "off"], timeout=15)
+            if funnel_stop.returncode == 0:
+                _setup_log("Dana Tailscale Funnel route stopped.", "success")
+            elif _funnel_active():
+                _setup_log("Dana Funnel is still active after the stop request.", "warning")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            _setup_log(f"Could not stop Dana Funnel: {exc}", "warning")
 
     if _dana_running():
         _setup_log("Dana runtime is still listening after stop request.", "error")

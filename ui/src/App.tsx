@@ -89,7 +89,19 @@ function App() {
   async function copyUrl(url: string) {
     if (!url) return;
     try {
-      await navigator.clipboard.writeText(url);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const area = document.createElement("textarea");
+        area.value = url;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+      }
       setCopiedUrl(url);
       window.setTimeout(() => setCopiedUrl((current) => current === url ? "" : current), 1800);
     } catch {
@@ -218,7 +230,7 @@ function App() {
               <div className="logs-head"><div><span className="eyebrow">CONNECTION URLS</span><h2>Connect Dana</h2></div><button className="secondary" onClick={() => setActiveView("Connections")}>Open Connections</button></div>
               <div className="connection-list">
                 <div className="connection-row"><div><span className="eyebrow">LOCAL</span><strong>Local MCP endpoint</strong><code>{status?.local_mcp_url || "http://127.0.0.1:8765/mcp"}</code></div><button className="secondary" disabled={!status?.local_mcp_url} onClick={() => copyUrl(status?.local_mcp_url || "")}>{copiedUrl === status?.local_mcp_url ? "Copied" : "Copy"}</button></div>
-                <div className="connection-row"><div><span className="eyebrow">FUNNEL</span><strong>Public MCP endpoint</strong><code>{status?.public_mcp_url || "Funnel not active"}</code></div><button className="secondary" disabled={!status?.public_mcp_url} onClick={() => copyUrl(status?.public_mcp_url || "")}>{copiedUrl === status?.public_mcp_url ? "Copied" : "Copy"}</button></div>
+                <div className="connection-row"><div><span className="eyebrow">FUNNEL</span><strong>Public MCP endpoint</strong><code>{status?.public_mcp_url || "Waiting for Funnel to become active…"}</code></div><button className="secondary" disabled={!status?.public_mcp_url} onClick={() => copyUrl(status?.public_mcp_url || "")}>{copiedUrl === status?.public_mcp_url ? "Copied" : "Copy"}</button></div>
               </div>
             </section>
           </>
@@ -232,7 +244,7 @@ function App() {
                 <button className="secondary" disabled={!status?.local_mcp_url} onClick={() => copyUrl(status?.local_mcp_url || "")}>{copiedUrl === status?.local_mcp_url ? "Copied" : "Copy"}</button>
               </div>
               <div className="connection-row">
-                <div><span className="eyebrow">FUNNEL</span><strong>Public MCP endpoint</strong><code>{status?.public_mcp_url || "Funnel not active"}</code></div>
+                <div><span className="eyebrow">FUNNEL</span><strong>Public MCP endpoint</strong><code>{status?.public_mcp_url || "Waiting for Funnel to become active…"}</code></div>
                 <button className="secondary" disabled={!status?.public_mcp_url} onClick={() => copyUrl(status?.public_mcp_url || "")}>{copiedUrl === status?.public_mcp_url ? "Copied" : "Copy"}</button>
               </div>
             </div>

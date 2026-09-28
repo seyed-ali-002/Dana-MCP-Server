@@ -157,9 +157,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Dana")
         .run(|_app, event| {
-            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
-                stop_dana_before_exit();
-                stop_setup_service();
+            match event {
+                RunEvent::ExitRequested { .. } => {
+                    stop_dana_before_exit();
+                }
+                RunEvent::Exit => {
+                    stop_dana_before_exit();
+                    stop_setup_service();
+                }
+                _ => {}
             }
         });
 }
