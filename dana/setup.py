@@ -127,11 +127,17 @@ def _funnel_status() -> tuple[bool, str]:
         elif isinstance(allow, bool):
             allow_for_host = allow
 
-        # Current Tailscale status is Web -> <host>:443 -> Handlers -> Proxy.
-        if web and contains_local_target(web) and (allow_for_host or hostname):
+        # Tailscale has used multiple JSON schemas for Funnel. The important
+        # runtime signal is a configured Web entry on this machine's HTTPS
+        # listener; the local target may be represented as Proxy, Handler, or
+        # another nested field depending on the CLI version.
+        if web:
+            web_text = json.dumps(web, ensure_ascii=False).lower()
+            https_listener = any(marker in web_text for marker in (":443", "https"))
+            if contains_local_target(web) or (https_listener and (allow_for_host or hostname)):
+                active = True
+        elif allow_for_host and hostname:
             active = True
-        elif allow_for_host and web:
-            active = contains_local_target(web)
 
     lowered = raw.lower()
     has_public_marker = "available on the internet" in lowered or "# funnel on:" in lowered
@@ -370,7 +376,9 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
             return {"ok": True, "pending": True, "action_required": "enable_funnel", "message": "Approve Funnel in the Tailscale browser flow, then return to Dana.", "auth_url": auth_url}
         _setup_log("Funnel configuration failed: " + details, "error")
         return {"ok": False, "message": details}
-    write_env("local", workers=settings.workers)
+    token = write_env("local", workers=settings.workers)
+    settings.auth_token = token
+    os.environ["DANA_AUTH_TOKEN"] = token
     set_local_public_host(host)
     active = False
     for _ in range(20):
@@ -382,9 +390,11 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
     verified = verify_public_endpoint(host) if active else False
     if active:
         _setup_log(f"Funnel is active on {host}; endpoint verification: {'passed' if verified else 'pending'}.", "success")
-        return {"ok": True, "hostname": host, "url": f"https://{host}/mcp", "endpoint_verified": verified, "message": "Dana MCP endpoint verified." if verified else "Funnel is active; MCP endpoint is still warming up."}
+        token_path = f"/{settings.auth_token}/mcp" if settings.auth_token else "/mcp"
+        return {"ok": True, "hostname": host, "url": f"https://{host}{token_path}", "endpoint_verified": verified, "message": "Funnel is active and the MCP endpoint is ready." if verified else "Funnel is active; the MCP endpoint is warming up."}
     _setup_log(f"Funnel configuration was accepted but status is still pending for {host}.", "warning")
-    return {"ok": True, "pending": True, "hostname": host, "url": f"https://{host}/mcp", "endpoint_verified": False, "action_required": "enable_funnel", "message": "Funnel approval completed; waiting for Tailscale to publish the endpoint."}
+    token_path = f"/{settings.auth_token}/mcp" if settings.auth_token else "/mcp"
+    return {"ok": True, "pending": True, "hostname": host, "url": f"https://{host}{token_path}", "endpoint_verified": False, "action_required": "enable_funnel", "message": "Funnel approval completed; waiting for Tailscale to publish the endpoint."}
 
 def start_dana() -> dict[str, object]:
     _setup_log("Starting Dana runtime.")

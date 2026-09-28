@@ -49,130 +49,82 @@ Dana is built around three goals:
 
 # Installation and Connection
 
-## Step 1 — Graphical setup (recommended)
+## Download Dana Desktop
 
-Dana now includes a graphical setup flow. The GUI handles the complete Local Mode network sequence:
+For most users, **Dana Desktop is the recommended method**. Download the latest installer for Windows, Linux, or macOS from the project's GitHub Releases page:
 
-1. Detect Tailscale.
-2. Install Tailscale when it is missing.
-3. Open the Tailscale authentication flow.
-4. Wait for the device to become connected.
-5. Start Dana.
-6. Enable Tailscale Funnel.
-7. Open the Funnel approval flow when Tailscale requires it.
-8. Verify the public Funnel hostname.
-9. Verify Dana's `/mcp` endpoint.
-10. Keep the local runtime and Funnel state monitored.
+- [Download the latest Dana Desktop release](https://github.com/seyed-ali-002/Dana-MCP-Server/releases/latest)
+- [All Dana releases](https://github.com/seyed-ali-002/Dana-MCP-Server/releases)
 
-Launch it with:
+The desktop application bundles the Dana setup runtime and provides graphical control for Tailscale, Funnel, connections, runtime, security, and logs.
 
-```bash
-python3 -m pip install -e .
-dana gui
+## Method 1 — Dana Desktop (recommended)
+
+After installing Dana Desktop, use the panels in this order:
+
+**Setup**
+- Install Tailscale when it is missing.
+- Connect/authenticate Tailscale in the browser.
+- Activate Dana.
+- Approve and activate Tailscale Funnel when requested.
+
+**Dashboard**
+- View Dana, Tailscale, Funnel, and usage status.
+
+**Connections**
+- Copy the local tokenized MCP URL for software running on the same machine.
+- Copy the public tokenized MCP URL when Funnel is active.
+
+Local URL format:
+```text
+http://127.0.0.1:8765/<TOKEN>/mcp
 ```
 
-`dana gui` launches the Tauri desktop application when a local development/release build is available. Installed Dana Desktop packages launch the same Tauri application directly.
-
-**GUI panel order after installation:**
-
-1. **Setup** — only installation, Tailscale login, Dana activation and Funnel approval.
-2. **Dashboard** — overall runtime, network and usage status.
-3. **Connections** — exact tokenized local/public MCP URLs with copy buttons.
-4. **Runtime** — start/stop Dana and runtime state.
-5. **Security** — authentication URL state and public exposure state.
-6. **Logs** — setup and runtime diagnostics.
-
-After the initial installation, the main action is shown as **Activate Dana** instead of asking the user to continue the initial setup flow again.
-
-Packaged GUI installers are produced by the release pipeline for Windows, Linux, and macOS. The packaged Tauri application contains a Python setup agent as a bundled runtime component. The GUI never exposes its control API publicly; setup control is bound to localhost.
-
-![Dana and Tailscale Funnel architecture](docs/images/tailscale-funnel.svg)
-
-Tailscale Funnel is disabled by default and requires MagicDNS, HTTPS certificates, and the appropriate Funnel permission in the tailnet. Dana detects the resulting approval requirement and opens the browser instead of treating it as a generic installation failure. Tailscale's current CLI supports `tailscale funnel --https=<port> --bg` and `tailscale funnel status --json`. citeturn2search0turn0search6
-
-### What the GUI automates
-
-**Windows**
-- Downloads and launches the current official Tailscale installer with elevation.
-- Opens Tailscale authentication in the browser.
-- Enables and verifies Funnel.
-- Starts Dana automatically.
-
-**Linux**
-- Uses the official Tailscale installation script through the graphical `pkexec` elevation flow.
-- Starts/uses the Tailscale daemon.
-- Opens authentication/approval pages when required.
-- Starts Dana and Funnel automatically.
-
-**macOS**
-- Opens the current official standalone Tailscale installer.
-- Uses the Tailscale GUI authentication flow.
-- Handles Funnel configuration after the device is connected.
-- Reports system-extension approval when macOS requires it.
-
-Tailscale recommends its standalone macOS package and documents explicit system-extension approval requirements on current macOS versions. citeturn2search0turn2search1turn2search7
-
-### CLI fallback
-
-The terminal workflow remains available for advanced users:
-
-```bash
-tailscale status
-tailscale funnel --https=443 --bg 8765
-tailscale funnel status
+Public Funnel URL format:
+```text
+https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
 ```
 
-Tailscale documents `--bg` as the persistent mode; a background Funnel resumes after Tailscale restarts. citeturn0search0
+**Runtime**
+- Start or stop Dana.
+- Check the local MCP listener and public route.
 
-**Security:** Funnel publishes the selected local service to the public internet. Dana keeps authentication enabled and uses the canonical `/mcp` resource; do not share authenticated connection material. citeturn0search6
+**Security**
+- Review authentication and public exposure.
+- Copy tokenized connection URLs when needed.
 
----
+**Logs**
+- Review setup, authentication, Funnel, and runtime events.
 
-## Step 2 — Get the project and start with Docker (recommended)
+After the first installation, the Setup panel uses **Activate Dana** for normal activation instead of asking you to repeat installation.
 
-For the simplest runtime, Docker is the preferred deployment layer. You do not need to create a Python virtual environment manually, but the Dana Python package must be installed once so the CLI can prepare the runtime.
+When Dana Desktop closes, it stops the Dana runtime and the Funnel route owned by the desktop session.
 
-Clone the repository first:
+## Method 2 — Terminal / CLI
+
+Use this method when you prefer a terminal or are working on a server.
+
+### Docker runtime
+
+Clone the project and install the CLI:
 
 ```bash
 git clone https://github.com/seyed-ali-002/Dana-MCP-Server.git
 cd Dana-MCP-Server
-```
-
-After installing Docker Desktop (Windows/macOS) or Docker Engine + Compose v2 (Linux), install Dana's Python package once so the CLI is available:
-
-```bash
 python3 -m pip install -e .
 ```
 
-On Windows:
-
+Windows:
 ```powershell
 py -3 -m pip install -e .
 ```
 
-Then run the complete Docker flow:
-
+Start Dana:
 ```bash
 dana run
 ```
 
-`dana run` performs the full startup flow: prepares configuration, builds/starts Dana, configures Tailscale Funnel, and prints the canonical `/mcp` endpoint. `dana up` and `dana start-all` are aliases for the same full flow.
-
-For a fresh checkout, the package-install step above is the only Python bootstrap required; Dana creates its runtime environment/configuration as part of the CLI flow.
-
-
-For lower-level Docker operations:
-
-```bash
-dana install
-dana connect
-```
-
-`dana install` builds/starts the Docker runtime and also configures the Local Mode Funnel. `dana connect` is useful when the runtime is already installed and you only need to (re)configure the public endpoint.
-
-Daily operations:
-
+Useful commands:
 ```bash
 dana start
 dana stop
@@ -183,255 +135,74 @@ dana update
 dana uninstall
 ```
 
-Use `dana uninstall --purge` only when you also want to remove the Docker-managed Dana runtime volume.
+`dana run`, `dana up`, and `dana start-all` prepare the runtime and networking flow.
 
-The container intentionally binds port `8765` to `127.0.0.1` only. Tailscale Funnel or a reverse proxy remains the public boundary. The project directory is mounted as `/workspace`, while runtime databases/log state are stored in a dedicated Docker volume. This Docker runtime does not provide unrestricted access to the entire host OS; host-level operations require Native Mode or a separately designed, controlled Host Bridge.
+### Tailscale Funnel
 
-Docker is the runtime layer; users do not need to interact with Docker Compose directly.
-
-### Native fallback
-
-If Docker is unavailable, `dana install` automatically opens Dana's existing native installer. This keeps the project usable on systems where Docker cannot be installed.
-
----
-
-## Step 3 — Native installation (without Docker)
-
-If Docker is unavailable, use the existing native installer:
-
-### Linux / macOS
+For Local Mode, Funnel publishes Dana through HTTPS:
 
 ```bash
-python3 install.py
+tailscale status
+tailscale funnel --https=443 --bg 8765
+tailscale funnel status
 ```
 
-### Windows
-
-```powershell
-py -3 install.py
-```
-
-The Windows `run.bat` launcher also resolves the Python runtime safely when the project path or Windows username contains spaces.
-
-The interactive installer:
-
-- creates or updates an isolated `.venv`
-- installs required dependencies
-- lets you choose Local or Server Mode
-- configures worker count
-- creates persistent authentication configuration
-- configures networking for the selected deployment mode
-- checks required services before startup
-
-For native deployment, the interactive Installer is the recommended first-time setup path.
-
----
-
-## Step 4 — Choose a Deployment Mode
-
-### Local Mode — personal computer
-
-Local Mode is the simplest setup for a development machine or personal computer:
-
-```text
-AI Client
-   │
-   │ MCP over HTTPS
-   ▼
-Tailscale Funnel
-   │
-   ▼
-Dana
-   │
-   ├── Files
-   ├── Code
-   ├── Shell
-   ├── Git
-   ├── Browser
-   └── Intelligence
-```
-
-Dana exposes a tokenized MCP connection URL in Local Mode:
+The connection URL must include Dana's authentication token:
 
 ```text
 https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
 ```
 
 For local-only access:
-
 ```text
 http://127.0.0.1:8765/<TOKEN>/mcp
 ```
 
-The GUI shows both exact URLs in **Connections** and provides a **Copy** button. Treat the complete URL as a credential because it contains Dana's authentication token.
+Use `dana doctor --show-url` when you need the complete tokenized URL in a trusted terminal.
 
-### Server Mode — VPS or dedicated server
+### Native runtime
 
-Server Mode is designed for Linux servers and existing web infrastructure. Dana runs on an internal localhost port and integrates with an existing reverse proxy.
+If Docker is unavailable, use the native installer:
 
-Supported reverse proxies:
-
-- Nginx
-- Caddy
-- Apache
-
-Architecture:
-
-```text
-Internet
-   │
-   ▼
-https://mcp.example.com
-   │
-   ▼
-Reverse Proxy :443
-   │
-   └── /mcp → 127.0.0.1:<DANA_PORT>
-                    │
-                    ▼
-                  Dana
-```
-
-The Installer can detect existing proxies, back up configuration, validate changes, and avoid unnecessary service installation. If no supported proxy is available, it asks before installing Caddy.
-
-Typical endpoint:
-
-```text
-https://mcp.example.com/mcp
-```
-
-Dana also exposes OAuth authorization metadata and a PKCE-based authorization-code flow for compatible reconnect flows, independently from My_PC or another local connector.
-
-### Connection-link security
-
-In Local Mode, the generated MCP connection URL intentionally contains Dana's persistent authentication token:
-
-```text
-https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
-```
-
-The tokenized URL is the compatibility connection contract used by Dana's local deployment. Keep the complete URL private and use the **Copy** action in the GUI or the exact URL printed by the terminal tools.
-
-Server Mode can use the canonical `/mcp` endpoint behind the configured reverse proxy and OAuth 2.0 + PKCE. Do not expose a Local Mode tokenized URL unnecessarily.
-
----
-
-## Step 5 — Start and Stop Dana
-
-After installation, use the project runners provided by your installation.
-
-Typical local commands:
-
+Linux/macOS:
 ```bash
-./run
-./stop
+python3 install.py
 ```
 
-On Windows, use the corresponding `.bat` runner.
-
-In Server Mode, Dana can run as a systemd service:
-
-```bash
-sudo systemctl start dana
-sudo systemctl stop dana
-sudo systemctl restart dana
-sudo systemctl status dana --no-pager
-sudo journalctl -u dana -f
+Windows:
+```powershell
+py -3 install.py
 ```
 
-Worker count is configured during installation and stored as:
+The native installer configures the runtime, authentication, workers, and deployment mode.
 
-```env
-DANA_WORKERS=5
+## Deployment methods
+
+### Local Mode
+
+Local Mode is intended for a personal computer. Dana listens locally and Tailscale Funnel provides the public HTTPS boundary.
+
+```text
+AI Client → Tailscale Funnel → Dana → Local machine
 ```
 
----
+### Server Mode
 
-## Step 6 — Connect Your AI Client
+Server Mode is intended for a VPS or dedicated server. Dana listens on localhost behind a reverse proxy such as Nginx, Caddy, or Apache.
 
-Add Dana as an MCP / Custom Connector and use the exact URL generated by Dana.
+```text
+Internet → Reverse Proxy → 127.0.0.1:<DANA_PORT> → Dana
+```
 
-### ChatGPT — Developer Mode first
+Server Mode can use the canonical `/mcp` endpoint with OAuth 2.0 + PKCE. Local Mode uses the tokenized compatibility URL.
 
-ChatGPT's current custom MCP app flow requires **Developer Mode** for the relevant accounts/workspaces. OpenAI documents the current path as Apps / Advanced Settings or Workspace Settings → Apps → Create, depending on plan and permissions. The full MCP feature set is still being rolled out and UI/permissions can change. citeturn0search0
+## Connect an AI client
 
-**Step 1 — Enable Developer Mode**
+Use the exact connection URL shown by Dana Desktop under **Connections**, or the tokenized URL printed by the CLI.
 
-Open **Settings → Security** and enable **Developer Mode** when your account exposes that option. The exact location can vary by plan/workspace; OpenAI currently documents **Settings → Apps → Advanced Settings** for some accounts and workspace-specific paths for others. citeturn0search0
+For ChatGPT, Claude, Grok, and other MCP-compatible clients, follow the current custom MCP/connector flow provided by that client. Client menus and availability can change over time.
 
-
-**Step 2 — Create the Dana MCP App**
-
-Open **Apps → Create** (or the corresponding Workspace Apps → Create area for an admin).
-
-**Step 3 — Enter Dana's MCP endpoint**
-
-Enter Dana's MCP endpoint and choose the required authentication method.
-
-
-**Step 4 — Scan Tools and authorize**
-
-Click **Scan Tools**, complete authorization if prompted, then create the app.
-
-
-**Step 5 — Use Dana in a chat**
-
-In a chat, select the Dana app/connector for the message and verify that its tools are available.
-
-
-OpenAI's current documentation notes that exact availability depends on plan/workspace permissions; custom apps are web-only, and full MCP write/modify support is rolling out. citeturn0search0
-
-### Installing the plugin / app
-
-Some ChatGPT interfaces expose an **Install plugin** action, while newer interfaces use **Apps** and custom MCP apps. If **Install plugin** is shown, the general flow is: open Apps/Plugins → Install plugin → Connect/authorize → enable it for the conversation. citeturn0search14
-
-**Step 1 — Open Apps / Plugins**
-
-Open the client's Apps / Plugins area.
-
-
-**Step 2 — Install the plugin/app**
-
-Choose **Install plugin** (or the equivalent Apps action).
-
-**Step 3 — Connect and authorize**
-
-Enter or select Dana, then complete the connection/authorization flow.
-
-**Step 4 — Enable for the conversation**
-
-Enable the installed Dana app/plugin for the current conversation.
-
-For a custom Dana MCP server, prefer the current **Create custom app** flow above when Developer Mode is available.
-
-### Claude — no Developer Mode step
-
-Claude supports custom remote MCP connectors without the ChatGPT-style Developer Mode step. For individual Pro/Max users, the current flow is **Customize → Connectors → + → Add custom connector**, enter Dana's public MCP URL, then **Add** and **Connect**. Team/Enterprise owners may need to add the connector at the organization level first. citeturn2search0turn2search4
-
-
-1. Open **Customize → Connectors**.
-2. Select **Add custom connector**.
-3. Enter the Dana connector name and public MCP URL.
-4. Add it and complete authentication if requested.
-5. In a chat, use **+ → Connectors** and enable Dana.
-
-Claude connects to remote custom connectors from Anthropic's cloud, so Dana must be reachable from the public internet. citeturn2search0
-
-### Grok — no Developer Mode step
-
-Grok currently supports custom MCP connectors directly from **grok.com/connectors**: **New Connector → Custom → enter the MCP server URL → complete authentication**. citeturn1search0
-
-
-
-1. Open **grok.com/connectors**.
-2. Click **New Connector**.
-3. Select **Custom** and enter Dana's public MCP URL.
-4. Complete authentication if required.
-5. Confirm that Dana's tools are discovered and available in the conversation.
-
-Grok's current documentation requires a publicly reachable MCP server for custom web connectors. Dana's Tailscale Funnel setup provides that public HTTPS endpoint in Local Mode. citeturn1search0turn1search1
-
-> Client menu names and availability can change over time. Follow the current client UI when it differs from these diagrams.
+**Important:** A tokenized connection URL is a credential. Do not publish it in screenshots, issues, logs, or public documentation.
 
 ---
 

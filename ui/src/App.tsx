@@ -213,11 +213,10 @@ function App() {
               <div className="hero-glow" /><div className="hero-copy"><span className="kicker">ONE-CLICK DEPLOYMENT</span>
                 <h2>Bring Dana online without the terminal.</h2>
                 <p>Python runtime, Tailscale, Funnel, Dana and the public MCP endpoint are coordinated from one setup flow.</p>
-                <button className="primary" disabled={busy || ready || !status} onClick={continueSetup}>{busy ? "Working…" : ready ? "Dana is active" : !status ? "Loading…" : status.tailscale_installed ? "Activate Dana" : "Start setup"}</button>
+                <button className="primary" disabled={busy || ready || !status} onClick={continueSetup}>{busy ? "Working…" : ready ? "Dana is active" : !status ? "Loading…" : status.tailscale_installed ? "Activate Dana" : "Install & Activate"}</button>
               </div><div className="hero-orb"><div className="orb-core"><img src={logo} alt="Dana" /></div></div>
             </section>
 
-            <section className="usage-card glass"><div><span className="eyebrow">TOKEN USAGE</span><strong>{usage?.available ? usage.total_tokens.toLocaleString() : "—"}</strong><span className="usage-caption">{usage?.available ? "total recorded tokens" : "No analytics data yet"}</span></div><div className="usage-stats"><span>Input <b>{usage?.available ? usage.input_tokens.toLocaleString() : "—"}</b></span><span>Output <b>{usage?.available ? usage.output_tokens.toLocaleString() : "—"}</b></span><span>Operations <b>{usage?.available ? usage.operations.toLocaleString() : "—"}</b></span></div></section>
 
             <div className="grid">
               <section className="card glass"><div className="card-head"><span>01</span><strong>Tailscale</strong><b className={status?.tailscale_installed ? "state success" : "state warning"}>{status?.tailscale_installed ? "INSTALLED" : "REQUIRED"}</b></div><p>Install and authenticate Tailscale. Dana opens the browser login flow automatically when required.</p><div className="meta">{status?.tailscale_backend || "Not connected"}</div></section>
