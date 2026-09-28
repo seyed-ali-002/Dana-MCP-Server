@@ -86,7 +86,7 @@ def _find_funnel_hostname(value: object) -> str | None:
     return None
 
 def _funnel_status() -> tuple[bool, str]:
-    """Read Funnel state across Tailscale CLI schema/version differences."""
+    """Read Funnel state across current and legacy Tailscale CLI schemas."""
     try:
         result = _run(["tailscale", "funnel", "status", "--json"], timeout=10)
         raw = (result.stdout or "") + "\n" + (result.stderr or "")
@@ -94,22 +94,37 @@ def _funnel_status() -> tuple[bool, str]:
         return False, ""
 
     hostname = ""
+    payload: object = None
     try:
-        value = json.loads(result.stdout)
-        hostname = _find_funnel_hostname(value) or ""
+        payload = json.loads(result.stdout)
+        hostname = _find_funnel_hostname(payload) or ""
     except json.JSONDecodeError:
         pass
 
     if not hostname:
         hostname = _find_funnel_hostname(raw) or _tailscale_hostname_from_status() or ""
 
+    def contains_local_target(value: object) -> bool:
+        text = json.dumps(value, ensure_ascii=False).lower() if not isinstance(value, str) else value.lower()
+        return (f"127.0.0.1:{settings.port}" in text or f"localhost:{settings.port}" in text or f":{settings.port}" in text or str(settings.port) in text)
+
+    active = False
+    if isinstance(payload, dict):
+        allow = payload.get("AllowFunnel")
+        if isinstance(allow, dict):
+            active = any(bool(value) for value in allow.values())
+        elif isinstance(allow, bool):
+            active = allow
+        web = payload.get("Web")
+        if web and contains_local_target(web):
+            active = True
+        if web and hostname and not active:
+            active = True
+
     lowered = raw.lower()
-    active = (
-        result.returncode == 0
-        and bool(hostname)
-        and ("https://" in lowered or "available on the internet" in lowered)
-        and ("127.0.0.1" in lowered or f":{settings.port}" in lowered or str(settings.port) in lowered)
-    )
+    if not active:
+        active = (result.returncode == 0 and bool(hostname) and ("available on the internet" in lowered or "proxy http://" in lowered) and (f"127.0.0.1:{settings.port}" in lowered or f"localhost:{settings.port}" in lowered or f":{settings.port}" in lowered))
+
     if active:
         return True, hostname
 
@@ -118,13 +133,8 @@ def _funnel_status() -> tuple[bool, str]:
         text = (plain.stdout or "") + "\n" + (plain.stderr or "")
         plain_host = _find_funnel_hostname(text) or hostname
         plain_lower = text.lower()
-        active = (
-            plain.returncode == 0
-            and bool(plain_host)
-            and ("available on the internet" in plain_lower or "https://" in plain_lower)
-            and ("127.0.0.1" in plain_lower or f":{settings.port}" in plain_lower or str(settings.port) in plain_lower)
-        )
-        return bool(active), plain_host if active else hostname
+        plain_active = (plain.returncode == 0 and bool(plain_host) and ("available on the internet" in plain_lower or "proxy http://" in plain_lower) and (f"127.0.0.1:{settings.port}" in plain_lower or f"localhost:{settings.port}" in plain_lower or f":{settings.port}" in plain_lower))
+        return bool(plain_active), plain_host if plain_active else hostname
     except (OSError, subprocess.TimeoutExpired):
         return False, hostname
 
@@ -343,9 +353,19 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
         return {"ok": False, "message": details}
     write_env("local", workers=settings.workers)
     set_local_public_host(host)
-    verified = verify_public_endpoint(host)
-    _setup_log(f"Funnel is active on {host}; endpoint verification: {'passed' if verified else 'pending'}.", "success" if verified else "warning")
-    return {"ok": True, "hostname": host, "url": f"https://{host}/mcp", "endpoint_verified": verified, "message": "Dana MCP endpoint verified." if verified else "Funnel is active; MCP endpoint is still warming up."}
+    active = False
+    for _ in range(20):
+        active, detected_host = _funnel_status()
+        host = detected_host or host
+        if active:
+            break
+        time.sleep(0.5)
+    verified = verify_public_endpoint(host) if active else False
+    if active:
+        _setup_log(f"Funnel is active on {host}; endpoint verification: {'passed' if verified else 'pending'}.", "success")
+        return {"ok": True, "hostname": host, "url": f"https://{host}/mcp", "endpoint_verified": verified, "message": "Dana MCP endpoint verified." if verified else "Funnel is active; MCP endpoint is still warming up."}
+    _setup_log(f"Funnel configuration was accepted but status is still pending for {host}.", "warning")
+    return {"ok": True, "pending": True, "hostname": host, "url": f"https://{host}/mcp", "endpoint_verified": False, "action_required": "enable_funnel", "message": "Funnel approval completed; waiting for Tailscale to publish the endpoint."}
 
 def start_dana() -> dict[str, object]:
     _setup_log("Starting Dana runtime.")

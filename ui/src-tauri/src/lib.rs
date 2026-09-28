@@ -1,12 +1,13 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
 
 use tauri::{AppHandle, Manager, RunEvent};
 
 static SETUP_AGENT: Mutex<Option<Child>> = Mutex::new(None);
 static SETUP_PORT: Mutex<Option<u16>> = Mutex::new(None);
+static SHUTDOWN_STARTED: AtomicBool = AtomicBool::new(false);
 
 fn find_project_root() -> Option<std::path::PathBuf> {
     let candidates = [
@@ -117,6 +118,9 @@ fn start_setup_service(app: AppHandle) -> Result<u16, String> {
 }
 
 fn stop_dana_before_exit() {
+    if SHUTDOWN_STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
     let port = match SETUP_PORT.lock().ok().and_then(|guard| *guard) {
         Some(port) => port,
         None => return,
@@ -153,7 +157,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Dana")
         .run(|_app, event| {
-            if matches!(event, RunEvent::Exit) {
+            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
                 stop_dana_before_exit();
                 stop_setup_service();
             }

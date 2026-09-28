@@ -138,7 +138,7 @@ function App() {
       setMessage(String(result.message || "Step completed."));
       await refresh();
       if (typeof result.auth_url === "string" && result.auth_url) await openUrl(result.auth_url);
-      if (typeof result.url === "string" && result.url) setMessage("Ready: " + result.url);
+      if (typeof result.url === "string" && result.url) setMessage("Connection URL: " + result.url);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       setError(detail);
