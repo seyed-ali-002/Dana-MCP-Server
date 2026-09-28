@@ -320,27 +320,47 @@ def start_dana() -> dict[str, object]:
         _setup_log("Dana runtime is already running.", "success")
         return {"ok": True, "message": "Dana is already running."}
 
+    # The desktop sidecar is a self-contained PyInstaller runtime. Its extracted
+    # bundle does not contain the source-tree Docker compose file, so Docker must
+    # never be selected merely because Docker happens to be installed.
     root = Path(__file__).resolve().parents[1]
     docker_started = False
     try:
         from . import container
-        if container.is_available():
+        if (
+            not getattr(__import__("sys"), "frozen", False)
+            and (root / "docker-compose.yml").is_file()
+            and container.is_available()
+        ):
             container.start()
             docker_started = True
             _setup_log("Dana Docker runtime started; waiting for readiness.")
+            if _wait_for_dana(timeout=30.0):
+                _setup_log("Dana Docker runtime is ready on the local MCP port.", "success")
+                return {"ok": True, "message": "Dana is running."}
+            _setup_log("Docker started but Dana did not become ready; falling back to the native runtime.", "warning")
     except Exception as exc:
         _setup_log(f"Docker runtime could not be started; using native runtime: {exc}", "warning")
 
-    if not docker_started:
-        python = Path(os.environ["DANA_PYTHON"]) if os.environ.get("DANA_PYTHON") else Path(__import__("sys").executable)
-        log = Path(os.getenv("DANA_RUNTIME_DIR", Path.home() / ".cache" / "dana")) / "gui-server.log"
-        log.parent.mkdir(parents=True, exist_ok=True)
-        handle = open(log, "a", encoding="utf-8")
-        if getattr(__import__("sys"), "frozen", False):
-            command = [str(python), "--serve"]
-        else:
-            command = [str(python), "-m", "dana.main"]
-        try:
+    # Generate/preserve the local credential and explicitly pass it to the
+    # bundled child. Installed builds cannot rely on a source-tree .env file.
+    token = write_env("local", workers=settings.workers)
+    os.environ["DANA_AUTH_TOKEN"] = token
+    os.environ["DANA_DEPLOYMENT_MODE"] = "local"
+    os.environ["DANA_HOST"] = "127.0.0.1"
+    os.environ["DANA_PORT"] = str(settings.port)
+    settings.auth_token = token
+
+    python = Path(os.environ["DANA_PYTHON"]) if os.environ.get("DANA_PYTHON") else Path(__import__("sys").executable)
+    log = Path(os.getenv("DANA_RUNTIME_DIR", Path.home() / ".cache" / "dana")) / "gui-server.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    if getattr(__import__("sys"), "frozen", False):
+        command = [str(python), "--serve"]
+    else:
+        command = [str(python), "-m", "dana.main"]
+    _setup_log("Dana server process launched; waiting for the local MCP port.")
+    try:
+        with open(log, "a", encoding="utf-8") as handle:
             subprocess.Popen(
                 command,
                 cwd=root,
@@ -348,11 +368,9 @@ def start_dana() -> dict[str, object]:
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
-        except OSError as exc:
-            handle.close()
-            _setup_log(f"Could not launch Dana runtime: {exc}", "error")
-            return {"ok": False, "message": f"Could not launch Dana runtime: {exc}"}
-        _setup_log("Dana server process launched; waiting for the local MCP port.")
+    except OSError as exc:
+        _setup_log(f"Could not launch Dana runtime: {exc}", "error")
+        return {"ok": False, "message": f"Could not launch Dana runtime: {exc}"}
 
     if _wait_for_dana(timeout=30.0):
         _setup_log("Dana runtime is ready on the local MCP port.", "success")

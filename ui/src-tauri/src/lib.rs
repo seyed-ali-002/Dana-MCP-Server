@@ -49,8 +49,11 @@ fn start_setup_service(app: AppHandle) -> Result<u16, String> {
     let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
     let bundled_candidates = [
         resource_dir.join("dana-agent"),
+        resource_dir.join("dana-agent.exe"),
         resource_dir.join("resources").join("dana-agent"),
+        resource_dir.join("resources").join("dana-agent.exe"),
         app.path().executable_dir().ok().map(|p| p.join("resources").join("dana-agent")).unwrap_or_default(),
+        app.path().executable_dir().ok().map(|p| p.join("resources").join("dana-agent.exe")).unwrap_or_default(),
     ];
     let bundled = bundled_candidates.into_iter().find(|p| p.is_file());
 
