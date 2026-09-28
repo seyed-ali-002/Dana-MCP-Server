@@ -78,8 +78,22 @@ fn start_setup_service(app: AppHandle) -> Result<u16, String> {
     let stdout = child.stdout.take().ok_or("Setup service did not expose stdout.")?;
     let mut reader = BufReader::new(stdout);
     let mut line = String::new();
-    reader.read_line(&mut line).map_err(|e| format!("Could not read setup service port: {e}"))?;
-    let port: u16 = line.trim().parse().map_err(|_| format!("Invalid setup service port: {}", line.trim()))?;
+    let mut port = None;
+    for _ in 0..40 {
+        line.clear();
+        let read = reader.read_line(&mut line).map_err(|e| format!("Could not read setup service port: {e}"))?;
+        if read == 0 {
+            break;
+        }
+        if let Some(value) = line.trim().strip_prefix("DANA_SETUP_PORT=") {
+            port = value.parse::<u16>().ok();
+            break;
+        }
+    }
+    let port = port.ok_or_else(|| {
+        let _ = child.kill();
+        format!("Invalid setup service port. Setup service did not announce a valid port.")
+    })?;
 
     *SETUP_AGENT.lock().map_err(|e| e.to_string())? = Some(child);
     Ok(port)
