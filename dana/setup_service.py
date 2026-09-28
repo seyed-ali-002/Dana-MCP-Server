@@ -36,6 +36,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/setup/login-tailscale": setup.login_tailscale,
             "/api/setup/enable-funnel": setup.enable_funnel,
             "/api/setup/start-dana": setup.start_dana,
+            "/api/setup/stop-dana": setup.stop_dana,
             "/api/setup/bootstrap": setup.bootstrap,
         }.get(urlparse(self.path).path)
         if not action:

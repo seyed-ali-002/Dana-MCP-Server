@@ -24,6 +24,7 @@ TAILSCALE_PACKAGES = "https://pkgs.tailscale.com/stable/"
 TAILSCALE_INSTALL_SCRIPT = "https://tailscale.com/install.sh"
 
 _SETUP_LOGS: deque[dict[str, str]] = deque(maxlen=250)
+_DANA_PROCESS: subprocess.Popen[str] | None = None
 
 
 def _setup_log(message: str, level: str = "info") -> None:
@@ -46,6 +47,8 @@ class SetupStatus:
     funnel_hostname: str
     dana_running: bool
     mcp_url: str
+    local_mcp_url: str
+    public_mcp_url: str
     action_required: str = ""
     message: str = ""
 
@@ -82,26 +85,54 @@ def _find_funnel_hostname(value: object) -> str | None:
         if match: return match.group(1)
     return None
 
-def _funnel_hostname() -> str:
+def _funnel_status() -> tuple[bool, str]:
+    """Read Funnel state across Tailscale CLI schema/version differences."""
     try:
         result = _run(["tailscale", "funnel", "status", "--json"], timeout=10)
+        raw = (result.stdout or "") + "\n" + (result.stderr or "")
     except (OSError, subprocess.TimeoutExpired):
-        return ""
-    if result.returncode: return ""
+        return False, ""
+
+    hostname = ""
     try:
         value = json.loads(result.stdout)
+        hostname = _find_funnel_hostname(value) or ""
     except json.JSONDecodeError:
-        return ""
-    return _find_funnel_hostname(value) or _tailscale_hostname_from_status() or ""
+        pass
+
+    if not hostname:
+        hostname = _find_funnel_hostname(raw) or _tailscale_hostname_from_status() or ""
+
+    lowered = raw.lower()
+    active = (
+        result.returncode == 0
+        and bool(hostname)
+        and ("https://" in lowered or "available on the internet" in lowered)
+        and ("127.0.0.1" in lowered or f":{settings.port}" in lowered or str(settings.port) in lowered)
+    )
+    if active:
+        return True, hostname
+
+    try:
+        plain = _run(["tailscale", "funnel", "status"], timeout=10)
+        text = (plain.stdout or "") + "\n" + (plain.stderr or "")
+        plain_host = _find_funnel_hostname(text) or hostname
+        plain_lower = text.lower()
+        active = (
+            plain.returncode == 0
+            and bool(plain_host)
+            and ("available on the internet" in plain_lower or "https://" in plain_lower)
+            and ("127.0.0.1" in plain_lower or f":{settings.port}" in plain_lower or str(settings.port) in plain_lower)
+        )
+        return bool(active), plain_host if active else hostname
+    except (OSError, subprocess.TimeoutExpired):
+        return False, hostname
+
+def _funnel_hostname() -> str:
+    return _funnel_status()[1]
 
 def _funnel_active() -> bool:
-    try:
-        result = _run(["tailscale", "funnel", "status", "--json"], timeout=10)
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    if result.returncode: return False
-    text = result.stdout.lower()
-    return "https://" in text and ("127.0.0.1" in text or str(settings.port) in text)
+    return _funnel_status()[0]
 
 def _dana_running(timeout: float = 0.5) -> bool:
     import socket
@@ -136,7 +167,8 @@ def status() -> SetupStatus:
     funnel_host = _funnel_hostname() if installed else ""
     active = _funnel_active() if installed else False
     public_host = funnel_host if active else ""
-    public_url = f"https://{public_host}/mcp" if public_host else "http://127.0.0.1:8765/mcp"
+    local_url = f"http://127.0.0.1:{settings.port}/mcp"
+    public_url = f"https://{public_host}/mcp" if public_host else ""
     action = ""
     message = ""
     if not installed:
@@ -147,7 +179,8 @@ def status() -> SetupStatus:
         action, message = "start_dana", "Dana is not running."
     elif not active:
         action, message = "enable_funnel", "Tailscale Funnel is not active."
-    return SetupStatus(installed, backend, hostname, active, funnel_host, _dana_running(), public_url, action, message)
+    running = _dana_running()
+    return SetupStatus(installed, backend, hostname, active, funnel_host, running, public_url or local_url, local_url, public_url, action, message)
 
 def token_usage() -> dict[str, object]:
     """Read lightweight token totals for the desktop control center."""
@@ -359,9 +392,10 @@ def start_dana() -> dict[str, object]:
     else:
         command = [str(python), "-m", "dana.main"]
     _setup_log("Dana server process launched; waiting for the local MCP port.")
+    global _DANA_PROCESS
     try:
         with open(log, "a", encoding="utf-8") as handle:
-            subprocess.Popen(
+            _DANA_PROCESS = subprocess.Popen(
                 command,
                 cwd=root,
                 stdout=handle,
@@ -382,6 +416,44 @@ def start_dana() -> dict[str, object]:
         "action_required": "start_dana",
         "message": "Dana did not become ready on the local MCP port within 30 seconds. Check the runtime log and try again.",
     }
+
+def stop_dana() -> dict[str, object]:
+    """Stop the Dana instance owned by the desktop setup flow."""
+    global _DANA_PROCESS
+    stopped = False
+
+    if _DANA_PROCESS is not None:
+        try:
+            if _DANA_PROCESS.poll() is None:
+                _DANA_PROCESS.terminate()
+                try:
+                    _DANA_PROCESS.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    _DANA_PROCESS.kill()
+                    _DANA_PROCESS.wait(timeout=3)
+                stopped = True
+        except OSError as exc:
+            _setup_log(f"Could not stop Dana runtime: {exc}", "error")
+            return {"ok": False, "message": str(exc)}
+        finally:
+            _DANA_PROCESS = None
+
+    try:
+        from . import container
+        root = Path(__file__).resolve().parents[1]
+        if not getattr(__import__("sys"), "frozen", False) and (root / "docker-compose.yml").is_file() and container.is_available():
+            container.stop()
+            stopped = True
+    except Exception:
+        pass
+
+    if _dana_running():
+        _setup_log("Dana runtime is still listening after stop request.", "error")
+        return {"ok": False, "message": "Dana could not be stopped cleanly."}
+
+    _setup_log("Dana runtime stopped.", "success")
+    return {"ok": True, "stopped": stopped, "message": "Dana is stopped."}
+
 
 def bootstrap(progress: Callable[[str], None] | None = None) -> dict[str, object]:
     progress = progress or (lambda _message: None)

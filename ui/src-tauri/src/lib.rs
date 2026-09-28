@@ -1,9 +1,12 @@
+use std::io::{Read, Write};
+use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager, RunEvent};
 
 static SETUP_AGENT: Mutex<Option<Child>> = Mutex::new(None);
+static SETUP_PORT: Mutex<Option<u16>> = Mutex::new(None);
 
 fn find_project_root() -> Option<std::path::PathBuf> {
     let candidates = [
@@ -108,8 +111,26 @@ fn start_setup_service(app: AppHandle) -> Result<u16, String> {
         format!("Invalid setup service port. Setup service did not start its local API within 5 seconds.")
     })?;
 
+    *SETUP_PORT.lock().map_err(|e| e.to_string())? = Some(port);
     *SETUP_AGENT.lock().map_err(|e| e.to_string())? = Some(child);
     Ok(port)
+}
+
+fn stop_dana_before_exit() {
+    let port = match SETUP_PORT.lock().ok().and_then(|guard| *guard) {
+        Some(port) => port,
+        None => return,
+    };
+    if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) {
+        let request = format!(
+            "POST /api/setup/stop-dana HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            port
+        );
+        let _ = stream.write_all(request.as_bytes());
+        let _ = stream.flush();
+        let mut response = Vec::new();
+        let _ = stream.read_to_end(&mut response);
+    }
 }
 
 fn stop_setup_service() {
@@ -118,6 +139,9 @@ fn stop_setup_service() {
             let _ = child.kill();
             let _ = child.wait();
         }
+    }
+    if let Ok(mut port) = SETUP_PORT.lock() {
+        *port = None;
     }
 }
 
@@ -130,6 +154,7 @@ pub fn run() {
         .expect("error while building Dana")
         .run(|_app, event| {
             if matches!(event, RunEvent::Exit) {
+                stop_dana_before_exit();
                 stop_setup_service();
             }
         });

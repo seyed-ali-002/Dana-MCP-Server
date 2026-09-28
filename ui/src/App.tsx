@@ -12,6 +12,8 @@ type Status = {
   funnel_hostname: string;
   dana_running: boolean;
   mcp_url: string;
+  local_mcp_url: string;
+  public_mcp_url: string;
   action_required: string;
   message: string;
 };
@@ -45,6 +47,7 @@ function App() {
   const [error, setError] = useState("");
   const [usage, setUsage] = useState<TokenUsage | null>(null);
   const [logs, setLogs] = useState<SetupLog[]>([]);
+  const [copiedUrl, setCopiedUrl] = useState("");
 
   const ready = Boolean(status?.dana_running && status?.funnel_active);
   const progress = useMemo(() => {
@@ -78,8 +81,22 @@ function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setMessage("Waiting for the local setup service…");
+
+
     }
   }
+
+  async function copyUrl(url: string) {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedUrl(url);
+      window.setTimeout(() => setCopiedUrl((current) => current === url ? "" : current), 1800);
+    } catch {
+      setError("Could not copy the connection URL.");
+    }
+  }
+
 
   useEffect(() => {
     let alive = true;
@@ -103,6 +120,8 @@ function App() {
   useEffect(() => {
     if (!port) return;
     const timer = window.setInterval(() => refresh(), 1800);
+
+
     return () => window.clearInterval(timer);
   }, [port]);
 
@@ -119,13 +138,15 @@ function App() {
       setMessage(String(result.message || "Step completed."));
       await refresh();
       if (typeof result.auth_url === "string" && result.auth_url) await openUrl(result.auth_url);
-      if (typeof result.url === "string" && result.url) setMessage("Ready: " + result.url.replace(/\/$/, "") + "/mcp");
+      if (typeof result.url === "string" && result.url) setMessage("Ready: " + result.url);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       setError(detail);
       setMessage("Setup action failed. See the error panel below.");
     } finally {
       setBusy(false);
+
+
     }
   }
 
@@ -192,7 +213,30 @@ function App() {
             </div>
 
             <section className="progress-card glass"><div className="progress-top"><div><span className="eyebrow">SETUP PROGRESS</span><strong>{progress}%</strong></div><span>{message}</span></div><div className="track"><div className="track-fill" style={{ width: progress + "%" }} /></div><div className="steps"><span className={status?.tailscale_installed ? "done" : ""}>Tailscale</span><span className={status?.tailscale_backend.toLowerCase() === "running" ? "done" : ""}>Authentication</span><span className={status?.dana_running ? "done" : ""}>Dana</span><span className={status?.funnel_active ? "done" : ""}>Funnel</span></div></section>
+
+            <section className="connections-panel glass">
+              <div className="logs-head"><div><span className="eyebrow">CONNECTION URLS</span><h2>Connect Dana</h2></div><button className="secondary" onClick={() => setActiveView("Connections")}>Open Connections</button></div>
+              <div className="connection-list">
+                <div className="connection-row"><div><span className="eyebrow">LOCAL</span><strong>Local MCP endpoint</strong><code>{status?.local_mcp_url || "http://127.0.0.1:8765/mcp"}</code></div><button className="secondary" disabled={!status?.local_mcp_url} onClick={() => copyUrl(status?.local_mcp_url || "")}>{copiedUrl === status?.local_mcp_url ? "Copied" : "Copy"}</button></div>
+                <div className="connection-row"><div><span className="eyebrow">FUNNEL</span><strong>Public MCP endpoint</strong><code>{status?.public_mcp_url || "Funnel not active"}</code></div><button className="secondary" disabled={!status?.public_mcp_url} onClick={() => copyUrl(status?.public_mcp_url || "")}>{copiedUrl === status?.public_mcp_url ? "Copied" : "Copy"}</button></div>
+              </div>
+            </section>
           </>
+        ) : activeView === "Connections" ? (
+          <section className="connections-panel glass">
+            <div className="logs-head"><div><span className="eyebrow">MCP CONNECTIONS</span><h2>Connection URLs</h2></div><button className="secondary" onClick={() => refresh()}>Refresh</button></div>
+            <p className="logs-description">Use the local URL for applications running on this machine. Use the public URL when Tailscale Funnel is active.</p>
+            <div className="connection-list">
+              <div className="connection-row">
+                <div><span className="eyebrow">LOCAL</span><strong>Local MCP endpoint</strong><code>{status?.local_mcp_url || "http://127.0.0.1:8765/mcp"}</code></div>
+                <button className="secondary" disabled={!status?.local_mcp_url} onClick={() => copyUrl(status?.local_mcp_url || "")}>{copiedUrl === status?.local_mcp_url ? "Copied" : "Copy"}</button>
+              </div>
+              <div className="connection-row">
+                <div><span className="eyebrow">FUNNEL</span><strong>Public MCP endpoint</strong><code>{status?.public_mcp_url || "Funnel not active"}</code></div>
+                <button className="secondary" disabled={!status?.public_mcp_url} onClick={() => copyUrl(status?.public_mcp_url || "")}>{copiedUrl === status?.public_mcp_url ? "Copied" : "Copy"}</button>
+              </div>
+            </div>
+          </section>
         ) : activeView === "Logs" ? (
           <section className="logs-panel glass">
             <div className="logs-head"><div><span className="eyebrow">SETUP & REGISTRATION LOG</span><h2>What Dana is doing</h2></div><button className="secondary" onClick={() => refresh()}>Refresh</button></div>
