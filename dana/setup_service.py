@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import os
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -58,5 +59,13 @@ if __name__ == "__main__":
         run()
     else:
         server = serve()
-        print(f"DANA_SETUP_PORT={server.server_address[1]}", flush=True)
+        port = str(server.server_address[1])
+        port_file = os.environ.get("DANA_SETUP_PORT_FILE")
+        if port_file:
+            from pathlib import Path
+            target = Path(port_file)
+            temporary = target.with_suffix(target.suffix + ".tmp")
+            temporary.write_text(port, encoding="ascii")
+            temporary.replace(target)
+        print(f"DANA_SETUP_PORT={port}", flush=True)
         server.serve_forever()
