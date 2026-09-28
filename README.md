@@ -73,6 +73,17 @@ dana gui
 
 `dana gui` launches the Tauri desktop application when a local development/release build is available. Installed Dana Desktop packages launch the same Tauri application directly.
 
+**GUI panel order after installation:**
+
+1. **Setup** — only installation, Tailscale login, Dana activation and Funnel approval.
+2. **Dashboard** — overall runtime, network and usage status.
+3. **Connections** — exact tokenized local/public MCP URLs with copy buttons.
+4. **Runtime** — start/stop Dana and runtime state.
+5. **Security** — authentication URL state and public exposure state.
+6. **Logs** — setup and runtime diagnostics.
+
+After the initial installation, the main action is shown as **Activate Dana** instead of asking the user to continue the initial setup flow again.
+
 Packaged GUI installers are produced by the release pipeline for Windows, Linux, and macOS. The packaged Tauri application contains a Python setup agent as a bundled runtime component. The GUI never exposes its control API publicly; setup control is bound to localhost.
 
 ![Dana and Tailscale Funnel architecture](docs/images/tailscale-funnel.svg)
@@ -240,13 +251,19 @@ Dana
    └── Intelligence
 ```
 
-Dana exposes the canonical MCP endpoint:
+Dana exposes a tokenized MCP connection URL in Local Mode:
 
 ```text
-https://<machine>.<tailnet>.ts.net/mcp
+https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
 ```
 
-Dana no longer puts the long-lived authentication token in the connection URL. Compatible clients authenticate through OAuth 2.0 + PKCE.
+For local-only access:
+
+```text
+http://127.0.0.1:8765/<TOKEN>/mcp
+```
+
+The GUI shows both exact URLs in **Connections** and provides a **Copy** button. Treat the complete URL as a credential because it contains Dana's authentication token.
 
 ### Server Mode — VPS or dedicated server
 
@@ -287,11 +304,15 @@ Dana also exposes OAuth authorization metadata and a PKCE-based authorization-co
 
 ### Connection-link security
 
-The generated ChatGPT connection URL is the canonical `/mcp` endpoint and **never contains Dana's long-lived bearer token**. Dana authenticates compatible clients through **OAuth 2.0 Authorization Code + PKCE**. The authorization code is single-use and short-lived, and the PKCE verifier is retained by the initiating client, so copying an authorization URL alone does not transfer an authenticated MCP session to another device.
+In Local Mode, the generated MCP connection URL intentionally contains Dana's persistent authentication token:
 
-The older `/<token>/mcp` URL remains only as a compatibility endpoint for existing local installations; it is not exposed by the generated connector link or OAuth resource metadata.
+```text
+https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
+```
 
-Opening the generated `/mcp` URL directly on another device does not authenticate that device: it receives the OAuth challenge and must complete its own authorized client flow. A server cannot cryptographically prove that two separate ChatGPT sessions are the same physical device; device-level identity must be supplied by the client/platform.
+The tokenized URL is the compatibility connection contract used by Dana's local deployment. Keep the complete URL private and use the **Copy** action in the GUI or the exact URL printed by the terminal tools.
+
+Server Mode can use the canonical `/mcp` endpoint behind the configured reverse proxy and OAuth 2.0 + PKCE. Do not expose a Local Mode tokenized URL unnecessarily.
 
 ---
 

@@ -14,6 +14,7 @@ type Status = {
   mcp_url: string;
   local_mcp_url: string;
   public_mcp_url: string;
+  auth_token: string;
   action_required: string;
   message: string;
 };
@@ -212,7 +213,7 @@ function App() {
               <div className="hero-glow" /><div className="hero-copy"><span className="kicker">ONE-CLICK DEPLOYMENT</span>
                 <h2>Bring Dana online without the terminal.</h2>
                 <p>Python runtime, Tailscale, Funnel, Dana and the public MCP endpoint are coordinated from one setup flow.</p>
-                <button className="primary" disabled={busy || ready || !status} onClick={continueSetup}>{busy ? "Working…" : ready ? "Dana is ready" : !status ? "Loading setup…" : "Continue setup"}</button>
+                <button className="primary" disabled={busy || ready || !status} onClick={continueSetup}>{busy ? "Working…" : ready ? "Dana is active" : !status ? "Loading…" : status.tailscale_installed ? "Activate Dana" : "Start setup"}</button>
               </div><div className="hero-orb"><div className="orb-core"><img src={logo} alt="Dana" /></div></div>
             </section>
 
@@ -226,13 +227,7 @@ function App() {
 
             <section className="progress-card glass"><div className="progress-top"><div><span className="eyebrow">SETUP PROGRESS</span><strong>{progress}%</strong></div><span>{message}</span></div><div className="track"><div className="track-fill" style={{ width: progress + "%" }} /></div><div className="steps"><span className={status?.tailscale_installed ? "done" : ""}>Tailscale</span><span className={status?.tailscale_backend.toLowerCase() === "running" ? "done" : ""}>Authentication</span><span className={status?.dana_running ? "done" : ""}>Dana</span><span className={status?.funnel_active ? "done" : ""}>Funnel</span></div></section>
 
-            <section className="connections-panel glass">
-              <div className="logs-head"><div><span className="eyebrow">CONNECTION URLS</span><h2>Connect Dana</h2></div><button className="secondary" onClick={() => setActiveView("Connections")}>Open Connections</button></div>
-              <div className="connection-list">
-                <div className="connection-row"><div><span className="eyebrow">LOCAL</span><strong>Local MCP endpoint</strong><code>{status?.local_mcp_url || "http://127.0.0.1:8765/mcp"}</code></div><button className="secondary" disabled={!status?.local_mcp_url} onClick={() => copyUrl(status?.local_mcp_url || "")}>{copiedUrl === status?.local_mcp_url ? "Copied" : "Copy"}</button></div>
-                <div className="connection-row"><div><span className="eyebrow">FUNNEL</span><strong>Public MCP endpoint</strong><code>{status?.public_mcp_url || "Waiting for Funnel to become active…"}</code></div><button className="secondary" disabled={!status?.public_mcp_url} onClick={() => copyUrl(status?.public_mcp_url || "")}>{copiedUrl === status?.public_mcp_url ? "Copied" : "Copy"}</button></div>
-              </div>
-            </section>
+            <section className="card glass"><div className="card-head"><span>SETUP</span><strong>Setup complete</strong><b className="state success">READY</b></div><p>Initial installation, Tailscale authentication and Funnel activation are handled here. Use the dedicated panels for connections, runtime and security.</p></section>
           </>
         ) : activeView === "Connections" ? (
           <section className="connections-panel glass">
@@ -261,8 +256,28 @@ function App() {
               ))}
             </div>
           </section>
+        ) : activeView === "Dashboard" ? (
+          <div className="dashboard-view">
+            <div className="grid">
+              <section className="card glass"><div className="card-head"><span>RUNTIME</span><strong>Dana</strong><b className={status?.dana_running ? "state success" : "state warning"}>{status?.dana_running ? "ONLINE" : "OFFLINE"}</b></div><p>{status?.dana_running ? "The local MCP service is accepting connections." : "Dana is not running. Activate it from Runtime."}</p><div className="meta">127.0.0.1:{status ? 8765 : "—"}</div></section>
+              <section className="card glass"><div className="card-head"><span>NETWORK</span><strong>Tailscale</strong><b className={status?.tailscale_backend.toLowerCase() === "running" ? "state success" : "state warning"}>{status?.tailscale_backend || "OFFLINE"}</b></div><p>{status?.tailscale_hostname || "Connect Tailscale to expose Dana securely."}</p><div className="meta">{status?.funnel_active ? "Funnel active" : "Funnel inactive"}</div></section>
+              <section className="card glass"><div className="card-head"><span>PUBLIC ACCESS</span><strong>Funnel</strong><b className={status?.funnel_active ? "state success" : "state warning"}>{status?.funnel_active ? "ACTIVE" : "INACTIVE"}</b></div><p>{status?.funnel_active ? "The public MCP endpoint is available." : "Enable Funnel from Setup when you are ready to publish Dana."}</p><div className="meta">{status?.funnel_hostname || "Not configured"}</div></section>
+            </div>
+            <section className="usage-card glass"><div><span className="eyebrow">USAGE</span><strong>{usage?.available ? usage.total_tokens.toLocaleString() : "—"}</strong><span className="usage-caption">{usage?.available ? "total recorded tokens" : "No usage data yet"}</span></div><div className="usage-stats"><span>Input <b>{usage?.available ? usage.input_tokens.toLocaleString() : "—"}</b></span><span>Output <b>{usage?.available ? usage.output_tokens.toLocaleString() : "—"}</b></span><span>Operations <b>{usage?.available ? usage.operations.toLocaleString() : "—"}</b></span></div></section>
+            <section className="connections-panel glass"><div className="logs-head"><div><span className="eyebrow">CURRENT STATE</span><h2>Control center</h2></div><button className="secondary" onClick={() => refresh()}>Refresh</button></div><p className="logs-description">{status?.message || "Dana is ready."}</p></section>
+          </div>
+        ) : activeView === "Runtime" ? (
+          <div className="dashboard-view">
+            <section className="connections-panel glass"><div className="logs-head"><div><span className="eyebrow">DANA RUNTIME</span><h2>Runtime control</h2></div><b className={status?.dana_running ? "state success" : "state warning"}>{status?.dana_running ? "ONLINE" : "OFFLINE"}</b></div><p className="logs-description">Start or stop the local MCP service without leaving the control center. The installed desktop app also stops the Dana process when the application exits.</p><div className="modal-actions"><button className="primary" disabled={busy || !!status?.dana_running} onClick={() => run("/api/setup/start-dana")}>Start Dana</button><button className="secondary" disabled={busy || !status?.dana_running} onClick={() => run("/api/setup/stop-dana")}>Stop Dana</button><button className="secondary" onClick={() => setActiveView("Logs")}>View logs</button></div></section>
+            <div className="grid"><section className="card glass"><div className="card-head"><span>LOCAL</span><strong>MCP listener</strong><b className={status?.dana_running ? "state success" : "state warning"}>{status?.dana_running ? "LISTENING" : "STOPPED"}</b></div><p>Local clients use the tokenized MCP URL shown in Connections.</p><div className="meta">127.0.0.1:8765</div></section><section className="card glass"><div className="card-head"><span>FUNNEL</span><strong>Public route</strong><b className={status?.funnel_active ? "state success" : "state warning"}>{status?.funnel_active ? "READY" : "OFFLINE"}</b></div><p>{status?.funnel_active ? "Tailscale is publishing the local service." : "Funnel is not currently publishing Dana."}</p><div className="meta">{status?.funnel_hostname || "Not active"}</div></section></div>
+          </div>
+        ) : activeView === "Security" ? (
+          <div className="dashboard-view">
+            <section className="connections-panel glass"><div className="logs-head"><div><span className="eyebrow">AUTHENTICATION</span><h2>Security</h2></div><b className={status?.auth_token ? "state success" : "state warning"}>{status?.auth_token ? "TOKEN READY" : "TOKEN MISSING"}</b></div><p className="logs-description">Dana uses a persistent bearer token for the local tokenized MCP compatibility URL. Treat these URLs as credentials and do not share them publicly outside the intended client.</p><div className="connection-list"><div className="connection-row"><div><span className="eyebrow">TOKENIZED LOCAL URL</span><strong>Private MCP connection</strong><code>{status?.local_mcp_url || "Unavailable until Dana is configured."}</code></div><button className="secondary" disabled={!status?.local_mcp_url} onClick={() => copyUrl(status?.local_mcp_url || "")}>{copiedUrl === status?.local_mcp_url ? "Copied" : "Copy"}</button></div><div className="connection-row"><div><span className="eyebrow">TOKENIZED FUNNEL URL</span><strong>Public MCP connection</strong><code>{status?.public_mcp_url || "Funnel is not active."}</code></div><button className="secondary" disabled={!status?.public_mcp_url} onClick={() => copyUrl(status?.public_mcp_url || "")}>{copiedUrl === status?.public_mcp_url ? "Copied" : "Copy"}</button></div></div></section>
+            <section className="card glass"><div className="card-head"><span>NETWORK</span><strong>Exposure</strong><b className={status?.funnel_active ? "state warning" : "state success"}>{status?.funnel_active ? "PUBLIC" : "LOCAL"}</b></div><p>{status?.funnel_active ? "Funnel makes the tokenized MCP endpoint reachable from the internet. Keep the connection URL private." : "Dana is not currently exposed through Funnel."}</p></section>
+          </div>
         ) : (
-          <section className="empty glass"><div className="empty-icon">◈</div><h2>{activeView}</h2><p>This control-plane section is wired to the same Dana runtime. Setup is the first fully automated workflow.</p><button className="secondary" onClick={() => setActiveView("Setup")}>Back to setup</button></section>
+          <section className="empty glass"><div className="empty-icon">◈</div><h2>{activeView}</h2><p>Use this panel to manage the corresponding Dana subsystem.</p></section>
         )}
       </main>
 

@@ -134,7 +134,8 @@ def _docker_connect() -> None:
     host = configure_tailscale_local(settings.require_auth_token(), port=8765)
     set_local_public_host(host)
     container.restart()
-    console.print(f"[bold green]✓ Secure MCP endpoint:[/bold green] https://{host}/mcp")
+    token = settings.require_auth_token()
+    console.print(f"[bold green]✓ Secure MCP endpoint:[/bold green] https://{host}/{token}/mcp")
 
 
 def _full_start() -> None:
@@ -151,7 +152,8 @@ def _full_start() -> None:
         from .installer import configure_tailscale_local, set_local_public_host
         host = configure_tailscale_local(settings.require_auth_token(), port=settings.port)
         set_local_public_host(host)
-        console.print(f"[bold green]✓ Secure MCP endpoint:[/bold green] https://{host}/mcp")
+        token = settings.require_auth_token()
+        console.print(f"[bold green]✓ Secure MCP endpoint:[/bold green] https://{host}/{token}/mcp")
 
 def launch_gui() -> None:
     """Launch the packaged Tauri desktop control center when available."""

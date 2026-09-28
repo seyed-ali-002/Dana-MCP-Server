@@ -49,6 +49,7 @@ class SetupStatus:
     mcp_url: str
     local_mcp_url: str
     public_mcp_url: str
+    auth_token: str = ""
     action_required: str = ""
     message: str = ""
 
@@ -193,8 +194,10 @@ def status() -> SetupStatus:
             pass
     active, funnel_host = _funnel_status() if installed else (False, "")
     public_host = funnel_host if active else ""
-    local_url = f"http://127.0.0.1:{settings.port}/mcp"
-    public_url = f"https://{public_host}/mcp" if public_host else ""
+    token = settings.auth_token or ""
+    token_path = f"/{token}/mcp" if token else "/mcp"
+    local_url = f"http://127.0.0.1:{settings.port}{token_path}"
+    public_url = f"https://{public_host}{token_path}" if public_host else ""
     action = ""
     message = ""
     if not installed:
@@ -206,7 +209,7 @@ def status() -> SetupStatus:
     elif not active:
         action, message = "enable_funnel", "Tailscale Funnel is not active."
     running = _dana_running()
-    return SetupStatus(installed, backend, hostname, active, funnel_host, running, public_url or local_url, local_url, public_url, action, message)
+    return SetupStatus(installed, backend, hostname, active, funnel_host, running, public_url or local_url, local_url, public_url, token, action, message)
 
 def token_usage() -> dict[str, object]:
     """Read lightweight token totals for the desktop control center."""
