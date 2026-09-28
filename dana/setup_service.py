@@ -58,5 +58,5 @@ if __name__ == "__main__":
         run()
     else:
         server = serve()
-        print(server.server_address[1], flush=True)
+        print(f"DANA_SETUP_PORT={server.server_address[1]}", flush=True)
         server.serve_forever()
