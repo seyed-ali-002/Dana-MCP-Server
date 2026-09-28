@@ -5,7 +5,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
-from . import setup
+from dana import setup
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, payload: dict[str, object], code: int = 200) -> None:
@@ -55,7 +55,7 @@ def serve(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
 
 if __name__ == "__main__":
     if "--serve" in sys.argv:
-        from .main import run
+        from dana.main import run
         run()
     else:
         server = serve()
