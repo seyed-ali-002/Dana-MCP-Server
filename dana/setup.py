@@ -103,13 +103,22 @@ def _funnel_active() -> bool:
     text = result.stdout.lower()
     return "https://" in text and ("127.0.0.1" in text or str(settings.port) in text)
 
-def _dana_running() -> bool:
+def _dana_running(timeout: float = 0.5) -> bool:
     import socket
     try:
-        with socket.create_connection(("127.0.0.1", settings.port), timeout=0.5):
+        with socket.create_connection(("127.0.0.1", settings.port), timeout=timeout):
             return True
     except OSError:
         return False
+
+
+def _wait_for_dana(timeout: float = 30.0) -> bool:
+    deadline = time.monotonic() + max(0.5, timeout)
+    while time.monotonic() < deadline:
+        if _dana_running(timeout=0.75):
+            return True
+        time.sleep(0.25)
+    return _dana_running(timeout=0.75)
 
 def status() -> SetupStatus:
     installed = command_exists("tailscale")
@@ -308,28 +317,53 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
 def start_dana() -> dict[str, object]:
     _setup_log("Starting Dana runtime.")
     if _dana_running():
-        _setup_log("Dana runtime is already running.")
+        _setup_log("Dana runtime is already running.", "success")
         return {"ok": True, "message": "Dana is already running."}
+
     root = Path(__file__).resolve().parents[1]
+    docker_started = False
     try:
         from . import container
         if container.is_available():
             container.start()
-            _setup_log("Dana Docker runtime started.", "success")
-            return {"ok": True, "message": "Dana Docker runtime started."}
-    except Exception:
-        pass
-    python = Path(os.environ["DANA_PYTHON"]) if os.environ.get("DANA_PYTHON") else Path(__import__("sys").executable)
-    log = Path(os.getenv("DANA_RUNTIME_DIR", Path.home() / ".cache" / "dana")) / "gui-server.log"
-    log.parent.mkdir(parents=True, exist_ok=True)
-    handle = open(log, "a", encoding="utf-8")
-    if getattr(__import__("sys"), "frozen", False):
-        command = [str(python), "--serve"]
-    else:
-        command = [str(python), "-m", "dana.main"]
-    subprocess.Popen(command, cwd=root, stdout=handle, stderr=subprocess.STDOUT, start_new_session=True)
-    _setup_log("Dana server process launched; waiting for the local MCP port.", "success")
-    return {"ok": True, "message": "Dana server is starting."}
+            docker_started = True
+            _setup_log("Dana Docker runtime started; waiting for readiness.")
+    except Exception as exc:
+        _setup_log(f"Docker runtime could not be started; using native runtime: {exc}", "warning")
+
+    if not docker_started:
+        python = Path(os.environ["DANA_PYTHON"]) if os.environ.get("DANA_PYTHON") else Path(__import__("sys").executable)
+        log = Path(os.getenv("DANA_RUNTIME_DIR", Path.home() / ".cache" / "dana")) / "gui-server.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(log, "a", encoding="utf-8")
+        if getattr(__import__("sys"), "frozen", False):
+            command = [str(python), "--serve"]
+        else:
+            command = [str(python), "-m", "dana.main"]
+        try:
+            subprocess.Popen(
+                command,
+                cwd=root,
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        except OSError as exc:
+            handle.close()
+            _setup_log(f"Could not launch Dana runtime: {exc}", "error")
+            return {"ok": False, "message": f"Could not launch Dana runtime: {exc}"}
+        _setup_log("Dana server process launched; waiting for the local MCP port.")
+
+    if _wait_for_dana(timeout=30.0):
+        _setup_log("Dana runtime is ready on the local MCP port.", "success")
+        return {"ok": True, "message": "Dana is running."}
+
+    _setup_log("Dana runtime did not become ready within 30 seconds.", "error")
+    return {
+        "ok": False,
+        "action_required": "start_dana",
+        "message": "Dana did not become ready on the local MCP port within 30 seconds. Check the runtime log and try again.",
+    }
 
 def bootstrap(progress: Callable[[str], None] | None = None) -> dict[str, object]:
     progress = progress or (lambda _message: None)
@@ -346,7 +380,6 @@ def bootstrap(progress: Callable[[str], None] | None = None) -> dict[str, object
         result = start_dana()
         if not result.get("ok"):
             return result
-        time.sleep(1)
     if not _funnel_active():
         progress("Enabling Tailscale Funnel")
         return enable_funnel(settings.port)
