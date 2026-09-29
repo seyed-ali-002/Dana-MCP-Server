@@ -4,285 +4,69 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import logo from "../src-tauri/icons/icon.png";
 import "./App.css";
 
-type Status = {
-  tailscale_installed: boolean;
-  tailscale_backend: string;
-  tailscale_hostname: string;
-  funnel_active: boolean;
-  funnel_hostname: string;
-  dana_running: boolean;
-  mcp_url: string;
-  local_mcp_url: string;
-  public_mcp_url: string;
-  auth_token: string;
-  action_required: string;
-  message: string;
-};
+type Status={tailscale_installed:boolean;tailscale_backend:string;tailscale_hostname:string;funnel_active:boolean;funnel_hostname:string;dana_running:boolean;mcp_url:string;local_mcp_url:string;public_mcp_url:string;auth_token:string;action_required:string;message:string};
+type SetupLog={time:string;level:string;message:string};
+type DownloadState={active:boolean;paused:boolean;cancelled:boolean;downloaded:number;total:number;speed:number;name:string;message:string};
+type Config={values:Record<string,string>;auth_token:string;auth_token_configured:boolean;keys:string[]};
 
-type TokenUsage = {
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-  operations: number;
-  available: boolean;
-};
+const API=(p:number,path:string)=>"http://127.0.0.1:"+p+path;
+const bytes=(n:number)=>{if(!n)return"—";const u=["B","KB","MB","GB"];let i=0,x=n;while(x>=1024&&i<3){x/=1024;i++;}return x.toFixed(i?1:0)+" "+u[i]};
+const speed=(n:number)=>n?bytes(n)+"/s":"—";
 
-type SetupLog = {
-  time: string;
-  level: string;
-  message: string;
-};
+function App(){
+ const [port,setPort]=useState<number|null>(null),[status,setStatus]=useState<Status|null>(null),[busy,setBusy]=useState(false);
+ const [view,setView]=useState("Setup"),[error,setError]=useState(""),[message,setMessage]=useState("Starting Dana setup service…");
+ const [logs,setLogs]=useState<SetupLog[]>([]),[download,setDownload]=useState<DownloadState|null>(null),[config,setConfig]=useState<Config|null>(null);
+ const [draft,setDraft]=useState<Record<string,string>>({}),[token,setToken]=useState(""),[securityBusy,setSecurityBusy]=useState(false);
+ const [confirmPublic,setConfirmPublic]=useState(false),[ack,setAck]=useState(false),[copied,setCopied]=useState("");
+ const ready=!!status?.dana_running&&!!status?.funnel_active;
+ const progress=useMemo(()=>!status?8:!status.tailscale_installed?20:status.tailscale_backend.toLowerCase()!=="running"?40:!status.dana_running?68:!status.funnel_active?82:100,[status]);
 
+ async function refresh(p=port){if(!p)return;try{const r=await fetch(API(p,"/api/setup/status"));const x=await r.json();if(!r.ok)throw Error(x.message||x.error);setStatus(x);setMessage(x.message||"");const l=await fetch(API(p,"/api/setup/logs"));if(l.ok){const y=await l.json();setLogs(y.logs||[])}}catch(e){setError(String(e))}}
+ async function pollDownload(p=port){if(!p)return;try{const r=await fetch(API(p,"/api/setup/download"));if(r.ok)setDownload(await r.json())}catch{}}
+ async function loadConfig(p=port){if(!p)return;try{const r=await fetch(API(p,"/api/setup/config"));if(r.ok){const x=await r.json();setConfig(x);setDraft(x.values||{})}}catch{}}
+ useEffect(()=>{let alive=true;invoke<number>("start_setup_service").then(p=>{if(!alive)return;setPort(p);refresh(p);loadConfig(p)}).catch(e=>setError(String(e)));return()=>{alive=false}},[]);
+ useEffect(()=>{if(!port)return;const t=window.setInterval(()=>{refresh();pollDownload();if(view==="Security"||view==="Configuration")loadConfig()},1000);return()=>clearInterval(t)},[port,view]);
 
-const API = (port: number, path: string) => "http://127.0.0.1:" + port + path;
+ async function run(path:string){if(!port||busy)return;setBusy(true);setError("");try{const r=await fetch(API(port,path),{method:"POST"});const x=await r.json();if(!r.ok||(x.ok===false&&!x.pending))throw Error(x.message||x.error||"Action failed");setMessage(x.message||"Completed.");if(x.auth_url)await openUrl(x.auth_url)}catch(e){setError(String(e))}finally{setBusy(false);refresh();pollDownload()}}
+ async function setup(){if(!status){return refresh()}if(!status.tailscale_installed)return run("/api/setup/install-tailscale");if(status.tailscale_backend.toLowerCase()!=="running")return run("/api/setup/login-tailscale");if(!status.dana_running)return run("/api/setup/start-dana");if(!status.funnel_active){setAck(false);setConfirmPublic(true)}}
+ async function dl(a:string){if(!port)return;await fetch(API(port,"/api/setup/download/"+a),{method:"POST"});pollDownload()}
+ async function copy(v:string){if(!v)return;try{await navigator.clipboard.writeText(v);setCopied(v);setTimeout(()=>setCopied(""),1500)}catch{}}
+ async function saveConfig(){if(!port)return;setSecurityBusy(true);try{const r=await fetch(API(port,"/api/setup/config"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({values:draft})});const x=await r.json();if(!r.ok||x.ok===false)throw Error(x.message);setMessage(x.changed?.length?"Updated: "+x.changed.join(", "):"No changes.");await loadConfig();await refresh()}catch(e){setError(String(e))}finally{setSecurityBusy(false)}}
+ async function applyToken(){if(!port||token.trim().length<16)return;setSecurityBusy(true);try{const r=await fetch(API(port,"/api/setup/security/token"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token})});const x=await r.json();if(!r.ok||x.ok===false)throw Error(x.message);setToken("");setMessage(x.message);await loadConfig();await refresh()}catch(e){setError(String(e))}finally{setSecurityBusy(false)}}
+ async function revoke(){if(!port||!confirm("Revoke the current token and replace it? Existing URLs will stop working."))return;setSecurityBusy(true);try{const r=await fetch(API(port,"/api/setup/security/revoke-token"),{method:"POST"});const x=await r.json();if(!r.ok||x.ok===false)throw Error(x.message);setMessage(x.message);await loadConfig();await refresh()}catch(e){setError(String(e))}finally{setSecurityBusy(false)}}
 
+ const dlVisible=!!download&&(download.active||download.message==="Download cancelled."||download.message==="Download failed.");
+ const dlPct=download?.total?Math.min(100,download.downloaded/download.total*100):download?.active?30:100;
 
-function App() {
-  const [port, setPort] = useState<number | null>(null);
-  const [status, setStatus] = useState<Status | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [confirmPublic, setConfirmPublic] = useState(false);
-  const [publicAcknowledged, setPublicAcknowledged] = useState(false);
-  const [message, setMessage] = useState("Starting Dana setup service…");
-  const [activeView, setActiveView] = useState("Setup");
-  const [error, setError] = useState("");
-  const [usage, setUsage] = useState<TokenUsage | null>(null);
-  const [logs, setLogs] = useState<SetupLog[]>([]);
-  const [copiedUrl, setCopiedUrl] = useState("");
+ return <div className="shell">
+  <aside className="sidebar"><div className="brand"><div className="brand-mark"><img src={logo} alt="Dana"/></div><div><strong>DANA</strong><span>MCP Control Center</span></div></div>
+   <nav>{["Setup","Dashboard","Connections","Runtime","Security","Configuration","Logs"].map(x=><button key={x} className={view===x?"nav-item active":"nav-item"} onClick={()=>setView(x)}><span className="nav-dot"/>{x}</button>)}</nav>
+   <div className="sidebar-footer"><div className="tiny-status"><span className={ready?"pulse on":"pulse"}/>{ready?"Online":"Setup required"}</div><span>v0.1.0</span></div>
+  </aside>
+  <main className="content"><header className="topbar"><div><div className="eyebrow">LOCAL CONTROL PLANE</div><h1>{view}</h1></div><div className="top-actions"><div className="connection-pill"><span className={ready?"dot on":"dot"}/>{ready?"Protected endpoint active":"Configuration in progress"}</div><button className="icon-button" onClick={()=>refresh()}>↻</button></div></header>
+   {error&&<section className="alert-banner glass alert-error"><div className="alert-icon">!</div><div className="alert-copy"><strong>Action error</strong><p>{error}</p></div><button className="alert-close" onClick={()=>setError("")}>×</button></section>}
 
-  const ready = Boolean(status?.dana_running && status?.funnel_active);
-  const progress = useMemo(() => {
-    if (!status) return 8;
-    if (!status.tailscale_installed) return 20;
-    if (status.tailscale_backend.toLowerCase() !== "running") return 40;
-    if (!status.dana_running) return 68;
-    if (!status.funnel_active) return 82;
-    return 100;
-  }, [status]);
+   {view==="Setup"&&<><section className="hero glass"><div className="hero-glow"/><div className="hero-copy"><span className="kicker">ONE-CLICK DEPLOYMENT</span><h2>Bring Dana online without the terminal.</h2><p>Python runtime, Tailscale, Funnel and the public MCP endpoint are coordinated from one setup flow.</p><button className="primary" disabled={busy||ready||!status} onClick={setup}>{busy?"Working…":ready?"Dana is active":status?.tailscale_installed?"Activate Dana":"Install & Activate"}</button></div><div className="hero-orb"><div className="orb-core"><img src={logo} alt="Dana"/></div></div></section>
+    <div className="grid">{[["01","Tailscale",status?.tailscale_installed,"Install and authenticate Tailscale.",status?.tailscale_backend||"Not connected"],["02","Dana Runtime",status?.dana_running,"Start the local MCP service.", "127.0.0.1:8765"],["03","Funnel",status?.funnel_active,"Publish the canonical HTTPS MCP endpoint.",status?.funnel_hostname||"Not configured"]].map(([n,name,ok,desc,meta])=><section className="card glass" key={String(name)}><div className="card-head"><span>{n}</span><strong>{name}</strong><b className={ok?"state success":"state warning"}>{ok?"READY":"PENDING"}</b></div><p>{desc}</p><div className="meta">{meta}</div></section>)}</div>
+    <section className="progress-card glass"><div className="progress-top"><div><span className="eyebrow">SETUP PROGRESS</span><strong>{progress}%</strong></div><span>{message}</span></div><div className="track"><div className="track-fill" style={{width:progress+"%"}}/></div><div className="steps"><span>Tailscale</span><span>Authentication</span><span>Dana</span><span>Funnel</span></div></section></>}
 
-  async function refresh(p = port) {
-    if (!p) return;
-    try {
-      const response = await fetch(API(p, "/api/setup/status"));
-      const next = await response.json();
-      if (!response.ok) throw new Error(next.message || next.error || `Setup service returned HTTP ${response.status}`);
-      setStatus(next);
-      try {
-        const usageResponse = await fetch(API(p, "/api/setup/usage"));
-        if (usageResponse.ok) setUsage(await usageResponse.json());
-      } catch { }
-      try {
-        const logsResponse = await fetch(API(p, "/api/setup/logs"));
-        if (logsResponse.ok) {
-          const payload = await logsResponse.json();
-          setLogs(Array.isArray(payload.logs) ? payload.logs : []);
-        }
-      } catch { }
-      setMessage(next.message || (next.mcp_url ? "Endpoint: " + next.mcp_url : "Dana is ready for setup."));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setMessage("Waiting for the local setup service…");
+   {view==="Dashboard"&&<div className="dashboard-view"><div className="grid"><section className="card glass"><div className="card-head"><span>RUNTIME</span><strong>Dana</strong><b className={status?.dana_running?"state success":"state warning"}>{status?.dana_running?"ONLINE":"OFFLINE"}</b></div><p>{status?.dana_running?"MCP service is accepting connections.":"Dana is not running."}</p><div className="meta">127.0.0.1:8765</div></section><section className="card glass"><div className="card-head"><span>NETWORK</span><strong>Tailscale</strong><b className="state success">{status?.tailscale_backend||"OFFLINE"}</b></div><p>{status?.tailscale_hostname||"Not connected"}</p></section><section className="card glass"><div className="card-head"><span>PUBLIC ACCESS</span><strong>Funnel</strong><b className={status?.funnel_active?"state success":"state warning"}>{status?.funnel_active?"ACTIVE":"INACTIVE"}</b></div><p>{status?.funnel_hostname||"Not configured"}</p></section></div></div>}
 
+   {view==="Connections"&&<section className="connections-panel glass"><div className="logs-head"><div><span className="eyebrow">MCP CONNECTIONS</span><h2>Connection URLs</h2></div></div><p className="logs-description">Tokenized URLs are credentials. Keep them private.</p><div className="connection-list">{[["LOCAL",status?.local_mcp_url],["FUNNEL",status?.public_mcp_url]].map(([label,url])=><div className="connection-row" key={label}><div><span className="eyebrow">{label}</span><strong>{label==="LOCAL"?"Local MCP endpoint":"Public MCP endpoint"}</strong><code>{url||"Unavailable"}</code></div><button className="secondary" disabled={!url} onClick={()=>copy(url||"")}>{copied===url?"Copied":"Copy"}</button></div>)}</div></section>}
 
-    }
-  }
+   {view==="Runtime"&&<section className="connections-panel glass"><div className="logs-head"><div><span className="eyebrow">DANA RUNTIME</span><h2>Runtime control</h2></div><b className={status?.dana_running?"state success":"state warning"}>{status?.dana_running?"ONLINE":"OFFLINE"}</b></div><p className="logs-description">Start or stop the local MCP service.</p><div className="modal-actions"><button className="primary" disabled={busy||!!status?.dana_running} onClick={()=>run("/api/setup/start-dana")}>Start Dana</button><button className="secondary" disabled={busy||!status?.dana_running} onClick={()=>run("/api/setup/stop-dana")}>Stop Dana</button></div></section>}
 
-  async function copyUrl(url: string) {
-    if (!url) return;
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url);
-      } else {
-        const area = document.createElement("textarea");
-        area.value = url;
-        area.setAttribute("readonly", "");
-        area.style.position = "fixed";
-        area.style.opacity = "0";
-        document.body.appendChild(area);
-        area.select();
-        document.execCommand("copy");
-        area.remove();
-      }
-      setCopiedUrl(url);
-      window.setTimeout(() => setCopiedUrl((current) => current === url ? "" : current), 1800);
-    } catch {
-      setError("Could not copy the connection URL.");
-    }
-  }
+   {view==="Security"&&<section className="connections-panel glass"><div className="logs-head"><div><span className="eyebrow">AUTHENTICATION</span><h2>Security & tokens</h2></div><b className={config?.auth_token_configured?"state success":"state warning"}>{config?.auth_token_configured?"TOKEN READY":"TOKEN MISSING"}</b></div><p className="logs-description">Replace the bearer token or revoke it. Existing tokenized URLs stop working after rotation.</p><div className="security-token"><span className="eyebrow">CURRENT TOKEN</span><code>{config?.auth_token||"Not configured"}</code></div><div className="token-editor"><input type="password" value={token} onChange={e=>setToken(e.target.value)} placeholder="Custom token, 16–256 characters"/><button className="primary" disabled={securityBusy||token.length<16} onClick={applyToken}>Apply token</button></div><div className="modal-actions"><button className="secondary danger-button" disabled={securityBusy} onClick={revoke}>Revoke & replace token</button></div></section>}
 
+   {view==="Configuration"&&<section className="connections-panel glass"><div className="logs-head"><div><span className="eyebrow">ENVIRONMENT</span><h2>Dana configuration</h2></div><button className="primary" disabled={securityBusy} onClick={saveConfig}>Save changes</button></div><p className="logs-description">Control supported .env variables directly from the GUI.</p><div className="config-grid">{config?.keys.filter(k=>k!=="DANA_AUTH_TOKEN").map(k=><label className="config-field" key={k}><span>{k}</span>{k==="DANA_ALLOW_DANGEROUS_TOOLS"||k==="DANA_TAILSCALE_FUNNEL_ENABLED"?<select value={draft[k]||"false"} onChange={e=>setDraft({...draft,[k]:e.target.value})}><option>true</option><option>false</option></select>:<input value={draft[k]||""} onChange={e=>setDraft({...draft,[k]:e.target.value})}/>}</label>)}</div></section>}
 
-  useEffect(() => {
-    let alive = true;
-    invoke<number>("start_setup_service")
-      .then((p) => {
-        if (!alive) return;
-        setPort(p);
-        setError("");
-        refresh(p);
-      })
-      .catch((error) => {
-        const detail = error instanceof Error ? error.message : String(error);
-        setError(detail.includes("Dana project root was not found")
-          ? "Dana could not locate its bundled setup service. Reinstall the latest Dana package; no DANA_ROOT configuration should be required for an installed build."
-          : detail);
-        setMessage("Dana setup service could not be started.");
-      });
-    return () => { alive = false; };
-  }, []);
+   {view==="Logs"&&<section className="logs-panel glass"><div className="logs-head"><div><span className="eyebrow">SETUP & RUNTIME LOG</span><h2>What Dana is doing</h2></div><button className="secondary" onClick={()=>refresh()}>Refresh</button></div><p className="logs-description">Downloads, authentication, Funnel, configuration and runtime events are shown here.</p><div className="log-list">{logs.length?logs.slice().reverse().map((x,i)=><div className={"log-row log-"+x.level} key={x.time+x.message+i}><span className="log-time">{x.time}</span><span className={"log-level "+x.level}>{x.level.toUpperCase()}</span><span className="log-message">{x.message}</span></div>):<div className="log-empty">No setup events recorded yet.</div>}</div></section>}
+  </main>
 
-  useEffect(() => {
-    if (!port) return;
-    const timer = window.setInterval(() => refresh(), 1800);
+  {confirmPublic&&<div className="modal-backdrop"><div className="modal glass"><div className="modal-icon">!</div><div className="eyebrow">PUBLIC INTERNET EXPOSURE</div><h2>Enable Tailscale Funnel?</h2><p>This publishes Dana’s HTTPS endpoint to the public internet.</p><label className="confirm-line"><input type="checkbox" checked={ack} onChange={e=>setAck(e.target.checked)}/><span>I understand that Funnel makes the endpoint publicly reachable.</span></label><div className="modal-actions"><button className="secondary" onClick={()=>setConfirmPublic(false)}>Cancel</button><button className="primary" disabled={!ack||busy} onClick={()=>{setConfirmPublic(false);run("/api/setup/enable-funnel")}}>Enable Funnel</button></div></div></div>}
 
-
-    return () => window.clearInterval(timer);
-  }, [port]);
-
-  async function run(path: string) {
-    if (!port || busy) return;
-    setBusy(true);
-    setError("");
-    try {
-      const response = await fetch(API(port, path), { method: "POST" });
-      const raw = await response.text();
-      let result: Record<string, unknown> = {};
-      try { result = raw ? JSON.parse(raw) : {}; } catch { result = { message: raw }; }
-      if (!response.ok || (result.ok === false && !result.pending)) throw new Error(String(result.message || result.error || `Setup action failed (HTTP ${response.status})`));
-      setMessage(String(result.message || "Step completed."));
-      await refresh();
-      if (typeof result.auth_url === "string" && result.auth_url) await openUrl(result.auth_url);
-      if (typeof result.url === "string" && result.url) setMessage("Connection URL: " + result.url);
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      setError(detail);
-      setMessage("Setup action failed. See the error panel below.");
-    } finally {
-      setBusy(false);
-
-
-    }
-  }
-
-  async function continueSetup() {
-    if (!status) {
-      setError("Setup status is not available yet. Refreshing the local setup service…");
-      await refresh();
-      return;
-    }
-    if (!status.tailscale_installed) return run("/api/setup/install-tailscale");
-    if (status.tailscale_backend.toLowerCase() !== "running") return run("/api/setup/login-tailscale");
-    if (!status.dana_running) return run("/api/setup/start-dana");
-    if (!status.funnel_active) { setPublicAcknowledged(false); setConfirmPublic(true); return; }
-  }
-
-  return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="brand"><div className="brand-mark"><img src={logo} alt="Dana" /></div><div><strong>DANA</strong><span>MCP Control Center</span></div></div>
-        <nav>
-          {["Setup", "Dashboard", "Connections", "Runtime", "Security", "Logs"].map((item) => (
-            <button key={item} className={activeView === item ? "nav-item active" : "nav-item"} onClick={() => setActiveView(item)}>
-              <span className="nav-dot" />{item}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-footer"><div className="tiny-status"><span className={ready ? "pulse on" : "pulse"} /> {ready ? "Online" : "Setup required"}</div><span>v0.1.0</span></div>
-      </aside>
-
-      <main className="content">
-        <header className="topbar">
-          <div><div className="eyebrow">LOCAL CONTROL PLANE</div><h1>{activeView}</h1></div>
-          <div className="top-actions"><div className="connection-pill"><span className={ready ? "dot on" : "dot"} /> {ready ? "Protected endpoint active" : "Configuration in progress"}</div><button className="icon-button" onClick={() => refresh()}>↻</button></div>
-        </header>
-
-        {activeView === "Setup" ? (
-          <>
-            {error && (
-              <section className="alert-banner glass alert-error" role="alert">
-                <div className="alert-icon">!</div>
-                <div className="alert-copy"><strong>Setup error</strong><p>{error}</p></div>
-                <div className="alert-actions">
-                  <button className="secondary" onClick={() => { setError(""); refresh(); }}>Retry</button>
-                  <button className="alert-close" aria-label="Dismiss error" onClick={() => setError("")}>×</button>
-                </div>
-              </section>
-            )}
-
-
-            <section className="hero glass">
-              <div className="hero-glow" /><div className="hero-copy"><span className="kicker">ONE-CLICK DEPLOYMENT</span>
-                <h2>Bring Dana online without the terminal.</h2>
-                <p>Python runtime, Tailscale, Funnel, Dana and the public MCP endpoint are coordinated from one setup flow.</p>
-                <button className="primary" disabled={busy || ready || !status} onClick={continueSetup}>{busy ? "Working…" : ready ? "Dana is active" : !status ? "Loading…" : status.tailscale_installed ? "Activate Dana" : "Install & Activate"}</button>
-              </div><div className="hero-orb"><div className="orb-core"><img src={logo} alt="Dana" /></div></div>
-            </section>
-
-
-            <div className="grid">
-              <section className="card glass"><div className="card-head"><span>01</span><strong>Tailscale</strong><b className={status?.tailscale_installed ? "state success" : "state warning"}>{status?.tailscale_installed ? "INSTALLED" : "REQUIRED"}</b></div><p>Install and authenticate Tailscale. Dana opens the browser login flow automatically when required.</p><div className="meta">{status?.tailscale_backend || "Not connected"}</div></section>
-              <section className="card glass"><div className="card-head"><span>02</span><strong>Dana Runtime</strong><b className={status?.dana_running ? "state success" : "state warning"}>{status?.dana_running ? "ONLINE" : "PENDING"}</b></div><p>Start the local MCP service using Docker when available, with native Python as a fallback.</p><div className="meta">127.0.0.1:8765</div></section>
-              <section className="card glass"><div className="card-head"><span>03</span><strong>Funnel</strong><b className={status?.funnel_active ? "state success" : "state warning"}>{status?.funnel_active ? "ACTIVE" : "APPROVAL"}</b></div><p>Expose only the canonical HTTPS origin. Funnel approval is always an explicit user action.</p><div className="meta">{status?.funnel_hostname || "Not configured"}</div></section>
-            </div>
-
-            <section className="progress-card glass"><div className="progress-top"><div><span className="eyebrow">SETUP PROGRESS</span><strong>{progress}%</strong></div><span>{message}</span></div><div className="track"><div className="track-fill" style={{ width: progress + "%" }} /></div><div className="steps"><span className={status?.tailscale_installed ? "done" : ""}>Tailscale</span><span className={status?.tailscale_backend.toLowerCase() === "running" ? "done" : ""}>Authentication</span><span className={status?.dana_running ? "done" : ""}>Dana</span><span className={status?.funnel_active ? "done" : ""}>Funnel</span></div></section>
-
-            <section className="card glass"><div className="card-head"><span>SETUP</span><strong>Setup complete</strong><b className="state success">READY</b></div><p>Initial installation, Tailscale authentication and Funnel activation are handled here. Use the dedicated panels for connections, runtime and security.</p></section>
-          </>
-        ) : activeView === "Connections" ? (
-          <section className="connections-panel glass">
-            <div className="logs-head"><div><span className="eyebrow">MCP CONNECTIONS</span><h2>Connection URLs</h2></div><button className="secondary" onClick={() => refresh()}>Refresh</button></div>
-            <p className="logs-description">Use the local URL for applications running on this machine. Use the public URL when Tailscale Funnel is active.</p>
-            <div className="connection-list">
-              <div className="connection-row">
-                <div><span className="eyebrow">LOCAL</span><strong>Local MCP endpoint</strong><code>{status?.local_mcp_url || "http://127.0.0.1:8765/mcp"}</code></div>
-                <button className="secondary" disabled={!status?.local_mcp_url} onClick={() => copyUrl(status?.local_mcp_url || "")}>{copiedUrl === status?.local_mcp_url ? "Copied" : "Copy"}</button>
-              </div>
-              <div className="connection-row">
-                <div><span className="eyebrow">FUNNEL</span><strong>Public MCP endpoint</strong><code>{status?.public_mcp_url || "Waiting for Funnel to become active…"}</code></div>
-                <button className="secondary" disabled={!status?.public_mcp_url} onClick={() => copyUrl(status?.public_mcp_url || "")}>{copiedUrl === status?.public_mcp_url ? "Copied" : "Copy"}</button>
-              </div>
-            </div>
-          </section>
-        ) : activeView === "Logs" ? (
-          <section className="logs-panel glass">
-            <div className="logs-head"><div><span className="eyebrow">SETUP & REGISTRATION LOG</span><h2>What Dana is doing</h2></div><button className="secondary" onClick={() => refresh()}>Refresh</button></div>
-            <p className="logs-description">Every setup action, authentication attempt, Funnel approval and runtime launch is recorded here so failures are visible instead of silently stopping.</p>
-            <div className="log-list">
-              {logs.length === 0 ? <div className="log-empty">No setup events recorded yet.</div> : logs.slice().reverse().map((entry, index) => (
-                <div className={"log-row log-" + entry.level} key={entry.time + entry.message + index}>
-                  <span className="log-time">{entry.time}</span><span className={"log-level " + entry.level}>{entry.level.toUpperCase()}</span><span className="log-message">{entry.message}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : activeView === "Dashboard" ? (
-          <div className="dashboard-view">
-            <div className="grid">
-              <section className="card glass"><div className="card-head"><span>RUNTIME</span><strong>Dana</strong><b className={status?.dana_running ? "state success" : "state warning"}>{status?.dana_running ? "ONLINE" : "OFFLINE"}</b></div><p>{status?.dana_running ? "The local MCP service is accepting connections." : "Dana is not running. Activate it from Runtime."}</p><div className="meta">127.0.0.1:{status ? 8765 : "—"}</div></section>
-              <section className="card glass"><div className="card-head"><span>NETWORK</span><strong>Tailscale</strong><b className={status?.tailscale_backend.toLowerCase() === "running" ? "state success" : "state warning"}>{status?.tailscale_backend || "OFFLINE"}</b></div><p>{status?.tailscale_hostname || "Connect Tailscale to expose Dana securely."}</p><div className="meta">{status?.funnel_active ? "Funnel active" : "Funnel inactive"}</div></section>
-              <section className="card glass"><div className="card-head"><span>PUBLIC ACCESS</span><strong>Funnel</strong><b className={status?.funnel_active ? "state success" : "state warning"}>{status?.funnel_active ? "ACTIVE" : "INACTIVE"}</b></div><p>{status?.funnel_active ? "The public MCP endpoint is available." : "Enable Funnel from Setup when you are ready to publish Dana."}</p><div className="meta">{status?.funnel_hostname || "Not configured"}</div></section>
-            </div>
-            <section className="usage-card glass"><div><span className="eyebrow">USAGE</span><strong>{usage?.available ? usage.total_tokens.toLocaleString() : "—"}</strong><span className="usage-caption">{usage?.available ? "total recorded tokens" : "No usage data yet"}</span></div><div className="usage-stats"><span>Input <b>{usage?.available ? usage.input_tokens.toLocaleString() : "—"}</b></span><span>Output <b>{usage?.available ? usage.output_tokens.toLocaleString() : "—"}</b></span><span>Operations <b>{usage?.available ? usage.operations.toLocaleString() : "—"}</b></span></div></section>
-            <section className="connections-panel glass"><div className="logs-head"><div><span className="eyebrow">CURRENT STATE</span><h2>Control center</h2></div><button className="secondary" onClick={() => refresh()}>Refresh</button></div><p className="logs-description">{status?.message || "Dana is ready."}</p></section>
-          </div>
-        ) : activeView === "Runtime" ? (
-          <div className="dashboard-view">
-            <section className="connections-panel glass"><div className="logs-head"><div><span className="eyebrow">DANA RUNTIME</span><h2>Runtime control</h2></div><b className={status?.dana_running ? "state success" : "state warning"}>{status?.dana_running ? "ONLINE" : "OFFLINE"}</b></div><p className="logs-description">Start or stop the local MCP service without leaving the control center. The installed desktop app also stops the Dana process when the application exits.</p><div className="modal-actions"><button className="primary" disabled={busy || !!status?.dana_running} onClick={() => run("/api/setup/start-dana")}>Start Dana</button><button className="secondary" disabled={busy || !status?.dana_running} onClick={() => run("/api/setup/stop-dana")}>Stop Dana</button><button className="secondary" onClick={() => setActiveView("Logs")}>View logs</button></div></section>
-            <div className="grid"><section className="card glass"><div className="card-head"><span>LOCAL</span><strong>MCP listener</strong><b className={status?.dana_running ? "state success" : "state warning"}>{status?.dana_running ? "LISTENING" : "STOPPED"}</b></div><p>Local clients use the tokenized MCP URL shown in Connections.</p><div className="meta">127.0.0.1:8765</div></section><section className="card glass"><div className="card-head"><span>FUNNEL</span><strong>Public route</strong><b className={status?.funnel_active ? "state success" : "state warning"}>{status?.funnel_active ? "READY" : "OFFLINE"}</b></div><p>{status?.funnel_active ? "Tailscale is publishing the local service." : "Funnel is not currently publishing Dana."}</p><div className="meta">{status?.funnel_hostname || "Not active"}</div></section></div>
-          </div>
-        ) : activeView === "Security" ? (
-          <div className="dashboard-view">
-            <section className="connections-panel glass"><div className="logs-head"><div><span className="eyebrow">AUTHENTICATION</span><h2>Security</h2></div><b className={status?.auth_token ? "state success" : "state warning"}>{status?.auth_token ? "TOKEN READY" : "TOKEN MISSING"}</b></div><p className="logs-description">Dana uses a persistent bearer token for the local tokenized MCP compatibility URL. Treat these URLs as credentials and do not share them publicly outside the intended client.</p><div className="connection-list"><div className="connection-row"><div><span className="eyebrow">TOKENIZED LOCAL URL</span><strong>Private MCP connection</strong><code>{status?.local_mcp_url || "Unavailable until Dana is configured."}</code></div><button className="secondary" disabled={!status?.local_mcp_url} onClick={() => copyUrl(status?.local_mcp_url || "")}>{copiedUrl === status?.local_mcp_url ? "Copied" : "Copy"}</button></div><div className="connection-row"><div><span className="eyebrow">TOKENIZED FUNNEL URL</span><strong>Public MCP connection</strong><code>{status?.public_mcp_url || "Funnel is not active."}</code></div><button className="secondary" disabled={!status?.public_mcp_url} onClick={() => copyUrl(status?.public_mcp_url || "")}>{copiedUrl === status?.public_mcp_url ? "Copied" : "Copy"}</button></div></div></section>
-            <section className="card glass"><div className="card-head"><span>NETWORK</span><strong>Exposure</strong><b className={status?.funnel_active ? "state warning" : "state success"}>{status?.funnel_active ? "PUBLIC" : "LOCAL"}</b></div><p>{status?.funnel_active ? "Funnel makes the tokenized MCP endpoint reachable from the internet. Keep the connection URL private." : "Dana is not currently exposed through Funnel."}</p></section>
-          </div>
-        ) : (
-          <section className="empty glass"><div className="empty-icon">◈</div><h2>{activeView}</h2><p>Use this panel to manage the corresponding Dana subsystem.</p></section>
-        )}
-      </main>
-
-      {confirmPublic && <div className="modal-backdrop"><div className="modal glass"><div className="modal-icon">!</div><div className="eyebrow">PUBLIC INTERNET EXPOSURE</div><h2>Enable Tailscale Funnel?</h2><p>This publishes Dana’s HTTPS endpoint to the public internet. Tailscale may also require an administrator approval in the browser.</p><label className="confirm-line"><input type="checkbox" checked={publicAcknowledged} onChange={(e) => setPublicAcknowledged(e.target.checked)} /><span>I understand that Funnel makes the endpoint publicly reachable.</span></label><div className="modal-actions"><button className="secondary" onClick={() => setConfirmPublic(false)}>Cancel</button><button className="primary" disabled={!publicAcknowledged || busy} onClick={() => { setConfirmPublic(false); run("/api/setup/enable-funnel"); }}>Enable Funnel</button></div></div></div>}
-    </div>
-  );
+  {dlVisible&&download&&<div className="modal-backdrop"><div className="download-modal glass"><div className="download-header"><div><span className="eyebrow">DOWNLOAD</span><h2>{download.name||"Downloading"}</h2></div><b className={download.active?"state success":"state warning"}>{download.active?(download.paused?"PAUSED":"IN PROGRESS"):"FINISHED"}</b></div><p className="logs-description">{download.message}</p><div className="download-progress"><div className="download-fill" style={{width:dlPct+"%"}}/></div><div className="download-stats"><span>{download.total?dlPct.toFixed(1)+"%":"Preparing…"}</span><span>{bytes(download.downloaded)} / {bytes(download.total)}</span><span>{speed(download.speed)}</span></div><div className="modal-actions"><button className="secondary" disabled={!download.active} onClick={()=>dl(download.paused?"resume":"pause")}>{download.paused?"Resume":"Pause"}</button><button className="secondary danger-button" disabled={!download.active} onClick={()=>dl("cancel")}>Cancel</button></div></div></div>}
+ </div>
 }
-
 export default App;

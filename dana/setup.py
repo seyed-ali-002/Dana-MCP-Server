@@ -23,6 +23,109 @@ TAILSCALE_DOWNLOAD = "https://tailscale.com/download"
 TAILSCALE_PACKAGES = "https://pkgs.tailscale.com/stable/"
 TAILSCALE_INSTALL_SCRIPT = "https://tailscale.com/install.sh"
 
+
+_DOWNLOAD = {"active": False, "paused": False, "cancelled": False, "downloaded": 0, "total": 0, "speed": 0.0, "name": "", "message": ""}
+_DOWNLOAD_LOCK = __import__("threading").Lock()
+_DOWNLOAD_PAUSE = __import__("threading").Event()
+_DOWNLOAD_PAUSE.set()
+_DOWNLOAD_CANCEL = __import__("threading").Event()
+
+
+def download_status() -> dict[str, object]:
+    with _DOWNLOAD_LOCK:
+        return dict(_DOWNLOAD)
+
+
+def pause_download() -> dict[str, object]:
+    with _DOWNLOAD_LOCK:
+        if not _DOWNLOAD["active"]:
+            return {"ok": False, "message": "No active download."}
+        _DOWNLOAD["paused"] = True
+        _DOWNLOAD["message"] = "Download paused."
+    _DOWNLOAD_PAUSE.clear()
+    _setup_log("Download paused.", "warning")
+    return {"ok": True, "message": "Download paused."}
+
+
+def resume_download() -> dict[str, object]:
+    with _DOWNLOAD_LOCK:
+        if not _DOWNLOAD["active"]:
+            return {"ok": False, "message": "No active download."}
+        _DOWNLOAD["paused"] = False
+        _DOWNLOAD["message"] = "Downloading…"
+    _DOWNLOAD_PAUSE.set()
+    _setup_log("Download resumed.")
+    return {"ok": True, "message": "Download resumed."}
+
+
+def cancel_download() -> dict[str, object]:
+    with _DOWNLOAD_LOCK:
+        if not _DOWNLOAD["active"]:
+            return {"ok": False, "message": "No active download."}
+        _DOWNLOAD_CANCEL.set()
+        _DOWNLOAD_PAUSE.set()
+        _DOWNLOAD["cancelled"] = True
+        _DOWNLOAD["paused"] = False
+        _DOWNLOAD["message"] = "Cancelling download…"
+    _setup_log("Download cancellation requested.", "warning")
+    return {"ok": True, "message": "Download cancellation requested."}
+
+
+def _download_file(url: str, target: Path, label: str) -> None:
+    import urllib.request
+    started = time.monotonic()
+    downloaded = 0
+    _DOWNLOAD_CANCEL.clear()
+    _DOWNLOAD_PAUSE.set()
+    with _DOWNLOAD_LOCK:
+        _DOWNLOAD.update(active=True, paused=False, cancelled=False, downloaded=0, total=0, speed=0.0, name=label, message="Connecting…")
+    _setup_log(f"Downloading {label} from {url}")
+    temporary = target.with_suffix(target.suffix + ".part")
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "Dana-Setup/1"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            total = int(response.headers.get("Content-Length") or 0)
+            with _DOWNLOAD_LOCK:
+                _DOWNLOAD["total"] = total
+                _DOWNLOAD["message"] = "Downloading…"
+            with open(temporary, "wb") as handle:
+                while True:
+                    if _DOWNLOAD_CANCEL.is_set():
+                        raise InterruptedError("Download cancelled by user")
+                    _DOWNLOAD_PAUSE.wait()
+                    if _DOWNLOAD_CANCEL.is_set():
+                        raise InterruptedError("Download cancelled by user")
+                    chunk = response.read(64 * 1024)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                    downloaded += len(chunk)
+                    elapsed = max(0.001, time.monotonic() - started)
+                    with _DOWNLOAD_LOCK:
+                        _DOWNLOAD["downloaded"] = downloaded
+                        _DOWNLOAD["speed"] = downloaded / elapsed
+            temporary.replace(target)
+        with _DOWNLOAD_LOCK:
+            _DOWNLOAD.update(active=False, paused=False, message="Download complete.")
+        _setup_log(f"Download completed: {label}", "success")
+    except Exception:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        with _DOWNLOAD_LOCK:
+            _DOWNLOAD["active"] = False
+            _DOWNLOAD["paused"] = False
+            if _DOWNLOAD_CANCEL.is_set():
+                _DOWNLOAD["message"] = "Download cancelled."
+            else:
+                _DOWNLOAD["message"] = "Download failed."
+        if _DOWNLOAD_CANCEL.is_set():
+            _setup_log(f"Download cancelled: {label}", "warning")
+        else:
+            _setup_log(f"Download failed: {label}", "error")
+        raise
+
 _SETUP_LOGS: deque[dict[str, str]] = deque(maxlen=250)
 _DANA_PROCESS: subprocess.Popen[str] | None = None
 
@@ -37,6 +140,143 @@ def _setup_log(message: str, level: str = "info") -> None:
 
 def setup_logs() -> dict[str, object]:
     return {"logs": list(_SETUP_LOGS)}
+
+
+# Desktop-control configuration is intentionally limited to known Dana settings.
+_CONFIG_KEYS = (
+    "DANA_HOST", "DANA_PORT", "DANA_LOG_LEVEL", "DANA_WORKERS", "DANA_MCP_PATH",
+    "DANA_PUBLIC_HOST", "DANA_PUBLIC_PORT", "DANA_PUBLIC_SCHEME", "DANA_DEPLOYMENT_MODE",
+    "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS", "DANA_MAX_BODY_BYTES", "DANA_ALLOW_DANGEROUS_TOOLS",
+    "DANA_ALLOWED_ORIGINS", "DANA_TAILSCALE_FUNNEL_ENABLED", "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS",
+    "MCP_OAUTH_REDIRECT_URIS",
+)
+
+
+def _env_path() -> Path:
+    return Path(os.getenv("DANA_ROOT", Path(__file__).resolve().parents[1])) / ".env"
+
+
+def _read_env() -> dict[str, str]:
+    path = _env_path()
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+    for raw in path.read_text(encoding="utf-8").replace("\\\\n", "\\n").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+def _write_env(values: dict[str, str]) -> None:
+    path = _env_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\\n".join(f"{key}={value}" for key, value in values.items()) + "\\n", encoding="utf-8")
+
+
+def _masked_token(token: str) -> str:
+    if not token:
+        return ""
+    if len(token) <= 8:
+        return "•" * len(token)
+    return token[:4] + "•" * max(4, len(token) - 8) + token[-4:]
+
+
+def configuration() -> dict[str, object]:
+    env = _read_env()
+    return {
+        "values": {key: env.get(key, "") for key in _CONFIG_KEYS if key != "DANA_AUTH_TOKEN"},
+        "auth_token": _masked_token(env.get("DANA_AUTH_TOKEN", settings.auth_token)),
+        "auth_token_configured": bool(env.get("DANA_AUTH_TOKEN", settings.auth_token)),
+        "keys": list(_CONFIG_KEYS),
+    }
+
+
+def update_configuration(values: dict[str, object]) -> dict[str, object]:
+    was_running = _dana_running()
+    env = _read_env()
+    changed: list[str] = []
+    for key, value in values.items():
+        if key not in _CONFIG_KEYS:
+            raise ValueError(f"Unsupported configuration key: {key}")
+        if key == "MCP_OAUTH_REDIRECT_URIS":
+            text = str(value).strip()
+        elif isinstance(value, bool):
+            text = "true" if value else "false"
+        else:
+            text = str(value).strip()
+        if key in {"DANA_PORT", "DANA_WORKERS", "DANA_PUBLIC_PORT", "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS", "DANA_MAX_BODY_BYTES", "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS"} and text:
+            if not text.isdigit():
+                raise ValueError(f"{key} must be numeric")
+        if key == "DANA_DEPLOYMENT_MODE" and text.lower() not in {"local", "server"}:
+            raise ValueError("DANA_DEPLOYMENT_MODE must be local or server")
+        if env.get(key, "") != text:
+            env[key] = text
+            changed.append(key)
+    _write_env(env)
+    field_map = {
+        "DANA_HOST": ("host", str), "DANA_PORT": ("port", int), "DANA_LOG_LEVEL": ("log_level", str),
+        "DANA_WORKERS": ("workers", int), "DANA_MCP_PATH": ("mcp_path", str), "DANA_PUBLIC_HOST": ("public_host", str),
+        "DANA_PUBLIC_PORT": ("public_port", int), "DANA_PUBLIC_SCHEME": ("public_scheme", str),
+        "DANA_DEPLOYMENT_MODE": ("deployment_mode", str), "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS": ("oauth_access_token_ttl_seconds", int),
+        "DANA_MAX_BODY_BYTES": ("max_body_bytes", int), "DANA_ALLOW_DANGEROUS_TOOLS": ("allow_dangerous_tools", lambda x: x.lower() == "true"),
+        "DANA_ALLOWED_ORIGINS": ("allowed_origins", str), "DANA_TAILSCALE_FUNNEL_ENABLED": ("tailscale_funnel_enabled", lambda x: x.lower() == "true"),
+        "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS": ("tailscale_funnel_check_seconds", int),
+    }
+    for key in changed:
+        if key.startswith("DANA_"):
+            os.environ[key] = env[key]
+        if key in field_map and env[key] != "":
+            field, caster = field_map[key]
+            try:
+                setattr(settings, field, caster(env[key]))
+            except (TypeError, ValueError):
+                pass
+    if "DANA_AUTH_TOKEN" in env:
+        settings.auth_token = env["DANA_AUTH_TOKEN"]
+    _setup_log(f"Configuration updated: {', '.join(changed) if changed else 'no changes'}", "success" if changed else "info")
+    if changed and was_running:
+        restart = _restart_runtime_preserving_funnel()
+        if not restart.get("ok"):
+            return {"ok": False, "changed": changed, "message": str(restart.get("message", "Dana restart failed.")), "configuration": configuration()}
+    return {"ok": True, "changed": changed, "configuration": configuration()}
+
+
+def _restart_runtime_preserving_funnel() -> dict[str, object]:
+    was_funnel = _funnel_active()
+    stop_result = stop_dana()
+    if not stop_result.get("ok"):
+        return stop_result
+    result = start_dana()
+    if result.get("ok") and was_funnel:
+        funnel_result = enable_funnel(settings.port)
+        if not funnel_result.get("ok") and not funnel_result.get("pending"):
+            return funnel_result
+    return result
+
+
+def set_auth_token(token: str, *, revoke: bool = False) -> dict[str, object]:
+    import secrets
+    token = token.strip() if token else ""
+    if revoke:
+        token = secrets.token_urlsafe(32)
+    if not token:
+        raise ValueError("Token cannot be empty")
+    if len(token) < 16 or len(token) > 256 or not re.fullmatch(r"[A-Za-z0-9._~-]+", token):
+        raise ValueError("Token must be 16-256 characters and contain only letters, numbers, '.', '_', '-' or '~'.")
+    env = _read_env()
+    old = env.get("DANA_AUTH_TOKEN", settings.auth_token)
+    env["DANA_AUTH_TOKEN"] = token
+    _write_env(env)
+    os.environ["DANA_AUTH_TOKEN"] = token
+    settings.auth_token = token
+    _setup_log("Authentication token revoked and replaced." if revoke else "Custom authentication token applied.", "warning" if revoke else "success")
+    restart = _restart_runtime_preserving_funnel()
+    if not restart.get("ok"):
+        return {"ok": False, "message": restart.get("message", "Runtime restart failed."), "token": _masked_token(token)}
+    return {"ok": True, "token": _masked_token(token), "message": "Authentication token rotated and Dana restarted." if revoke else "Custom authentication token applied and Dana restarted."}
 
 @dataclass
 class SetupStatus:
@@ -287,7 +527,7 @@ def install_tailscale() -> dict[str, object]:
             return {"ok": False, "action_required": "manual_install", "message": "A graphical privilege helper (pkexec) is required for a fully graphical Linux installation.", "url": TAILSCALE_DOWNLOAD}
         try:
             target = Path(tempfile.gettempdir()) / "tailscale-install.sh"
-            urllib.request.urlretrieve(TAILSCALE_INSTALL_SCRIPT, target)
+            _download_file(TAILSCALE_INSTALL_SCRIPT, target, "Tailscale installer")
             _setup_log("Launching the privileged Tailscale installer.")
             result = _run(["pkexec", "sh", str(target)], timeout=240)
             output = (result.stderr or result.stdout or "").strip()
@@ -318,7 +558,7 @@ def _install_windows() -> dict[str, object]:
         win_url, _ = _stable_package_urls()
         if not win_url: raise RuntimeError("Could not locate the current Tailscale Windows installer.")
         target = Path(tempfile.gettempdir()) / "tailscale-setup.exe"
-        urllib.request.urlretrieve(win_url, target)
+        _download_file(win_url, target, "Tailscale Windows installer")
         import ctypes
         result = ctypes.windll.shell32.ShellExecuteW(None, "runas", str(target), None, None, 1)
         if result <= 32: raise RuntimeError("Windows elevation was cancelled or failed.")
@@ -331,7 +571,7 @@ def _install_macos() -> dict[str, object]:
         _, mac_url = _stable_package_urls()
         if not mac_url: raise RuntimeError("Could not locate the current Tailscale macOS installer.")
         target = Path(tempfile.gettempdir()) / "Tailscale.pkg"
-        urllib.request.urlretrieve(mac_url, target)
+        _download_file(mac_url, target, "Tailscale macOS installer")
         subprocess.Popen(["open", str(target)])
         return {"ok": False, "pending": True, "message": "Tailscale installer opened. Complete the installation and return to Dana.", "url": TAILSCALE_DOWNLOAD}
     except Exception as exc:

@@ -29,6 +29,11 @@ class Handler(BaseHTTPRequestHandler):
             self._send(setup.token_usage()); return
         if urlparse(self.path).path == "/api/setup/logs":
             self._send(setup.setup_logs()); return
+        if urlparse(self.path).path == "/api/setup/download":
+            self._send(setup.download_status()); return
+        if urlparse(self.path).path == "/api/setup/config":
+            self._send(setup.configuration()); return
+
         self._send({"error": "not_found"}, 404)
     def do_POST(self) -> None:
         action = {
@@ -39,6 +44,31 @@ class Handler(BaseHTTPRequestHandler):
             "/api/setup/stop-dana": setup.stop_dana,
             "/api/setup/bootstrap": setup.bootstrap,
         }.get(urlparse(self.path).path)
+        request_path = urlparse(self.path).path
+        if request_path == "/api/setup/download/pause":
+            self._send(setup.pause_download()); return
+        if request_path == "/api/setup/download/resume":
+            self._send(setup.resume_download()); return
+        if request_path == "/api/setup/download/cancel":
+            self._send(setup.cancel_download()); return
+        if request_path in {"/api/setup/security/revoke-token", "/api/setup/security/token", "/api/setup/config"}:
+            try:
+                if request_path == "/api/setup/security/revoke-token":
+                    self._send(setup.set_auth_token("", revoke=True)); return
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                if request_path == "/api/setup/security/token":
+                    self._send(setup.set_auth_token(str(payload.get("token", "")))); return
+                values = payload.get("values", payload)
+                if not isinstance(values, dict):
+                    raise ValueError("Configuration values must be an object")
+                self._send(setup.update_configuration(values)); return
+            except Exception as exc:
+                setup._setup_log(f"Configuration/security action failed: {exc}", "error")
+                self._send({"ok": False, "message": str(exc)}, 400)
+                return
+
         if not action:
             self._send({"error": "not_found"}, 404); return
         try:
