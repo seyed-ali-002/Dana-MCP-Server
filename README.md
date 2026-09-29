@@ -578,6 +578,21 @@ Use `--show-url` only on a trusted terminal when you need the complete Local Mod
 
     python -m dana doctor --json
 
+## MCP Connection & Authentication
+
+Dana keeps its authentication token persistent across runtime restarts. A token changes only after an explicit token action from the Control Center or the token regeneration scripts.
+
+In Local Mode, the Control Center exposes a tokenized Streamable HTTP URL:
+
+`https://<tailscale-host>/<token>/mcp`
+
+This URL is the direct connection credential and is intended for MCP clients that accept a URL-only connection. Dana also accepts the standard `Authorization: Bearer <token>` header on the canonical `/mcp` endpoint and on the tokenized endpoint.
+
+The Control Center's **Connections** view includes a live connection test. The **Security** view supports both random token generation and custom token replacement. Rotating a token invalidates previously issued tokenized URLs.
+
+Path access can be configured with `DANA_ALLOWED_PATHS` and `DANA_DENIED_PATHS`. Use one path per line. An empty allowed list means all paths are allowed unless denied; denied paths always take precedence.
+
+
 ---
 
 # Usage Report and Observability

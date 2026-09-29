@@ -147,7 +147,8 @@ _CONFIG_KEYS = (
     "DANA_HOST", "DANA_PORT", "DANA_LOG_LEVEL", "DANA_WORKERS", "DANA_MCP_PATH",
     "DANA_PUBLIC_HOST", "DANA_PUBLIC_PORT", "DANA_PUBLIC_SCHEME", "DANA_DEPLOYMENT_MODE",
     "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS", "DANA_MAX_BODY_BYTES", "DANA_ALLOW_DANGEROUS_TOOLS",
-    "DANA_ALLOWED_ORIGINS", "DANA_TAILSCALE_FUNNEL_ENABLED", "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS",
+    "DANA_ALLOWED_ORIGINS", "DANA_ALLOWED_PATHS", "DANA_DENIED_PATHS",
+    "DANA_TAILSCALE_FUNNEL_ENABLED", "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS",
     "MCP_OAUTH_REDIRECT_URIS",
 )
 
@@ -186,8 +187,26 @@ def _masked_token(token: str) -> str:
 
 def configuration() -> dict[str, object]:
     env = _read_env()
+    defaults = {
+        "DANA_HOST": settings.host, "DANA_PORT": settings.port, "DANA_LOG_LEVEL": settings.log_level,
+        "DANA_WORKERS": settings.workers, "DANA_MCP_PATH": settings.mcp_path,
+        "DANA_PUBLIC_HOST": settings.public_host, "DANA_PUBLIC_PORT": settings.public_port,
+        "DANA_PUBLIC_SCHEME": settings.public_scheme, "DANA_DEPLOYMENT_MODE": settings.deployment_mode,
+        "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS": settings.oauth_access_token_ttl_seconds,
+        "DANA_MAX_BODY_BYTES": settings.max_body_bytes, "DANA_ALLOW_DANGEROUS_TOOLS": settings.allow_dangerous_tools,
+        "DANA_ALLOWED_ORIGINS": settings.allowed_origins, "DANA_ALLOWED_PATHS": settings.allowed_paths,
+        "DANA_DENIED_PATHS": settings.denied_paths, "DANA_TAILSCALE_FUNNEL_ENABLED": settings.tailscale_funnel_enabled,
+        "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS": settings.tailscale_funnel_check_seconds,
+        "MCP_OAUTH_REDIRECT_URIS": "",
+    }
+    def _text(value: object) -> str:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        return str(value)
+    values = {key: env[key] if key in env else _text(defaults.get(key, "")) for key in _CONFIG_KEYS if key != "DANA_AUTH_TOKEN"}
     return {
-        "values": {key: env.get(key, "") for key in _CONFIG_KEYS if key != "DANA_AUTH_TOKEN"},
+        "values": values,
+        "defaults": {key: _text(defaults.get(key, "")) for key in _CONFIG_KEYS if key != "DANA_AUTH_TOKEN"},
         "auth_token": _masked_token(env.get("DANA_AUTH_TOKEN", settings.auth_token)),
         "auth_token_configured": bool(env.get("DANA_AUTH_TOKEN", settings.auth_token)),
         "keys": list(_CONFIG_KEYS),
@@ -207,9 +226,11 @@ def update_configuration(values: dict[str, object]) -> dict[str, object]:
             text = "true" if value else "false"
         else:
             text = str(value).strip()
-        if key in {"DANA_PORT", "DANA_WORKERS", "DANA_PUBLIC_PORT", "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS", "DANA_MAX_BODY_BYTES", "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS"} and text:
-            if not text.isdigit():
-                raise ValueError(f"{key} must be numeric")
+        if key in {"DANA_PORT", "DANA_WORKERS", "DANA_PUBLIC_PORT", "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS", "DANA_MAX_BODY_BYTES", "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS"}:
+            if not text or not text.isdigit():
+                raise ValueError(f"{key} must be a non-empty numeric value")
+        if key in {"DANA_ALLOW_DANGEROUS_TOOLS", "DANA_TAILSCALE_FUNNEL_ENABLED"} and text.lower() not in {"true", "false"}:
+            raise ValueError(f"{key} must be true or false")
         if key == "DANA_DEPLOYMENT_MODE" and text.lower() not in {"local", "server"}:
             raise ValueError("DANA_DEPLOYMENT_MODE must be local or server")
         if env.get(key, "") != text:
@@ -222,7 +243,8 @@ def update_configuration(values: dict[str, object]) -> dict[str, object]:
         "DANA_PUBLIC_PORT": ("public_port", int), "DANA_PUBLIC_SCHEME": ("public_scheme", str),
         "DANA_DEPLOYMENT_MODE": ("deployment_mode", str), "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS": ("oauth_access_token_ttl_seconds", int),
         "DANA_MAX_BODY_BYTES": ("max_body_bytes", int), "DANA_ALLOW_DANGEROUS_TOOLS": ("allow_dangerous_tools", lambda x: x.lower() == "true"),
-        "DANA_ALLOWED_ORIGINS": ("allowed_origins", str), "DANA_TAILSCALE_FUNNEL_ENABLED": ("tailscale_funnel_enabled", lambda x: x.lower() == "true"),
+        "DANA_ALLOWED_ORIGINS": ("allowed_origins", str), "DANA_ALLOWED_PATHS": ("allowed_paths", str), "DANA_DENIED_PATHS": ("denied_paths", str),
+        "DANA_TAILSCALE_FUNNEL_ENABLED": ("tailscale_funnel_enabled", lambda x: x.lower() == "true"),
         "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS": ("tailscale_funnel_check_seconds", int),
     }
     for key in changed:
@@ -276,7 +298,11 @@ def set_auth_token(token: str, *, revoke: bool = False) -> dict[str, object]:
     restart = _restart_runtime_preserving_funnel()
     if not restart.get("ok"):
         return {"ok": False, "message": restart.get("message", "Runtime restart failed."), "token": _masked_token(token)}
-    return {"ok": True, "token": _masked_token(token), "message": "Authentication token rotated and Dana restarted." if revoke else "Custom authentication token applied and Dana restarted."}
+    return {"ok": True, "token": _masked_token(token), "connection_url": status().mcp_url, "message": "Authentication token rotated and Dana restarted." if revoke else "Custom authentication token applied and Dana restarted."}
+
+
+def generate_auth_token() -> dict[str, object]:
+    return set_auth_token(__import__("secrets").token_urlsafe(32), revoke=False)
 
 @dataclass
 class SetupStatus:
@@ -456,6 +482,30 @@ def status() -> SetupStatus:
         action, message = "enable_funnel", "Tailscale Funnel is not active."
     running = _dana_running()
     return SetupStatus(installed, backend, hostname, active, funnel_host, running, public_url or local_url, local_url, public_url, token, action, message)
+
+def test_connections() -> dict[str, object]:
+    import urllib.request
+    checks: list[dict[str, object]] = []
+    token = settings.require_auth_token()
+    active, funnel_host = _funnel_status()
+    candidates = [("local", f"http://127.0.0.1:{settings.port}/{token}{settings.mcp_path}")]
+    if active and funnel_host:
+        candidates.append(("public", f"https://{funnel_host}/{token}{settings.mcp_path}"))
+    for name, url in candidates:
+        try:
+            request = urllib.request.Request(
+                url,
+                headers={"Accept": "application/json, text/event-stream", "Authorization": f"Bearer {token}"},
+            )
+            with urllib.request.urlopen(request, timeout=8) as response:
+                checks.append({"name": name, "url": url, "ok": response.status in {200, 202}, "status": response.status})
+        except Exception as exc:
+            status_code = getattr(exc, "code", None)
+            checks.append({"name": name, "url": url, "ok": status_code in {200, 202}, "status": status_code, "error": str(exc)[:180]})
+    ok = bool(checks) and all(bool(item["ok"]) for item in checks)
+    _setup_log("MCP connection test passed." if ok else "MCP connection test reported a failure.", "success" if ok else "error")
+    return {"ok": ok, "checks": checks, "tested_at": datetime.now(timezone.utc).isoformat()}
+
 
 def token_usage() -> dict[str, object]:
     """Read lightweight token totals for the desktop control center."""

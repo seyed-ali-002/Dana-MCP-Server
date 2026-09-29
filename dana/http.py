@@ -72,6 +72,29 @@ def _oauth_protected_resource_metadata(request: Request) -> dict[str, object]:
     }
 
 
+def _scope_header(scope, name: bytes) -> str:
+    return next((value.decode("latin1") for key, value in scope.get("headers", ()) if key.lower() == name.lower()), "")
+
+
+def _tokenized_mount_token(scope) -> str:
+    """Recover the token from Starlette's stripped mount prefix."""
+    root_path = str(scope.get("root_path", "")).strip("/")
+    if not root_path:
+        return ""
+    parts = [part for part in root_path.split("/") if part]
+    if len(parts) == 1 and _guard.token_matches(parts[0], settings.require_auth_token()):
+        return parts[0]
+    return ""
+
+
+def _request_is_authorized(scope) -> bool:
+    expected = settings.require_auth_token()
+    authorization = _scope_header(scope, b"authorization")
+    if _guard.token_matches(authorization, f"Bearer {expected}"):
+        return True
+    return _guard.token_matches(_tokenized_mount_token(scope), expected)
+
+
 def _cleanup_oauth_clients() -> None:
     # Registration metadata is deliberately bounded so a long-running public
     # server cannot accumulate abandoned connector registrations forever.
@@ -209,7 +232,7 @@ mcp_app = OAuthProtectedMCPASGI(AcceptCompatibleASGI(_mcp_proxy))
 
 
 class LocalTokenMCPASGI:
-    """OAuth-protected transport preserving Dana's legacy tokenized URL."""
+    """Compatibility transport accepting both the tokenized URL and Bearer auth."""
 
     def __init__(self, app):
         self.app = app
@@ -248,13 +271,7 @@ class LocalTokenMCPASGI:
                 await response(scope, receive, send)
                 return
 
-            authorization = next((
-                value.decode("latin1")
-                for name, value in scope.get("headers", ())
-                if name.lower() == b"authorization"
-            ), "")
-            expected = f"Bearer {settings.require_auth_token()}"
-            if not _guard.token_matches(authorization, expected):
+            if not _request_is_authorized(scope):
                 host = settings.public_host or next((
                     value.decode("latin1")
                     for name, value in scope.get("headers", ())
@@ -492,17 +509,16 @@ async def connector(request: Request):
         return unauthorized()
     host = settings.public_host or request.url.netloc
     scheme = "https" if settings.public_host else request.url.scheme
-    # Never expose Dana's durable bearer credential in the connection URL.
-    # ChatGPT-compatible connectors use OAuth/PKCE on the canonical /mcp
-    # resource; the old /TOKEN/mcp URL remains only as a local compatibility
-    # endpoint for already-configured clients. A copied connection URL therefore
-    # contains no reusable server credential.
-    url = f"{scheme}://{host}{settings.mcp_path}"
+    url = (
+        f"{scheme}://{host}/{token}{settings.mcp_path}"
+        if settings.normalized_mode() == "local"
+        else f"{scheme}://{host}{settings.mcp_path}"
+    )
     return {
         "title": "Chatbot Connection Link",
         "url": url,
-        "authentication": "OAuth 2.0 + PKCE",
-        "security": "The server token is never embedded in the connection URL.",
+        "authentication": "Tokenized URL + Authorization: Bearer <token>",
+        "security": "Treat the tokenized URL as a secret. Bearer headers remain supported for standard MCP clients.",
     }
 
 

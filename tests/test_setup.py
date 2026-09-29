@@ -48,3 +48,29 @@ def test_public_endpoint_accepts_authenticated_mcp_response(monkeypatch):
         def __exit__(self, *args): return False
     monkeypatch.setattr(setup.urllib.request, "urlopen", lambda *args, **kwargs: Response())
     assert setup.verify_public_endpoint("dana.example.ts.net") is True
+
+
+
+def test_configuration_exposes_runtime_defaults(monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    monkeypatch.setattr(setup, "_env_path", lambda: env_file)
+    monkeypatch.setattr(setup.settings, "host", "127.0.0.1")
+    monkeypatch.setattr(setup.settings, "port", 8765)
+    monkeypatch.setattr(setup.settings, "mcp_path", "/mcp")
+    monkeypatch.setattr(setup.settings, "allow_dangerous_tools", False)
+    monkeypatch.setattr(setup.settings, "tailscale_funnel_enabled", True)
+    data = setup.configuration()
+    assert data["values"]["DANA_PORT"] == "8765"
+    assert data["values"]["DANA_MCP_PATH"] == "/mcp"
+    assert data["values"]["DANA_ALLOW_DANGEROUS_TOOLS"] == "false"
+    assert data["values"]["DANA_TAILSCALE_FUNNEL_ENABLED"] == "true"
+
+
+def test_token_is_not_rotated_by_startup_write_env(monkeypatch, tmp_path):
+    env_file = tmp_path / ".env"
+    existing = "DANA_AUTH_TOKEN=stable-token-value-123456\n"
+    env_file.write_text(existing, encoding="utf-8")
+    monkeypatch.setattr("dana.installer.ROOT", tmp_path)
+    token = __import__("dana.installer", fromlist=["write_env"]).write_env("local", workers=5)
+    assert token == "stable-token-value-123456"
+    assert "DANA_AUTH_TOKEN=stable-token-value-123456" in env_file.read_text(encoding="utf-8")

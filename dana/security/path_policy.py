@@ -10,6 +10,19 @@ DEFAULT = {"version": 1, "allowed_paths": [], "deny_paths": [], "shell": {"restr
 def _norm(value: str | Path) -> Path:
     return Path(value).expanduser().resolve(strict=False)
 
+def _env_paths(key: str) -> list[str]:
+    raw = os.getenv(key, "").strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    except json.JSONDecodeError:
+        pass
+    return [item.strip() for item in raw.replace("\\r", "").replace(",", "\\n").split("\\n") if item.strip()]
+
+
 def load_policy() -> dict:
     with _LOCK:
         if not CONFIG.exists():
@@ -19,6 +32,12 @@ def load_policy() -> dict:
         data = json.loads(CONFIG.read_text())
         out = dict(DEFAULT); out.update(data or {})
         out["shell"] = {**DEFAULT["shell"], **(data.get("shell", {}) if isinstance(data, dict) else {})}
+        env_allowed = _env_paths("DANA_ALLOWED_PATHS")
+        env_denied = _env_paths("DANA_DENIED_PATHS")
+        if "DANA_ALLOWED_PATHS" in os.environ:
+            out["allowed_paths"] = env_allowed
+        if "DANA_DENIED_PATHS" in os.environ:
+            out["deny_paths"] = env_denied
         return out
 
 def save_policy(policy: dict) -> dict:

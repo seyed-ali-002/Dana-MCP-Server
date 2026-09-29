@@ -17,19 +17,18 @@ def test_connector_requires_auth(monkeypatch):
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == "Chatbot Connection Link"
-        assert data["url"] == "https://example.ts.net/mcp"
-        assert settings.auth_token not in data["url"]
-        assert data["authentication"] == "OAuth 2.0 + PKCE"
+        assert data["url"] == f"https://example.ts.net/{settings.auth_token}/mcp"
+        assert settings.auth_token in data["url"]
+        assert "Bearer" in data["authentication"]
         mcp_response = client.get(
             f"/{settings.auth_token}/mcp",
             headers={"Accept": "application/json, text/event-stream"},
             follow_redirects=False,
         )
-        assert mcp_response.status_code == 401
-        assert "resource_metadata=" in mcp_response.headers["www-authenticate"]
+        assert mcp_response.status_code != 401
 
 
-def test_local_mode_tokenized_mcp_path_advertises_oauth_without_bearer(monkeypatch):
+def test_local_mode_tokenized_mcp_path_authenticates_without_bearer(monkeypatch):
     monkeypatch.setattr("dana.http.settings.deployment_mode", "local")
     with TestClient(app) as client:
         response = client.get(
@@ -37,8 +36,7 @@ def test_local_mode_tokenized_mcp_path_advertises_oauth_without_bearer(monkeypat
             headers={"Accept": "application/json, text/event-stream"},
             follow_redirects=False,
         )
-        assert response.status_code == 401
-        assert "resource_metadata=" in response.headers["www-authenticate"]
+        assert response.status_code != 401
         root = client.get("/mcp", follow_redirects=False)
         assert root.status_code == 401
 

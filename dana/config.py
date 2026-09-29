@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     max_body_bytes: int = 10 * 1024 * 1024
     allow_dangerous_tools: bool = False
     allowed_origins: str = ""
+    allowed_paths: str = ""
+    denied_paths: str = ""
     tailscale_funnel_enabled: bool = True
     # Keep Dana's shared Tailscale path self-healing even when another local
     # application clears all handlers on port 443 while shutting down.
