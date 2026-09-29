@@ -12,10 +12,11 @@ def test_tokenized_mcp_authenticates_without_bearer():
     with TestClient(app) as client:
         response = client.post(
             _tokenized_path(),
-            headers={"Accept": "application/json"},
-            json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            headers={"Host": "127.0.0.1", "Accept": "application/json", "Content-Type": "application/json"},
+            json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test", "version": "1"}}},
         )
-        assert response.status_code != 401
+        assert response.status_code == 200
+        assert "protocolVersion" in response.text
 
 
 def test_wrong_tokenized_path_is_rejected():
@@ -78,3 +79,32 @@ def test_public_connection_url_requires_oauth_bearer():
         )
         assert response.status_code == 401
         assert "resource_metadata=" in response.headers["www-authenticate"]
+
+
+
+def test_tokenized_mcp_initialize_handshake():
+    body = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "dana-test", "version": "1.0"},
+        },
+    }
+    with TestClient(app) as client:
+        response = client.post(
+            f"/{settings.require_auth_token()}{settings.mcp_path}",
+            headers={
+                "Accept": "application/json, text/event-stream",
+                "Content-Type": "application/json",
+                "Host": settings.public_host or "127.0.0.1",
+            },
+            json=body,
+        )
+        assert response.status_code == 200
+        assert "application/json" in response.headers.get("content-type", "") or "text/event-stream" in response.headers.get("content-type", "")
+        payload = response.json() if "application/json" in response.headers.get("content-type", "") else {}
+        if payload:
+            assert payload.get("result", {}).get("serverInfo", {}).get("name")

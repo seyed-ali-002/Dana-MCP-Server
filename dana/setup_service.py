@@ -57,12 +57,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send(setup.resume_download()); return
         if request_path == "/api/setup/download/cancel":
             self._send(setup.cancel_download()); return
-        if request_path in {"/api/setup/security/revoke-token", "/api/setup/security/generate-token", "/api/setup/security/token", "/api/setup/config"}:
+        if request_path in {"/api/setup/security/revoke-token", "/api/setup/security/token", "/api/setup/config"}:
             try:
                 if request_path == "/api/setup/security/revoke-token":
                     self._send(setup.set_auth_token("", revoke=True)); return
-                if request_path == "/api/setup/security/generate-token":
-                    self._send(setup.generate_auth_token()); return
                 length = int(self.headers.get("Content-Length", "0") or 0)
                 raw = self.rfile.read(length) if length else b"{}"
                 payload = json.loads(raw.decode("utf-8") or "{}")

@@ -197,7 +197,7 @@ class WorkerPool:
 
 WORKER_POOL = WorkerPool(settings.normalized_workers())
 
-_allowed_hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+_allowed_hosts = ["127.0.0.1", "127.0.0.1:*", "localhost", "localhost:*", "::1", "[::1]:*"]
 if settings.public_host:
     _allowed_hosts.extend([settings.public_host, f"{settings.public_host}:*"])
 _allowed_origins = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]

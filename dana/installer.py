@@ -70,12 +70,11 @@ def write_env(
     mode: str, public_host: str = "", public_port: int = 0, workers: int = 5
 ) -> str:
     env_path = ROOT / ".env"
+    persistent_env_path = Path.home() / ".config" / "dana" / ".env"
     values: dict[str, str] = {}
-    if env_path.exists():
-        raw_env = env_path.read_text(encoding="utf-8")
-        # Older installers could write literal \n separators. Normalize
-        # those before parsing so one malformed line cannot swallow the file.
-        raw_env = raw_env.replace("\\n", "\n")
+    source_path = persistent_env_path if persistent_env_path.exists() else env_path
+    if source_path.exists():
+        raw_env = source_path.read_text(encoding="utf-8").replace("\\n", "\n")
         for line in raw_env.splitlines():
             if "=" in line and not line.lstrip().startswith("#"):
                 key, value = line.split("=", 1)
@@ -84,18 +83,16 @@ def write_env(
     values["DANA_WORKERS"] = str(workers)
     if mode == "server" and (not values.get("DANA_PORT") or not values.get("DANA_PORT", "").isdigit()):
         values["DANA_PORT"] = "8765"
-    # Worker names are derived from DANA_AUTH_TOKEN at runtime, so no
-    # per-run random seed is persisted here.
     values.pop("DANA_WORKER_SEED", None)
     if mode == "local":
         values.pop("DANA_PUBLIC_HOST", None)
         values["DANA_PUBLIC_PORT"] = "443"
         values["DANA_PUBLIC_SCHEME"] = "https"
-    if (
-        not values.get("DANA_AUTH_TOKEN")
-        or values.get("DANA_AUTH_TOKEN") == "GENERATE_WITH_SCRIPT"
-    ):
+    if not values.get("DANA_AUTH_TOKEN") or values.get("DANA_AUTH_TOKEN") == "GENERATE_WITH_SCRIPT":
         values["DANA_AUTH_TOKEN"] = secrets.token_urlsafe(32)
+        # Initial installation is the only implicit creation point. Existing
+        # installations are read from the persistent auth store above and never
+        # regenerate on restart/setup.
     if mode == "server":
         values["DANA_HOST"] = "127.0.0.1"
         values["DANA_PORT"] = str(public_port)
@@ -105,10 +102,11 @@ def write_env(
     else:
         values.pop("DANA_PUBLIC_SCHEME", None)
         values["DANA_HOST"] = values.get("DANA_HOST") or "127.0.0.1"
-    env_path.write_text(
-        "\n".join(f"{key}={value}" for key, value in values.items()) + "\n",
-        encoding="utf-8",
-    )
+    rendered = "\n".join(f"{key}={value}" for key, value in values.items()) + "\n"
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    persistent_env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text(rendered, encoding="utf-8")
+    persistent_env_path.write_text(rendered, encoding="utf-8")
     return values["DANA_AUTH_TOKEN"]
 
 
@@ -447,7 +445,21 @@ def set_local_public_host(host: str) -> None:
             lines.append(line)
     if not found:
         lines.append(f"DANA_PUBLIC_HOST={host}")
-    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    rendered = "\n".join(lines) + "\n"
+    env_path.write_text(rendered, encoding="utf-8")
+    persistent_env_path = Path.home() / ".config" / "dana" / ".env"
+    if persistent_env_path.exists():
+        persistent_lines = []
+        persistent_found = False
+        for line in persistent_env_path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("DANA_PUBLIC_HOST="):
+                persistent_lines.append(f"DANA_PUBLIC_HOST={host}")
+                persistent_found = True
+            else:
+                persistent_lines.append(line)
+        if not persistent_found:
+            persistent_lines.append(f"DANA_PUBLIC_HOST={host}")
+        persistent_env_path.write_text("\n".join(persistent_lines) + "\n", encoding="utf-8")
 
 
 def install_local() -> None:

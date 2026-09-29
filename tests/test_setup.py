@@ -71,6 +71,40 @@ def test_token_is_not_rotated_by_startup_write_env(monkeypatch, tmp_path):
     existing = "DANA_AUTH_TOKEN=stable-token-value-123456\n"
     env_file.write_text(existing, encoding="utf-8")
     monkeypatch.setattr("dana.installer.ROOT", tmp_path)
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path / "home")
     token = __import__("dana.installer", fromlist=["write_env"]).write_env("local", workers=5)
     assert token == "stable-token-value-123456"
     assert "DANA_AUTH_TOKEN=stable-token-value-123456" in env_file.read_text(encoding="utf-8")
+
+
+
+
+def test_startup_write_env_keeps_persistent_token(monkeypatch, tmp_path):
+    root = tmp_path / "install"
+    home = tmp_path / "home"
+    root.mkdir()
+    persistent = home / ".config" / "dana"
+    persistent.mkdir(parents=True)
+    persistent.joinpath(".env").write_text("DANA_AUTH_TOKEN=persistent-stable-token-123456\n", encoding="utf-8")
+    monkeypatch.setattr("dana.installer.ROOT", root)
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+    first = __import__("dana.installer", fromlist=["write_env"]).write_env("local", workers=5)
+    second = __import__("dana.installer", fromlist=["write_env"]).write_env("local", workers=5)
+    assert first == "persistent-stable-token-123456"
+    assert second == first
+    assert "DANA_AUTH_TOKEN=persistent-stable-token-123456" in (root / ".env").read_text(encoding="utf-8")
+
+
+
+def test_persistent_token_is_authoritative_over_install_env(monkeypatch, tmp_path):
+    root = tmp_path / "install"
+    home = tmp_path / "home"
+    root.mkdir()
+    persistent = home / ".config" / "dana"
+    persistent.mkdir(parents=True)
+    (root / ".env").write_text("DANA_AUTH_TOKEN=old-install-token-123456\n", encoding="utf-8")
+    (persistent / ".env").write_text("DANA_AUTH_TOKEN=persistent-token-123456\n", encoding="utf-8")
+    monkeypatch.setattr(setup, "_env_path", lambda: root / ".env")
+    monkeypatch.setattr(setup, "_persistent_env_path", lambda: persistent / ".env")
+    values = setup._read_env()
+    assert values["DANA_AUTH_TOKEN"] == "persistent-token-123456"

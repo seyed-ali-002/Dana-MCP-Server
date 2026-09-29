@@ -157,8 +157,11 @@ def _env_path() -> Path:
     return Path(os.getenv("DANA_ROOT", Path(__file__).resolve().parents[1])) / ".env"
 
 
-def _read_env() -> dict[str, str]:
-    path = _env_path()
+def _persistent_env_path() -> Path:
+    return Path.home() / ".config" / "dana" / ".env"
+
+
+def _read_env_file(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     if not path.exists():
         return values
@@ -171,10 +174,24 @@ def _read_env() -> dict[str, str]:
     return values
 
 
+def _read_env() -> dict[str, str]:
+    values = _read_env_file(_env_path())
+    persistent = _read_env_file(_persistent_env_path())
+    # The persistent store is authoritative for the credential. This prevents
+    # an older installation .env from silently rotating/restoring a token.
+    if persistent.get("DANA_AUTH_TOKEN"):
+        values["DANA_AUTH_TOKEN"] = persistent["DANA_AUTH_TOKEN"]
+    return values
+
+
 def _write_env(values: dict[str, str]) -> None:
+    rendered = "\\n".join(f"{key}={value}" for key, value in values.items()) + "\\n"
     path = _env_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\\n".join(f"{key}={value}" for key, value in values.items()) + "\\n", encoding="utf-8")
+    path.write_text(rendered, encoding="utf-8")
+    persistent = _persistent_env_path()
+    persistent.parent.mkdir(parents=True, exist_ok=True)
+    persistent.write_text(rendered, encoding="utf-8")
 
 
 def _masked_token(token: str) -> str:
@@ -485,25 +502,63 @@ def status() -> SetupStatus:
 
 def test_connections() -> dict[str, object]:
     import urllib.request
+
     checks: list[dict[str, object]] = []
     token = settings.require_auth_token()
     active, funnel_host = _funnel_status()
-    candidates = [("local", f"http://127.0.0.1:{settings.port}/{token}{settings.mcp_path}")]
+    candidates = [("local", f"http://127.0.0.1:{settings.port}/{token}{settings.mcp_path}", "127.0.0.1")]
     if active and funnel_host:
-        candidates.append(("public", f"https://{funnel_host}/{token}{settings.mcp_path}"))
-    for name, url in candidates:
+        candidates.append(("public", f"https://{funnel_host}/{token}{settings.mcp_path}", funnel_host))
+    initialize = json.dumps({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "Dana Control Center", "version": "1.0"},
+        },
+    }).encode("utf-8")
+    for name, url, host in candidates:
         try:
             request = urllib.request.Request(
                 url,
-                headers={"Accept": "application/json, text/event-stream", "Authorization": f"Bearer {token}"},
+                data=initialize,
+                method="POST",
+                headers={
+                    "Accept": "application/json, text/event-stream",
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {token}",
+                    "Host": host,
+                },
             )
-            with urllib.request.urlopen(request, timeout=8) as response:
-                checks.append({"name": name, "url": url, "ok": response.status in {200, 202}, "status": response.status})
+            with urllib.request.urlopen(request, timeout=12) as response:
+                raw = response.read(65536).decode("utf-8", "replace")
+                content_type = response.headers.get("content-type", "")
+                handshake_ok = response.status == 200 and (
+                    "application/json" in content_type or "text/event-stream" in content_type
+                )
+                checks.append({
+                    "name": name,
+                    "url": url,
+                    "ok": handshake_ok,
+                    "status": response.status,
+                    "content_type": content_type,
+                    "handshake": "initialize" if handshake_ok else "failed",
+                    "response_preview": raw[:240],
+                })
         except Exception as exc:
             status_code = getattr(exc, "code", None)
-            checks.append({"name": name, "url": url, "ok": status_code in {200, 202}, "status": status_code, "error": str(exc)[:180]})
+            checks.append({
+                "name": name,
+                "url": url,
+                "ok": False,
+                "status": status_code,
+                "handshake": "failed",
+                "error": str(exc)[:180],
+            })
     ok = bool(checks) and all(bool(item["ok"]) for item in checks)
-    _setup_log("MCP connection test passed." if ok else "MCP connection test reported a failure.", "success" if ok else "error")
+    _setup_log("MCP initialize handshake passed." if ok else "MCP initialize handshake failed.", "success" if ok else "error")
     return {"ok": ok, "checks": checks, "tested_at": datetime.now(timezone.utc).isoformat()}
 
 

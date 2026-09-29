@@ -1,4 +1,20 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_ROOT_ENV = Path(__file__).resolve().parents[1] / ".env"
+_PERSISTENT_ENV = Path.home() / ".config" / "dana" / ".env"
+
+
+def _persistent_auth_token() -> str:
+    try:
+        for line in _PERSISTENT_ENV.read_text(encoding="utf-8").splitlines():
+            if line.startswith("DANA_AUTH_TOKEN="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ""
 
 
 class Settings(BaseSettings):
@@ -6,7 +22,7 @@ class Settings(BaseSettings):
     port: int = 8765
     log_level: str = "info"
     mcp_path: str = "/mcp"
-    auth_token: str = ""
+    auth_token: str = _persistent_auth_token()
     public_host: str = ""
     public_port: int = 0
     public_scheme: str = ""
@@ -47,7 +63,7 @@ class Settings(BaseSettings):
         return self.auth_token
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_prefix="DANA_", extra="ignore"
+        env_file=(str(_ROOT_ENV), str(_PERSISTENT_ENV)), env_prefix="DANA_", extra="ignore"
     )
 
 
