@@ -220,27 +220,47 @@ def register_local_agent_tools(mcp:FastMCP)->None:
             out=_path(target or "dana-screenshot.png","desktop screenshot"); out.parent.mkdir(parents=True,exist_ok=True)
             if shutil.which("gnome-screenshot"): return _run(["gnome-screenshot","-f",str(out)]) | {"path":str(out)}
             if shutil.which("import"): return _run(["import","-window","root",str(out)]) | {"path":str(out)}
-            raise RuntimeError("Install gnome-screenshot or ImageMagick (import) for desktop screenshots.")
+            try:
+                import pyautogui
+                pyautogui.screenshot(str(out)); return {"ok":True,"path":str(out),"backend":"pyautogui"}
+            except ImportError as exc:
+                raise RuntimeError("Install gnome-screenshot, ImageMagick (import), or Dana's optional desktop dependency.") from exc
         if action=="position":
             if not shutil.which("xdotool"): raise RuntimeError("xdotool is not installed. Install the system package 'xdotool'.")
             r=_run(["xdotool","getmouselocation","--shell"]); return r
-        if not shutil.which("xdotool"):
-            raise RuntimeError("xdotool is not installed. Install the system package 'xdotool'.")
-        if action=="move": return _run(["xdotool","mousemove","--sync",str(max(0,x)),str(max(0,y))])
+        if shutil.which("xdotool"):
+            if action=="move": return _run(["xdotool","mousemove","--sync",str(max(0,x)),str(max(0,y))])
+            if action=="click":
+                buttons={"left":"1","middle":"2","right":"3"}
+                if button not in buttons: raise ValueError("button must be left, middle or right")
+                return _run(["xdotool","mousemove","--sync",str(max(0,x)),str(max(0,y)),"click","--repeat",str(max(1,min(clicks,20))),buttons[button]])
+            if action=="scroll":
+                if scroll==0: raise ValueError("scroll must be non-zero")
+                amount=max(1,min(abs(scroll),50)); direction="4" if scroll>0 else "5"
+                return _run(["xdotool","click","--repeat",str(amount),direction])
+            if action=="type": return _run(["xdotool","type","--clearmodifiers","--delay","1",text])
+            if action=="key": return _run(["xdotool","key","--clearmodifiers",key])
+            if action=="hotkey":
+                parts=[p.strip() for p in key.replace("+"," ").split() if p.strip()]
+                if len(parts)<2: raise ValueError("hotkey requires at least two keys, e.g. ctrl+c")
+                return _run(["xdotool","key","--clearmodifiers","+".join(parts)])
+        try:
+            import pyautogui
+        except ImportError as exc:
+            raise RuntimeError("Install xdotool or Dana's optional desktop dependency (pip install dana-mcp-server[desktop]).") from exc
+        if action=="move": pyautogui.moveTo(max(0,x),max(0,y),duration=0.05); return {"ok":True,"x":x,"y":y,"backend":"pyautogui"}
         if action=="click":
-            buttons={"left":"1","middle":"2","right":"3"}
-            if button not in buttons: raise ValueError("button must be left, middle or right")
-            return _run(["xdotool","mousemove","--sync",str(max(0,x)),str(max(0,y)),"click","--repeat",str(max(1,min(clicks,20))),buttons[button]])
+            if button not in {"left","middle","right"}: raise ValueError("button must be left, middle or right")
+            pyautogui.click(x=max(0,x),y=max(0,y),clicks=max(1,min(clicks,20)),button=button); return {"ok":True,"backend":"pyautogui"}
         if action=="scroll":
             if scroll==0: raise ValueError("scroll must be non-zero")
-            amount=max(1,min(abs(scroll),50)); direction="4" if scroll>0 else "5"
-            return _run(["xdotool","click","--repeat",str(amount),direction])
-        if action=="type": return _run(["xdotool","type","--clearmodifiers","--delay","1",text])
-        if action=="key": return _run(["xdotool","key","--clearmodifiers",key])
+            pyautogui.scroll(max(-50,min(scroll,50))); return {"ok":True,"backend":"pyautogui"}
+        if action=="type": pyautogui.write(text,interval=0.001); return {"ok":True,"backend":"pyautogui"}
+        if action=="key": pyautogui.press(key); return {"ok":True,"backend":"pyautogui"}
         if action=="hotkey":
-            parts=[p.strip() for p in key.replace("+"," ").split() if p.strip()]
+            parts=[p.strip().lower() for p in key.replace("+"," ").split() if p.strip()]
             if len(parts)<2: raise ValueError("hotkey requires at least two keys, e.g. ctrl+c")
-            return _run(["xdotool","key","--clearmodifiers","+".join(parts)])
+            pyautogui.hotkey(*parts); return {"ok":True,"backend":"pyautogui"}
         raise ValueError("action must be windows, activate, close, minimize, maximize, move, click, scroll, type, key, hotkey, position or screenshot")
 
     @mcp.tool()
