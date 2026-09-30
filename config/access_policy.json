@@ -1,6 +1,8 @@
 {
   "version": 1,
-  "allowed_paths": [],
+  "allowed_paths": [
+    "/mnt/1CEC9AE6EC9ABA0A/Ali/Codinto/codinto-wiki"
+  ],
   "deny_paths": [],
   "shell": {
     "restricted": true
