@@ -534,21 +534,25 @@ def register_local_agent_tools(mcp:FastMCP)->None:
         raise ValueError("action must be info, convert, resize, extract_audio or frames")
 
     @mcp.tool()
-    def browser(action:str,url:str="",selector:str="",text:str="",key:str="",path:str="")->dict[str,Any]:
+    async def browser(action:str,url:str="",selector:str="",text:str="",key:str="",path:str="")->dict[str,Any]:
         """Automate Chromium/Chrome using Dana's optional Playwright dependency."""
         global _BROWSER,_PAGE
-        try: from playwright.sync_api import sync_playwright
+        try: from playwright.async_api import async_playwright
         except ImportError as exc: raise RuntimeError("Install Dana's browser/full optional dependency first.") from exc
         if action=="open":
             if not url: raise ValueError("url is required")
             if _BROWSER is None:
-                _BROWSER=sync_playwright().start(); _PAGE=_BROWSER.chromium.launch(headless=True).new_page()
-            _PAGE.goto(url,wait_until="domcontentloaded",timeout=30000); return {"url":_PAGE.url,"title":_PAGE.title()}
+                _BROWSER=await async_playwright().start()
+                chrome=shutil.which("google-chrome") or shutil.which("google-chrome-stable") or shutil.which("chromium") or shutil.which("chromium-browser")
+                launch_kwargs={"headless":True}
+                if chrome: launch_kwargs["executable_path"]=chrome
+                _PAGE=await (await _BROWSER.chromium.launch(**launch_kwargs)).new_page()
+            await _PAGE.goto(url,wait_until="domcontentloaded",timeout=30000); return {"url":_PAGE.url,"title":await _PAGE.title()}
         if _PAGE is None: raise RuntimeError("Open a browser page first.")
-        if action=="click": _PAGE.locator(selector).click(timeout=15000); return {"ok":True,"url":_PAGE.url}
-        if action=="type": _PAGE.locator(selector).fill(text); return {"ok":True}
-        if action=="press": _PAGE.locator(selector).press(key); return {"ok":True}
-        if action=="text": return {"url":_PAGE.url,"title":_PAGE.title(),"text":_PAGE.locator("body").inner_text()[:50000]}
+        if action=="click": await _PAGE.locator(selector).click(timeout=15000); return {"ok":True,"url":_PAGE.url}
+        if action=="type": await _PAGE.locator(selector).fill(text); return {"ok":True}
+        if action=="press": await _PAGE.locator(selector).press(key); return {"ok":True}
+        if action=="text": return {"url":_PAGE.url,"title":await _PAGE.title(),"text":(await _PAGE.locator("body").inner_text())[:50000]}
         if action=="screenshot":
-            out=_path(path or "dana-browser.png","browser screenshot"); _PAGE.screenshot(path=str(out),full_page=True); return {"ok":True,"path":str(out)}
+            out=_path(path or "dana-browser.png","browser screenshot"); await _PAGE.screenshot(path=str(out),full_page=True); return {"ok":True,"path":str(out)}
         raise ValueError("action must be open, click, type, press, text or screenshot")

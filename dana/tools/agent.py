@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import difflib
 import json
 import os
@@ -356,7 +357,7 @@ def register_agent_tools(mcp: FastMCP) -> None:
         timer.cancel()
         return True
 
-    # Browser automation (optional Playwright dependency)
+       # Browser automation (optional Playwright dependency)
     @mcp.tool()
     def browser_automation(
         url: str,
@@ -364,32 +365,49 @@ def register_agent_tools(mcp: FastMCP) -> None:
         selector: str | None = None,
         value: str | None = None,
     ) -> dict[str, Any]:
-        """Automate a browser with Playwright. Actions: text, title, click, fill, screenshot."""
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError:
-            return {
-                "error": "Playwright is not installed. Install playwright and run 'playwright install'."
-            }
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto(url, wait_until="networkidle")
-            if action == "title":
-                result: Any = page.title()
-            elif action == "text":
-                result = page.locator(selector or "body").inner_text()
-            elif action == "click":
-                page.locator(selector or "").click()
-                result = {"url": page.url}
-            elif action == "fill":
-                page.locator(selector or "").fill(value or "")
-                result = True
-            elif action == "screenshot":
-                path = value or "dana-browser.png"
-                page.screenshot(path=path)
-                result = str(_path(path))
-            else:
-                raise ValueError("Unknown action")
-            browser.close()
-            return {"result": result}
+        """Automate a browser with Playwright without blocking Dana's asyncio loop."""
+        async def run() -> dict[str, Any]:
+            try:
+                from playwright.async_api import async_playwright
+            except ImportError:
+                return {
+                    "error": "Playwright is not installed. Install playwright and run 'playwright install'."
+                }
+            async with async_playwright() as p:
+                chrome = shutil.which("google-chrome") or shutil.which("google-chrome-stable") or shutil.which("chromium") or shutil.which("chromium-browser")
+                launch_kwargs = {"headless": True}
+                if chrome: launch_kwargs["executable_path"] = chrome
+                browser = await p.chromium.launch(**launch_kwargs)
+                page = await browser.new_page()
+                await page.goto(url, wait_until="networkidle")
+                if action == "title":
+                    result: Any = await page.title()
+                elif action == "text":
+                    result = await page.locator(selector or "body").inner_text()
+                elif action == "click":
+                    await page.locator(selector or "").click()
+                    result = {"url": page.url}
+                elif action == "fill":
+                    await page.locator(selector or "").fill(value or "")
+                    result = True
+                elif action == "screenshot":
+                    path = value or "dana-browser.png"
+                    await page.screenshot(path=path)
+                    result = str(_path(path))
+                else:
+                    raise ValueError("Unknown action")
+                await browser.close()
+                return {"result": result}
+        result_box: list[dict[str, Any]] = []
+        error_box: list[BaseException] = []
+        def worker() -> None:
+            try:
+                result_box.append(asyncio.run(run()))
+            except BaseException as exc:
+                error_box.append(exc)
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        thread.join()
+        if error_box:
+            raise error_box[0]
+        return result_box[0]

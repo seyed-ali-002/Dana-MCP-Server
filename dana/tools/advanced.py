@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import ast
+import asyncio
+import threading
 import json
 import os
 import re
@@ -60,26 +62,43 @@ def safe_rel(p, root):
 def register_advanced_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     def browser_open(url: str, screenshot_path: str | None = None) -> dict[str, Any]:
-        """Open a public URL with Playwright and optionally save a screenshot."""
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError:
-            return {
-                "skipped": True,
-                "reason": "Install Dana browser extras: pip install -e .[browser] and playwright install chromium",
-            }
-        with sync_playwright() as pw:
-            b = pw.chromium.launch(headless=True)
-            page = b.new_page()
-            page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            title = page.title()
-            text = page.locator("body").inner_text()[:10000]
-            if screenshot_path:
-                page.screenshot(
-                    path=str(require_output_path(screenshot_path)), full_page=True
-                )
-            b.close()
-        return {"url": url, "title": title, "text": text, "screenshot": screenshot_path}
+        """Open a public URL with Playwright without blocking Dana's asyncio loop."""
+        async def run() -> dict[str, Any]:
+            try:
+                from playwright.async_api import async_playwright
+            except ImportError:
+                return {
+                    "skipped": True,
+                    "reason": "Install Dana browser extras: pip install -e .[browser] and playwright install chromium",
+                }
+            async with async_playwright() as pw:
+                chrome = shutil.which("google-chrome") or shutil.which("google-chrome-stable") or shutil.which("chromium") or shutil.which("chromium-browser")
+                launch_kwargs = {"headless": True}
+                if chrome: launch_kwargs["executable_path"] = chrome
+                b = await pw.chromium.launch(**launch_kwargs)
+                page = await b.new_page()
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                title = await page.title()
+                text = (await page.locator("body").inner_text())[:10000]
+                if screenshot_path:
+                    await page.screenshot(
+                        path=str(require_output_path(screenshot_path)), full_page=True
+                    )
+                await b.close()
+                return {"url": url, "title": title, "text": text, "screenshot": screenshot_path}
+        result_box: list[dict[str, Any]] = []
+        error_box: list[BaseException] = []
+        def worker() -> None:
+            try:
+                result_box.append(asyncio.run(run()))
+            except BaseException as exc:
+                error_box.append(exc)
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+        thread.join()
+        if error_box:
+            raise error_box[0]
+        return result_box[0]
 
     @mcp.tool()
     def database_schema(database: str) -> dict[str, Any]:
