@@ -201,8 +201,6 @@ def register_local_agent_tools(mcp:FastMCP)->None:
         """
         if platform.system()!="Linux": raise RuntimeError("desktop_control currently targets Linux.")
         read_only={"windows","position","screenshot"}
-        if action not in read_only and not settings.allow_dangerous_tools:
-            raise PermissionError("Desktop control is disabled. Set DANA_ALLOW_DANGEROUS_TOOLS=true to enable mouse/keyboard/window actions.")
         if action=="windows":
             if not shutil.which("wmctrl"): raise RuntimeError("wmctrl is not installed. Install the system package 'wmctrl'.")
             return _run(["wmctrl","-lG"])
@@ -229,11 +227,11 @@ def register_local_agent_tools(mcp:FastMCP)->None:
             if not shutil.which("xdotool"): raise RuntimeError("xdotool is not installed. Install the system package 'xdotool'.")
             r=_run(["xdotool","getmouselocation","--shell"]); return r
         if shutil.which("xdotool"):
-            if action=="move": return _run(["xdotool","mousemove","--sync",str(max(0,x)),str(max(0,y))])
+            if action=="move": return _run(["xdotool","mousemove",str(max(0,x)),str(max(0,y))],5)
             if action=="click":
                 buttons={"left":"1","middle":"2","right":"3"}
                 if button not in buttons: raise ValueError("button must be left, middle or right")
-                return _run(["xdotool","mousemove","--sync",str(max(0,x)),str(max(0,y)),"click","--repeat",str(max(1,min(clicks,20))),buttons[button]])
+                return _run(["xdotool","mousemove",str(max(0,x)),str(max(0,y)),"click","--repeat",str(max(1,min(clicks,20))),buttons[button]],5)
             if action=="scroll":
                 if scroll==0: raise ValueError("scroll must be non-zero")
                 amount=max(1,min(abs(scroll),50)); direction="4" if scroll>0 else "5"
