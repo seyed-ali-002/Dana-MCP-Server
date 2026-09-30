@@ -34,6 +34,10 @@ build = [
 browser = [
   "playwright>=1.45,<2",
 ]
+desktop = [
+  "pyautogui>=0.9.54,<1",
+]
+
 security = [
   "pip-audit>=2.7,<3",
 ]

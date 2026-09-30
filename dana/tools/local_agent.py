@@ -192,22 +192,56 @@ def register_local_agent_tools(mcp:FastMCP)->None:
         raise ValueError("action must be list or read")
 
     @mcp.tool()
-    def desktop_control(action:str,target:str="",text:str="",key:str="",x:int=0,y:int=0)->dict[str,Any]:
-        """Control Linux windows, mouse, keyboard and screenshots."""
+    def desktop_control(action:str,target:str="",text:str="",key:str="",x:int=0,y:int=0,button:str="left",clicks:int=1,scroll:int=0)->dict[str,Any]:
+        """Control the local Linux desktop: mouse, keyboard, windows and screenshots.
+
+        Actions: windows, activate, close, minimize, maximize, move, click, scroll,
+        type, key, hotkey, position, screenshot. Requires xdotool/wmctrl on Linux.
+        Mutating desktop actions are protected by DANA_ALLOW_DANGEROUS_TOOLS.
+        """
         if platform.system()!="Linux": raise RuntimeError("desktop_control currently targets Linux.")
+        read_only={"windows","position","screenshot"}
+        if action not in read_only and not settings.allow_dangerous_tools:
+            raise PermissionError("Desktop control is disabled. Set DANA_ALLOW_DANGEROUS_TOOLS=true to enable mouse/keyboard/window actions.")
         if action=="windows":
+            if not shutil.which("wmctrl"): raise RuntimeError("wmctrl is not installed. Install the system package 'wmctrl'.")
+            return _run(["wmctrl","-lG"])
+        if action=="activate":
+            if not target: raise ValueError("target window id or title is required")
             if not shutil.which("wmctrl"): raise RuntimeError("wmctrl is not installed.")
-            return _run(["wmctrl","-l"])
-        if not shutil.which("xdotool"): raise RuntimeError("xdotool is not installed.")
-        if action=="click": return _run(["xdotool","mousemove",str(x),str(y),"click","1"])
-        if action=="move": return _run(["xdotool","mousemove",str(x),str(y)])
-        if action=="type": return _run(["xdotool","type","--delay","1",text])
-        if action=="key": return _run(["xdotool","key",key])
+            return _run(["wmctrl","-ia",target] if target.startswith("0x") else ["wmctrl","-a",target])
+        if action in {"close","minimize","maximize"}:
+            if not target: raise ValueError("target window id or title is required")
+            if not shutil.which("wmctrl"): raise RuntimeError("wmctrl is not installed.")
+            if action=="close": return _run(["wmctrl","-ic",target] if target.startswith("0x") else ["wmctrl","-c",target])
+            if action=="minimize": return _run(["wmctrl","-ir",target,"-b","add,hidden"])
+            return _run(["wmctrl","-ir",target,"-b","add,maximized_vert,maximized_horz"])
         if action=="screenshot":
-            out=_path(target or "dana-screenshot.png","desktop screenshot")
-            if not shutil.which("gnome-screenshot"): raise RuntimeError("gnome-screenshot is not installed.")
-            return _run(["gnome-screenshot","-f",str(out)])
-        raise ValueError("action must be windows, click, move, type, key or screenshot")
+            out=_path(target or "dana-screenshot.png","desktop screenshot"); out.parent.mkdir(parents=True,exist_ok=True)
+            if shutil.which("gnome-screenshot"): return _run(["gnome-screenshot","-f",str(out)]) | {"path":str(out)}
+            if shutil.which("import"): return _run(["import","-window","root",str(out)]) | {"path":str(out)}
+            raise RuntimeError("Install gnome-screenshot or ImageMagick (import) for desktop screenshots.")
+        if action=="position":
+            if not shutil.which("xdotool"): raise RuntimeError("xdotool is not installed. Install the system package 'xdotool'.")
+            r=_run(["xdotool","getmouselocation","--shell"]); return r
+        if not shutil.which("xdotool"):
+            raise RuntimeError("xdotool is not installed. Install the system package 'xdotool'.")
+        if action=="move": return _run(["xdotool","mousemove","--sync",str(max(0,x)),str(max(0,y))])
+        if action=="click":
+            buttons={"left":"1","middle":"2","right":"3"}
+            if button not in buttons: raise ValueError("button must be left, middle or right")
+            return _run(["xdotool","mousemove","--sync",str(max(0,x)),str(max(0,y)),"click","--repeat",str(max(1,min(clicks,20))),buttons[button]])
+        if action=="scroll":
+            if scroll==0: raise ValueError("scroll must be non-zero")
+            amount=max(1,min(abs(scroll),50)); direction="4" if scroll>0 else "5"
+            return _run(["xdotool","click","--repeat",str(amount),direction])
+        if action=="type": return _run(["xdotool","type","--clearmodifiers","--delay","1",text])
+        if action=="key": return _run(["xdotool","key","--clearmodifiers",key])
+        if action=="hotkey":
+            parts=[p.strip() for p in key.replace("+"," ").split() if p.strip()]
+            if len(parts)<2: raise ValueError("hotkey requires at least two keys, e.g. ctrl+c")
+            return _run(["xdotool","key","--clearmodifiers","+".join(parts)])
+        raise ValueError("action must be windows, activate, close, minimize, maximize, move, click, scroll, type, key, hotkey, position or screenshot")
 
     @mcp.tool()
     def media(action:str,source:str,output:str="",width:int=0,height:int=0,fps:int=1)->dict[str,Any]:
