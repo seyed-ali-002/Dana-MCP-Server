@@ -12,3 +12,5 @@ rich>=13,<15
 tiktoken>=0.9,<1
 
 pypdf>=5,<7
+
+pyautogui>=0.9.54,<1

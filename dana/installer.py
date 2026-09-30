@@ -160,6 +160,58 @@ def install_python_dependencies() -> Path:
     return python
 
 
+
+
+def install_desktop_dependencies() -> None:
+    """Install the native dependencies required by Dana's desktop-control tools."""
+    system = platform.system().lower()
+    if system != "linux":
+        success(f"Desktop automation dependencies are Python-based on {system}; no native package installation is required")
+        return
+
+    packages = ["xdotool", "wmctrl", "gnome-screenshot"]
+    missing = [name for name in packages if not command_exists(name)]
+    if not missing:
+        success("Desktop control system dependencies are already installed")
+        return
+
+    step("Installing desktop control system dependencies")
+    package_manager = None
+    if command_exists("apt-get"):
+        package_manager = ["sudo", "apt-get", "install", "-y", *missing]
+    elif command_exists("dnf"):
+        package_manager = ["sudo", "dnf", "install", "-y", *missing]
+    elif command_exists("yum"):
+        package_manager = ["sudo", "yum", "install", "-y", *missing]
+    elif command_exists("pacman"):
+        package_manager = ["sudo", "pacman", "-S", "--noconfirm", *missing]
+    elif command_exists("zypper"):
+        package_manager = ["sudo", "zypper", "--non-interactive", "install", *missing]
+    elif command_exists("apk"):
+        package_manager = ["sudo", "apk", "add", *missing]
+
+    if package_manager is None:
+        raise RuntimeError(
+            "Dana could not find a supported Linux package manager. Install xdotool, wmctrl, "
+            "and gnome-screenshot, then rerun the installer."
+        )
+
+    if not command_exists("sudo") and hasattr(os, "geteuid") and os.geteuid() != 0:
+        raise RuntimeError("Installing desktop control system dependencies requires root privileges or sudo.")
+
+    try:
+        run_command(package_manager)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            "Could not install Dana desktop-control system dependencies. "
+            "Make sure sudo can elevate without being blocked and rerun the installer."
+        ) from exc
+
+    remaining = [name for name in packages if not command_exists(name)]
+    if remaining:
+        raise RuntimeError("Desktop control installation finished, but these commands are still missing: " + ", ".join(remaining))
+    success("Desktop control system dependencies installed")
+
 def install_server_dependencies() -> None:
     if platform.system().lower() != "linux":
         raise RuntimeError("Server Mode is currently supported on Linux servers only.")
@@ -470,6 +522,7 @@ def install_local() -> None:
     step("Checking Python environment")
     install_python_dependencies()
     success("Python environment ready")
+    install_desktop_dependencies()
     workers = choose_workers()
     success(f"Worker pool configured: {workers}")
     token = write_env("local", workers=workers)
@@ -524,6 +577,7 @@ def install_server() -> None:
     console.print("\n[cyan]Starting server checks and installation...[/cyan]")
     install_server_dependencies()
     python = install_python_dependencies()
+    install_desktop_dependencies()
     console.print("[cyan]Configuring Dana Server Mode...[/cyan]")
     write_env("server", host, public_port, workers)
     console.print("[cyan]Preparing reverse-proxy integration...[/cyan]")
