@@ -20,14 +20,16 @@ def _mode() -> str:
 def _public_url() -> str | None:
     if not settings.public_host:
         return None
-    if _mode() == "server":
-        return f"https://{settings.public_host}{settings.mcp_path}"
     authority = settings.public_host
     if settings.public_port and settings.public_port not in (80, 443):
         authority = f"{authority}:{settings.public_port}"
-    # Never advertise the durable bearer token in a connection URL. OAuth/PKCE
-    # discovery and authorization are performed on the canonical MCP resource.
-    return f"https://{authority}{settings.mcp_path}"
+    if _mode() == "server":
+        return f"https://{authority}{settings.mcp_path}"
+    # Stable Local Mode connection contract: the terminal always exposes the
+    # tokenized MCP URL as https://<host>/<token>/mcp. Keep this format stable
+    # across Dana releases; the durable token itself is read from persistent config.
+    token = settings.require_auth_token()
+    return f"https://{authority}/{token}{settings.mcp_path}"
 
 
 def _runtime_dir() -> Path:
