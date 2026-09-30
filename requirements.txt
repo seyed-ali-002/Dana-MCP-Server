@@ -14,3 +14,11 @@ tiktoken>=0.9,<1
 pypdf>=5,<7
 
 pyautogui>=0.9.54,<1
+
+
+ruff>=0.6,<1
+mypy>=1.11,<2
+playwright>=1.45,<2
+pip-audit>=2.7,<3
+pytest>=8,<9
+pytest-cov>=5,<7

@@ -283,9 +283,10 @@ def register_local_agent_tools(mcp:FastMCP)->None:
             if not shutil.which("ffmpeg"): raise RuntimeError("ffmpeg is not installed.")
             return _run(["ffmpeg","-y","-i",str(src),"-vf",f"fps={max(1,min(fps,60))}",str(dst)],300,True)
         if action=="resize":
-            if not shutil.which("magick"): raise RuntimeError("ImageMagick is not installed.")
+            image_tool = shutil.which("magick") or shutil.which("convert")
+            if not image_tool: raise RuntimeError("ImageMagick is not installed.")
             if width<=0 or height<=0: raise ValueError("width and height must be positive")
-            return _run(["magick",str(src),"-resize",f"{width}x{height}",str(dst)],180,True)
+            return _run([image_tool,str(src),"-resize",f"{width}x{height}",str(dst)],180,True)
         raise ValueError("action must be info, convert, resize, extract_audio or frames")
 
     @mcp.tool()

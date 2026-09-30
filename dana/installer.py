@@ -162,55 +162,167 @@ def install_python_dependencies() -> Path:
 
 
 
-def install_desktop_dependencies() -> None:
-    """Install the native dependencies required by Dana's desktop-control tools."""
+def _privileged_command(command: list[str]) -> list[str]:
+    """Prefix a system package command with sudo only when needed."""
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        return command
+    if not command_exists("sudo"):
+        raise RuntimeError("Installing Dana system dependencies requires root privileges or sudo.")
+    return ["sudo", *command]
+
+
+def _native_tool_requirements() -> tuple[dict[str, str], dict[str, list[str]]]:
+    """Return command -> package mappings for every native-backed Dana tool."""
+    return (
+        {
+            "xdotool": "desktop mouse/keyboard control",
+            "wmctrl": "desktop window control",
+            "gnome-screenshot": "desktop screenshots",
+            "ffmpeg": "media conversion and frame extraction",
+            "ffprobe": "media inspection",
+            "magick": "image resizing",
+            "pdfinfo": "PDF metadata inspection",
+            "tesseract": "OCR",
+            "ssh": "SSH remote execution",
+            "scp": "SSH file transfer",
+            "docker": "Docker automation",
+            "node": "Node.js runtime for web tooling",
+            "npm": "Node.js package manager",
+            "npx": "Node.js package runner",
+            "ping": "network diagnostics",
+            "ip": "network interface diagnostics",
+        },
+        {
+            "apt": [
+                "xdotool", "wmctrl", "gnome-screenshot", "ffmpeg", "imagemagick",
+                "poppler-utils", "tesseract-ocr", "openssh-client", "docker.io",
+                "docker-compose-plugin", "nodejs", "npm", "iproute2", "iputils-ping",
+            ],
+            "dnf": [
+                "xdotool", "wmctrl", "gnome-screenshot", "ffmpeg", "ImageMagick",
+                "poppler-utils", "tesseract", "openssh-clients", "docker",
+                "docker-compose-plugin", "nodejs", "npm", "iproute", "iputils",
+            ],
+            "yum": [
+                "xdotool", "wmctrl", "gnome-screenshot", "ffmpeg", "ImageMagick",
+                "poppler-utils", "tesseract", "openssh-clients", "docker",
+                "docker-compose-plugin", "nodejs", "npm", "iproute", "iputils",
+            ],
+            "pacman": [
+                "xdotool", "wmctrl", "gnome-screenshot", "ffmpeg", "imagemagick",
+                "poppler", "tesseract", "openssh", "docker", "docker-compose",
+                "nodejs", "npm", "iproute2", "iputils",
+            ],
+            "zypper": [
+                "xdotool", "wmctrl", "gnome-screenshot", "ffmpeg", "ImageMagick",
+                "poppler-tools", "tesseract-ocr", "openssh-clients", "docker",
+                "docker-compose", "nodejs", "npm", "iproute2", "iputils",
+            ],
+            "apk": [
+                "xdotool", "wmctrl", "gnome-screenshot", "ffmpeg", "imagemagick",
+                "poppler-utils", "tesseract-ocr", "openssh-client", "docker",
+                "docker-compose", "nodejs", "npm", "iproute2", "iputils",
+            ],
+        },
+    )
+
+
+def install_tool_dependencies() -> None:
+    """Install native dependencies required by Dana's currently registered tools."""
     system = platform.system().lower()
     if system != "linux":
-        success(f"Desktop automation dependencies are Python-based on {system}; no native package installation is required")
+        success(
+            f"Native Linux tool dependencies are not installed on {system}; "
+            "the Python dependencies and browser runtime are handled separately"
+        )
         return
 
-    packages = ["xdotool", "wmctrl", "gnome-screenshot"]
-    missing = [name for name in packages if not command_exists(name)]
-    if not missing:
-        success("Desktop control system dependencies are already installed")
+    requirements, package_sets = _native_tool_requirements()
+
+    def available(command: str) -> bool:
+        if command_exists(command):
+            return True
+        return command == "magick" and command_exists("convert")
+
+    missing_commands = [command for command in requirements if not available(command)]
+    if not missing_commands:
+        success("All native dependencies required by Dana tools are installed")
         return
 
-    step("Installing desktop control system dependencies")
-    package_manager = None
-    if command_exists("apt-get"):
-        package_manager = ["sudo", "apt-get", "install", "-y", *missing]
-    elif command_exists("dnf"):
-        package_manager = ["sudo", "dnf", "install", "-y", *missing]
-    elif command_exists("yum"):
-        package_manager = ["sudo", "yum", "install", "-y", *missing]
-    elif command_exists("pacman"):
-        package_manager = ["sudo", "pacman", "-S", "--noconfirm", *missing]
-    elif command_exists("zypper"):
-        package_manager = ["sudo", "zypper", "--non-interactive", "install", *missing]
-    elif command_exists("apk"):
-        package_manager = ["sudo", "apk", "add", *missing]
-
-    if package_manager is None:
+    manager_name = next(
+        (name for name in ("apt", "dnf", "yum", "pacman", "zypper", "apk") if command_exists(name)),
+        None,
+    )
+    if manager_name is None:
         raise RuntimeError(
-            "Dana could not find a supported Linux package manager. Install xdotool, wmctrl, "
-            "and gnome-screenshot, then rerun the installer."
+            "Dana could not find a supported Linux package manager. "
+            "Install the missing native tool dependencies manually: "
+            + ", ".join(missing_commands)
         )
 
-    if not command_exists("sudo") and hasattr(os, "geteuid") and os.geteuid() != 0:
-        raise RuntimeError("Installing desktop control system dependencies requires root privileges or sudo.")
-
+    packages = package_sets[manager_name]
+    step(
+        "Installing native dependencies for all Dana tools: "
+        + ", ".join(missing_commands)
+    )
     try:
-        run_command(package_manager)
+        if manager_name == "apt":
+            run_command(_privileged_command(["apt-get", "update"]))
+            run_command(_privileged_command(["apt-get", "install", "-y", *packages]))
+        elif manager_name == "dnf":
+            run_command(_privileged_command(["dnf", "install", "-y", *packages]))
+        elif manager_name == "yum":
+            run_command(_privileged_command(["yum", "install", "-y", *packages]))
+        elif manager_name == "pacman":
+            run_command(_privileged_command(["pacman", "-S", "--noconfirm", *packages]))
+        elif manager_name == "zypper":
+            run_command(_privileged_command(["zypper", "--non-interactive", "install", *packages]))
+        else:
+            run_command(_privileged_command(["apk", "add", *packages]))
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(
-            "Could not install Dana desktop-control system dependencies. "
-            "Make sure sudo can elevate without being blocked and rerun the installer."
+            "Could not install all native Dana tool dependencies. "
+            "The package manager returned an error; rerun the installer after fixing the package manager."
         ) from exc
 
-    remaining = [name for name in packages if not command_exists(name)]
+    remaining = [command for command in requirements if not available(command)]
     if remaining:
-        raise RuntimeError("Desktop control installation finished, but these commands are still missing: " + ", ".join(remaining))
-    success("Desktop control system dependencies installed")
+        raise RuntimeError(
+            "Native dependency installation finished, but these required commands are still missing: "
+            + ", ".join(remaining)
+        )
+    success("All native dependencies required by Dana tools are installed")
+
+
+def install_browser_runtime() -> None:
+    """Install Playwright and its Chromium runtime inside Dana's virtualenv."""
+    python = venv_python()
+    step("Installing browser runtime for Dana browser tools")
+    run_command([str(python), "-m", "playwright", "install", "chromium"])
+    success("Playwright Chromium runtime installed")
+
+
+def install_tailscale_dependency() -> None:
+    """Install the Tailscale client when Dana's local deployment requires it."""
+    if command_exists("tailscale"):
+        success("Tailscale is already installed")
+        return
+    system = platform.system().lower()
+    if system != "linux":
+        raise RuntimeError("Dana Local Mode requires Tailscale to be installed on Linux hosts.")
+    # Reuse Dana's existing setup installer, which handles privileged installation
+    # and the supported Linux distributions. Authentication remains a separate step.
+    from dana.setup import install_tailscale
+
+    result = install_tailscale()
+    if not result.get("ok") or not command_exists("tailscale"):
+        raise RuntimeError("Tailscale installation did not complete successfully.")
+    success("Tailscale client installed")
+
+
+def install_desktop_dependencies() -> None:
+    """Backward-compatible alias for the complete native tool dependency installer."""
+    install_tool_dependencies()
 
 def install_server_dependencies() -> None:
     if platform.system().lower() != "linux":
@@ -522,7 +634,9 @@ def install_local() -> None:
     step("Checking Python environment")
     install_python_dependencies()
     success("Python environment ready")
-    install_desktop_dependencies()
+    install_browser_runtime()
+    install_tool_dependencies()
+    install_tailscale_dependency()
     workers = choose_workers()
     success(f"Worker pool configured: {workers}")
     token = write_env("local", workers=workers)
@@ -577,7 +691,8 @@ def install_server() -> None:
     console.print("\n[cyan]Starting server checks and installation...[/cyan]")
     install_server_dependencies()
     python = install_python_dependencies()
-    install_desktop_dependencies()
+    install_browser_runtime()
+    install_tool_dependencies()
     console.print("[cyan]Configuring Dana Server Mode...[/cyan]")
     write_env("server", host, public_port, workers)
     console.print("[cyan]Preparing reverse-proxy integration...[/cyan]")
