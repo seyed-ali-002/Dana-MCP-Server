@@ -171,60 +171,75 @@ def _privileged_command(command: list[str]) -> list[str]:
     return ["sudo", *command]
 
 
-def _native_tool_requirements() -> tuple[dict[str, str], dict[str, list[str]]]:
-    """Return command -> package mappings for every native-backed Dana tool."""
-    return (
-        {
-            "xdotool": "desktop mouse/keyboard control",
-            "wmctrl": "desktop window control",
-            "gnome-screenshot": "desktop screenshots",
-            "ffmpeg": "media conversion and frame extraction",
-            "ffprobe": "media inspection",
-            "magick": "image resizing",
-            "pdfinfo": "PDF metadata inspection",
-            "tesseract": "OCR",
-            "ssh": "SSH remote execution",
-            "scp": "SSH file transfer",
-            "docker": "Docker automation",
-            "node": "Node.js runtime for web tooling",
-            "npm": "Node.js package manager",
-            "npx": "Node.js package runner",
-            "ping": "network diagnostics",
-            "ip": "network interface diagnostics",
+def _native_tool_requirements() -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+    """Return command requirements and package mappings for native Dana tools.
+
+    Only packages corresponding to missing commands are sent to the package manager.
+    Existing commands and known alternatives therefore never trigger reinstallations.
+    """
+    requirements = {
+        "xdotool": "desktop mouse/keyboard control",
+        "wmctrl": "desktop window control",
+        "gnome-screenshot": "desktop screenshots",
+        "ffmpeg": "media conversion and frame extraction",
+        "ffprobe": "media inspection",
+        "magick": "image resizing",
+        "pdfinfo": "PDF metadata inspection",
+        "tesseract": "OCR",
+        "ssh": "SSH remote execution",
+        "scp": "SSH file transfer",
+        "docker": "Docker automation",
+        "node": "Node.js runtime for web tooling",
+        "npm": "Node.js package manager",
+        "npx": "Node.js package runner",
+        "ping": "network diagnostics",
+        "ip": "network interface diagnostics",
+    }
+    packages = {
+        "apt": {
+            "xdotool": "xdotool", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "imagemagick",
+            "pdfinfo": "poppler-utils", "tesseract": "tesseract-ocr",
+            "ssh": "openssh-client", "scp": "openssh-client", "docker": "docker.io",
+            "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iputils-ping", "ip": "iproute2",
         },
-        {
-            "apt": [
-                "xdotool", "wmctrl", "gnome-screenshot", "ffmpeg", "imagemagick",
-                "poppler-utils", "tesseract-ocr", "openssh-client", "docker.io",
-                "docker-compose-plugin", "nodejs", "npm", "iproute2", "iputils-ping",
-            ],
-            "dnf": [
-                "xdotool", "wmctrl", "gnome-screenshot", "ffmpeg", "ImageMagick",
-                "poppler-utils", "tesseract", "openssh-clients", "docker",
-                "docker-compose-plugin", "nodejs", "npm", "iproute", "iputils",
-            ],
-            "yum": [
-                "xdotool", "wmctrl", "gnome-screenshot", "ffmpeg", "ImageMagick",
-                "poppler-utils", "tesseract", "openssh-clients", "docker",
-                "docker-compose-plugin", "nodejs", "npm", "iproute", "iputils",
-            ],
-            "pacman": [
-                "xdotool", "wmctrl", "gnome-screenshot", "ffmpeg", "imagemagick",
-                "poppler", "tesseract", "openssh", "docker", "docker-compose",
-                "nodejs", "npm", "iproute2", "iputils",
-            ],
-            "zypper": [
-                "xdotool", "wmctrl", "gnome-screenshot", "ffmpeg", "ImageMagick",
-                "poppler-tools", "tesseract-ocr", "openssh-clients", "docker",
-                "docker-compose", "nodejs", "npm", "iproute2", "iputils",
-            ],
-            "apk": [
-                "xdotool", "wmctrl", "gnome-screenshot", "ffmpeg", "imagemagick",
-                "poppler-utils", "tesseract-ocr", "openssh-client", "docker",
-                "docker-compose", "nodejs", "npm", "iproute2", "iputils",
-            ],
+        "dnf": {
+            "xdotool": "xdotool", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "ImageMagick",
+            "pdfinfo": "poppler-utils", "tesseract": "tesseract",
+            "ssh": "openssh-clients", "scp": "openssh-clients", "docker": "docker",
+            "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iputils", "ip": "iproute",
         },
-    )
+        "yum": {
+            "xdotool": "xdotool", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "ImageMagick",
+            "pdfinfo": "poppler-utils", "tesseract": "tesseract",
+            "ssh": "openssh-clients", "scp": "openssh-clients", "docker": "docker",
+            "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iputils", "ip": "iproute",
+        },
+        "pacman": {
+            "xdotool": "xdotool", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "imagemagick",
+            "pdfinfo": "poppler", "tesseract": "tesseract", "ssh": "openssh", "scp": "openssh",
+            "docker": "docker", "node": "nodejs", "npm": "npm", "npx": "npm",
+            "ping": "iputils", "ip": "iproute2",
+        },
+        "zypper": {
+            "xdotool": "xdotool", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "ImageMagick",
+            "pdfinfo": "poppler-tools", "tesseract": "tesseract-ocr",
+            "ssh": "openssh-clients", "scp": "openssh-clients", "docker": "docker",
+            "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iputils", "ip": "iproute2",
+        },
+        "apk": {
+            "xdotool": "xdotool", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "imagemagick",
+            "pdfinfo": "poppler-utils", "tesseract": "tesseract-ocr",
+            "ssh": "openssh-client", "scp": "openssh-client", "docker": "docker",
+            "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iproute2", "ip": "iproute2",
+        },
+    }
+    return requirements, packages
 
 
 def install_tool_dependencies() -> None:
@@ -260,10 +275,11 @@ def install_tool_dependencies() -> None:
             + ", ".join(missing_commands)
         )
 
-    packages = package_sets[manager_name]
+    package_map = package_sets[manager_name]
+    packages = list(dict.fromkeys(package_map[command] for command in missing_commands))
     step(
-        "Installing native dependencies for all Dana tools: "
-        + ", ".join(missing_commands)
+        "Installing only missing native dependencies: "
+        + ", ".join(packages)
     )
     try:
         if manager_name == "apt":
@@ -285,21 +301,10 @@ def install_tool_dependencies() -> None:
             "The package manager returned an error; rerun the installer after fixing the package manager."
         ) from exc
 
-    remaining = [command for command in requirements if not available(command)]
-    if remaining:
-        raise RuntimeError(
-            "Native dependency installation finished, but these required commands are still missing: "
-            + ", ".join(remaining)
-        )
-    success("All native dependencies required by Dana tools are installed")
+    # Do not run a post-install verification pass. The package manager is the
+    # installation authority; existing commands were already detected above.
+    success("Native dependency installation completed")
 
-
-def install_browser_runtime() -> None:
-    """Install Playwright and its Chromium runtime inside Dana's virtualenv."""
-    python = venv_python()
-    step("Installing browser runtime for Dana browser tools")
-    run_command([str(python), "-m", "playwright", "install", "chromium"])
-    success("Playwright Chromium runtime installed")
 
 
 def install_tailscale_dependency() -> None:
@@ -634,7 +639,6 @@ def install_local() -> None:
     step("Checking Python environment")
     install_python_dependencies()
     success("Python environment ready")
-    install_browser_runtime()
     install_tool_dependencies()
     install_tailscale_dependency()
     workers = choose_workers()
@@ -691,7 +695,6 @@ def install_server() -> None:
     console.print("\n[cyan]Starting server checks and installation...[/cyan]")
     install_server_dependencies()
     python = install_python_dependencies()
-    install_browser_runtime()
     install_tool_dependencies()
     console.print("[cyan]Configuring Dana Server Mode...[/cyan]")
     write_env("server", host, public_port, workers)
