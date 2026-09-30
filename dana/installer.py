@@ -181,6 +181,8 @@ def _native_tool_requirements() -> tuple[dict[str, str], dict[str, dict[str, str
         "xdotool": "X11 desktop mouse/keyboard control",
         "ydotool": "Wayland desktop mouse/keyboard control",
         "ydotoold": "Wayland input daemon",
+        "wl-copy": "Wayland clipboard write",
+        "wl-paste": "Wayland clipboard read",
         "wmctrl": "desktop window control",
         "gnome-screenshot": "desktop screenshots",
         "ffmpeg": "media conversion and frame extraction",
@@ -199,42 +201,42 @@ def _native_tool_requirements() -> tuple[dict[str, str], dict[str, dict[str, str
     }
     packages = {
         "apt": {
-            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wl-copy": "wl-clipboard", "wl-paste": "wl-clipboard", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
             "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "imagemagick",
             "pdfinfo": "poppler-utils", "tesseract": "tesseract-ocr",
             "ssh": "openssh-client", "scp": "openssh-client", "docker": "docker.io",
             "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iputils-ping", "ip": "iproute2",
         },
         "dnf": {
-            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wl-copy": "wl-clipboard", "wl-paste": "wl-clipboard", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
             "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "ImageMagick",
             "pdfinfo": "poppler-utils", "tesseract": "tesseract",
             "ssh": "openssh-clients", "scp": "openssh-clients", "docker": "docker",
             "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iputils", "ip": "iproute",
         },
         "yum": {
-            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wl-copy": "wl-clipboard", "wl-paste": "wl-clipboard", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
             "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "ImageMagick",
             "pdfinfo": "poppler-utils", "tesseract": "tesseract",
             "ssh": "openssh-clients", "scp": "openssh-clients", "docker": "docker",
             "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iputils", "ip": "iproute",
         },
         "pacman": {
-            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wl-copy": "wl-clipboard", "wl-paste": "wl-clipboard", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
             "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "imagemagick",
             "pdfinfo": "poppler", "tesseract": "tesseract", "ssh": "openssh", "scp": "openssh",
             "docker": "docker", "node": "nodejs", "npm": "npm", "npx": "npm",
             "ping": "iputils", "ip": "iproute2",
         },
         "zypper": {
-            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wl-copy": "wl-clipboard", "wl-paste": "wl-clipboard", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
             "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "ImageMagick",
             "pdfinfo": "poppler-tools", "tesseract": "tesseract-ocr",
             "ssh": "openssh-clients", "scp": "openssh-clients", "docker": "docker",
             "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iputils", "ip": "iproute2",
         },
         "apk": {
-            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wl-copy": "wl-clipboard", "wl-paste": "wl-clipboard", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
             "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "imagemagick",
             "pdfinfo": "poppler-utils", "tesseract": "tesseract-ocr",
             "ssh": "openssh-client", "scp": "openssh-client", "docker": "docker",
@@ -265,6 +267,7 @@ def configure_ydotool_service() -> None:
         "After=graphical.target\n"
         "ConditionPathExists=/dev/uinput\n\n"
         "[Service]\n"
+        "ExecStartPre=/sbin/modprobe uinput\n"
         "Type=simple\n"
         "User=root\n"
         "RuntimeDirectory=" + runtime_dir + "\n"

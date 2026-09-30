@@ -318,7 +318,7 @@ def register_optimization_tools(mcp: FastMCP) -> None:
             args = item.get("arguments") or {}
             if (
                 not name
-                or name.startswith("dana_")
+                or name in {"dana_call_tool", "dana_batch_call"}
                 or name not in mcp._tool_manager._tools
             ):
                 return {

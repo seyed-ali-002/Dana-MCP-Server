@@ -172,7 +172,7 @@ def _desktop_ydo(action:str,x:int=0,y:int=0,button:str="left",clicks:int=1,scrol
     if uinput_error:
         raise RuntimeError(uinput_error)
 
-    socket_candidates=[Path(os.getenv("XDG_RUNTIME_DIR",""))/".ydotool_socket" if os.getenv("XDG_RUNTIME_DIR") else None, Path("/tmp/.ydotool_socket")]
+    socket_candidates=[Path(os.getenv("YDOTOOL_SOCKET","")) if os.getenv("YDOTOOL_SOCKET") else None, Path(os.getenv("XDG_RUNTIME_DIR",""))/".ydotool_socket" if os.getenv("XDG_RUNTIME_DIR") else None, Path("/run")/f"dana-ydotool-{os.getuid()}/.ydotool_socket", Path("/tmp/.ydotool_socket")]
     if not os.getenv("YDOTOOL_SOCKET"):
         for socket_path in socket_candidates:
             if socket_path and socket_path.exists():
@@ -294,8 +294,17 @@ def register_local_agent_tools(mcp:FastMCP)->None:
         if action not in {"get","set"}: raise ValueError("action must be get or set")
         system=platform.system()
         if system=="Linux":
-            if action=="get": cmd=["xclip","-selection","clipboard","-o"] if shutil.which("xclip") else ["xsel","--clipboard","--output"]
-            else: cmd=["xclip","-selection","clipboard"] if shutil.which("xclip") else ["xsel","--clipboard","--input"]
+            wayland=bool(os.getenv("XDG_SESSION_TYPE","").strip().lower()=="wayland" or os.getenv("WAYLAND_DISPLAY"))
+            if action=="get":
+                if wayland and shutil.which("wl-paste"): cmd=["wl-paste","--no-newline"]
+                elif shutil.which("xclip"): cmd=["xclip","-selection","clipboard","-o"]
+                elif shutil.which("xsel"): cmd=["xsel","--clipboard","--output"]
+                else: raise RuntimeError("No clipboard backend available. Install wl-clipboard for Wayland or xclip/xsel for X11.")
+            else:
+                if wayland and shutil.which("wl-copy"): cmd=["wl-copy"]
+                elif shutil.which("xclip"): cmd=["xclip","-selection","clipboard"]
+                elif shutil.which("xsel"): cmd=["xsel","--clipboard","--input"]
+                else: raise RuntimeError("No clipboard backend available. Install wl-clipboard for Wayland or xclip/xsel for X11.")
         elif system=="Darwin": cmd=["pbpaste"] if action=="get" else ["pbcopy"]
         elif system=="Windows": cmd=["powershell","-NoProfile","-Command","Get-Clipboard"] if action=="get" else ["clip"]
         else: raise RuntimeError("Unsupported operating system.")

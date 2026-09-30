@@ -283,6 +283,8 @@ def register_intelligence_tools(mcp: FastMCP) -> None:
         }
         findings = []
         for item in _files(root):
+            if any(part in {".git", ".venv", ".build-venv", "venv", "node_modules", "__pycache__", ".mypy_cache", ".ruff_cache", "build", "dist", "coverage"} for part in item.parts):
+                continue
             if item.suffix not in CODE_EXT and item.name != ".env":
                 continue
             for line_no, line in enumerate(_text(item).splitlines(), 1):
