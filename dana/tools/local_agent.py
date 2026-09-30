@@ -3,12 +3,15 @@ import json, os, platform, shutil, socket, sqlite3, subprocess, time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+import logging
 from mcp.server.fastmcp import FastMCP
 from dana.config import settings
 from dana.security.path_policy import require_path
 
 _BROWSER = None
 _PAGE = None
+_YDOTOOLD = None
+_DESKTOP_LOG = logging.getLogger("dana.desktop")
 
 def _run(cmd:list[str], timeout:int=30, dangerous:bool=False, cwd:str|None=None, input_text:str|None=None)->dict[str,Any]:
     if dangerous and not settings.allow_dangerous_tools: raise PermissionError("Dangerous operations require DANA_ALLOW_DANGEROUS_TOOLS.")
@@ -20,6 +23,72 @@ def _run(cmd:list[str], timeout:int=30, dangerous:bool=False, cwd:str|None=None,
 def _path(value:str,purpose:str)->Path: return require_path(value,purpose=purpose)
 def _store(name:str)->Path:
     root=Path.home()/".config"/"dana"; root.mkdir(parents=True,exist_ok=True); return root/name
+
+
+def _desktop_backend() -> str:
+    """Select a desktop-control backend from the active graphical session."""
+    session = os.getenv("XDG_SESSION_TYPE", "").strip().lower()
+    if session == "wayland" or os.getenv("WAYLAND_DISPLAY"):
+        if shutil.which("ydotool"):
+            _DESKTOP_LOG.info("Desktop backend selected: ydotool (Wayland)")
+            return "ydotool"
+        raise RuntimeError(
+            "Wayland desktop control requires ydotool. Install Dana's native desktop dependencies "
+            "or install the ydotool package; xdotool only controls the XWayland compatibility layer."
+        )
+    if shutil.which("xdotool"):
+        _DESKTOP_LOG.info("Desktop backend selected: xdotool (X11)")
+        return "xdotool"
+    if shutil.which("ydotool"):
+        _DESKTOP_LOG.info("Desktop backend selected: ydotool (non-X11 Linux session)")
+        return "ydotool"
+    raise RuntimeError("No supported desktop-control backend is installed (xdotool or ydotool).")
+
+
+def _desktop_ydo(action:str,x:int=0,y:int=0,button:str="left",clicks:int=1,scroll:int=0,text:str="",key:str="")->dict[str,Any]:
+    """Execute Wayland-safe input through ydotool/uinput."""
+    global _YDOTOOLD
+    socket_candidates=[Path(os.getenv("XDG_RUNTIME_DIR",""))/".ydotool_socket" if os.getenv("XDG_RUNTIME_DIR") else None, Path("/tmp/.ydotool_socket")]
+    if not os.getenv("YDOTOOL_SOCKET"):
+        for socket_path in socket_candidates:
+            if socket_path and socket_path.exists():
+                os.environ["YDOTOOL_SOCKET"]=str(socket_path)
+                break
+    if _YDOTOOLD is None and shutil.which("ydotoold") and not any(p and p.exists() for p in socket_candidates):
+        try:
+            _YDOTOOLD = subprocess.Popen(["ydotoold"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(0.2)
+            if Path("/tmp/.ydotool_socket").exists() and not os.getenv("YDOTOOL_SOCKET"):
+                os.environ["YDOTOOL_SOCKET"]="/tmp/.ydotool_socket"
+        except OSError as exc:
+            _DESKTOP_LOG.warning("Could not start ydotoold: %s", exc)
+
+    def run_checked(command:list[str], timeout:int=5)->dict[str,Any]:
+        result=_run(command,timeout)
+        if not result["ok"]:
+            detail=(result.get("stderr") or result.get("stdout") or "unknown ydotool error").strip()
+            raise RuntimeError(f"ydotool failed: {detail}")
+        return result
+    if action == "move":
+        return run_checked(["ydotool","mousemove","--absolute","-x",str(max(0,x)),"-y",str(max(0,y))])
+    if action == "click":
+        buttons={"left":"0xC0","right":"0xC1","middle":"0xC2"}
+        if button not in buttons: raise ValueError("button must be left, middle or right")
+        run_checked(["ydotool","mousemove","--absolute","-x",str(max(0,x)),"-y",str(max(0,y))])
+        return run_checked(["ydotool","click","--repeat",str(max(1,min(clicks,20))),buttons[button]])
+    if action == "type": return run_checked(["ydotool","type","--delay","1",text],10)
+    if action == "key": return run_checked(["ydotool","key",key])
+    if action == "hotkey":
+        parts=[p.strip() for p in key.replace("+"," ").split() if p.strip()]
+        if len(parts)<2: raise ValueError("hotkey requires at least two keys, e.g. ctrl+c")
+        return run_checked(["ydotool","key","+".join(parts)])
+    if action == "scroll":
+        if scroll == 0: raise ValueError("scroll must be non-zero")
+        amount=max(1,min(abs(scroll),50))
+        direction=amount if scroll > 0 else -amount
+        return run_checked(["ydotool","mousemove","--wheel","--","0",str(direction)])
+    raise ValueError(f"Wayland backend does not support action: {action}")
+
 
 def register_local_agent_tools(mcp:FastMCP)->None:
     @mcp.tool()
@@ -196,8 +265,8 @@ def register_local_agent_tools(mcp:FastMCP)->None:
         """Control the local Linux desktop: mouse, keyboard, windows and screenshots.
 
         Actions: windows, activate, close, minimize, maximize, move, click, scroll,
-        type, key, hotkey, position, screenshot. Requires xdotool/wmctrl on Linux.
-        Mutating desktop actions are protected by DANA_ALLOW_DANGEROUS_TOOLS.
+        type, key, hotkey, position, screenshot. Automatically selects xdotool on X11
+        and ydotool/uinput on Wayland where supported.
         """
         if platform.system()!="Linux": raise RuntimeError("desktop_control currently targets Linux.")
         read_only={"windows","position","screenshot"}
@@ -215,7 +284,8 @@ def register_local_agent_tools(mcp:FastMCP)->None:
             if action=="minimize": return _run(["wmctrl","-ir",target,"-b","add,hidden"])
             return _run(["wmctrl","-ir",target,"-b","add,maximized_vert,maximized_horz"])
         if action=="screenshot":
-            out=_path(target or "dana-screenshot.png","desktop screenshot"); out.parent.mkdir(parents=True,exist_ok=True)
+            out=_path(target,"desktop screenshot") if target else _store("screenshots/dana-screenshot.png")
+            out.parent.mkdir(parents=True,exist_ok=True)
             if shutil.which("gnome-screenshot"): return _run(["gnome-screenshot","-f",str(out)]) | {"path":str(out)}
             if shutil.which("import"): return _run(["import","-window","root",str(out)]) | {"path":str(out)}
             try:
@@ -224,9 +294,13 @@ def register_local_agent_tools(mcp:FastMCP)->None:
             except ImportError as exc:
                 raise RuntimeError("Install gnome-screenshot, ImageMagick (import), or Dana's optional desktop dependency.") from exc
         if action=="position":
-            if not shutil.which("xdotool"): raise RuntimeError("xdotool is not installed. Install the system package 'xdotool'.")
-            r=_run(["xdotool","getmouselocation","--shell"]); return r
-        if shutil.which("xdotool"):
+            if shutil.which("xdotool") and os.getenv("XDG_SESSION_TYPE","").strip().lower() != "wayland":
+                return _run(["xdotool","getmouselocation","--shell"],5)
+            return {"ok":True,"backend":_desktop_backend(),"note":"Pointer position is not queryable portably on Wayland."}
+        backend=_desktop_backend()
+        if backend=="ydotool" and action in {"move","click","scroll","type","key","hotkey"}:
+            return _desktop_ydo(action,x,y,button,clicks,scroll,text,key)
+        if backend=="xdotool":
             if action=="move": return _run(["xdotool","mousemove",str(max(0,x)),str(max(0,y))],5)
             if action=="click":
                 buttons={"left":"1","middle":"2","right":"3"}

@@ -178,7 +178,9 @@ def _native_tool_requirements() -> tuple[dict[str, str], dict[str, dict[str, str
     Existing commands and known alternatives therefore never trigger reinstallations.
     """
     requirements = {
-        "xdotool": "desktop mouse/keyboard control",
+        "xdotool": "X11 desktop mouse/keyboard control",
+        "ydotool": "Wayland desktop mouse/keyboard control",
+        "ydotoold": "Wayland input daemon",
         "wmctrl": "desktop window control",
         "gnome-screenshot": "desktop screenshots",
         "ffmpeg": "media conversion and frame extraction",
@@ -197,42 +199,42 @@ def _native_tool_requirements() -> tuple[dict[str, str], dict[str, dict[str, str
     }
     packages = {
         "apt": {
-            "xdotool": "xdotool", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
             "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "imagemagick",
             "pdfinfo": "poppler-utils", "tesseract": "tesseract-ocr",
             "ssh": "openssh-client", "scp": "openssh-client", "docker": "docker.io",
             "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iputils-ping", "ip": "iproute2",
         },
         "dnf": {
-            "xdotool": "xdotool", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
             "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "ImageMagick",
             "pdfinfo": "poppler-utils", "tesseract": "tesseract",
             "ssh": "openssh-clients", "scp": "openssh-clients", "docker": "docker",
             "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iputils", "ip": "iproute",
         },
         "yum": {
-            "xdotool": "xdotool", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
             "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "ImageMagick",
             "pdfinfo": "poppler-utils", "tesseract": "tesseract",
             "ssh": "openssh-clients", "scp": "openssh-clients", "docker": "docker",
             "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iputils", "ip": "iproute",
         },
         "pacman": {
-            "xdotool": "xdotool", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
             "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "imagemagick",
             "pdfinfo": "poppler", "tesseract": "tesseract", "ssh": "openssh", "scp": "openssh",
             "docker": "docker", "node": "nodejs", "npm": "npm", "npx": "npm",
             "ping": "iputils", "ip": "iproute2",
         },
         "zypper": {
-            "xdotool": "xdotool", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
             "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "ImageMagick",
             "pdfinfo": "poppler-tools", "tesseract": "tesseract-ocr",
             "ssh": "openssh-clients", "scp": "openssh-clients", "docker": "docker",
             "node": "nodejs", "npm": "npm", "npx": "npm", "ping": "iputils", "ip": "iproute2",
         },
         "apk": {
-            "xdotool": "xdotool", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
+            "xdotool": "xdotool", "ydotool": "ydotool", "ydotoold": "ydotoold", "wmctrl": "wmctrl", "gnome-screenshot": "gnome-screenshot",
             "ffmpeg": "ffmpeg", "ffprobe": "ffmpeg", "magick": "imagemagick",
             "pdfinfo": "poppler-utils", "tesseract": "tesseract-ocr",
             "ssh": "openssh-client", "scp": "openssh-client", "docker": "docker",
