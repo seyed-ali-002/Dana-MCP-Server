@@ -65,22 +65,6 @@ def test_ydotool_legacy_move_uses_legacy_syntax(monkeypatch):
     assert calls == [["ydotool", "mousemove", "1400", "750"]]
 
 
-def test_ydotool_legacy_scroll_uses_ydotoold_socket(monkeypatch):
-    monkeypatch.setattr(local_agent, "_YDOTOOL_VARIANT", "legacy")
-    monkeypatch.setattr(local_agent, "_ydotool_uinput_error", lambda: None)
-    monkeypatch.setattr(local_agent, "_ydotool_socket_path", lambda: "/tmp/.ydotool_socket")
-    sent = []
-    class FakeSocket:
-        def __enter__(self): return self
-        def __exit__(self, *args): return None
-        def connect(self, path): sent.append(("connect", path))
-        def send(self, data): sent.append(("send", data))
-    monkeypatch.setattr(local_agent.socket, "socket", lambda *args: FakeSocket())
-    result = local_agent._desktop_ydo("scroll", scroll=3)
-    assert result["ok"] is True
-    assert sent[0] == ("connect", "/tmp/.ydotool_socket")
-    assert len(sent) == 3
-
 
 def test_ydotool_stderr_failure_is_not_success(monkeypatch):
     monkeypatch.setattr(local_agent, "_YDOTOOL_VARIANT", "modern")
@@ -134,19 +118,12 @@ def test_ydotool_nonzero_stderr_is_not_reported_as_success(monkeypatch):
     assert "failed to open uinput device" in result["error"]
 
 
-def test_legacy_scroll_uses_ydotoold_socket(monkeypatch):
-    monkeypatch.setattr(local_agent, "_ydotool_variant", lambda: "legacy")
+
+def test_ydotool_legacy_scroll_uses_wheel_click(monkeypatch):
+    monkeypatch.setattr(local_agent, "_YDOTOOL_VARIANT", "legacy")
     monkeypatch.setattr(local_agent, "_ydotool_uinput_error", lambda: None)
-    monkeypatch.setattr(local_agent, "_ydotool_socket_path", lambda: "/tmp/.ydotool_socket")
-    monkeypatch.setattr(local_agent.shutil, "which", lambda name: "/usr/bin/ydotool" if name in {"ydotool","ydotoold"} else None)
-    sent = []
-    class FakeSocket:
-        def __enter__(self): return self
-        def __exit__(self, *args): return None
-        def connect(self, path): sent.append(("connect", path))
-        def send(self, data): sent.append(("send", data))
-    monkeypatch.setattr(local_agent.socket, "socket", lambda *args: FakeSocket())
+    calls = []
+    monkeypatch.setattr(local_agent, "_run", lambda cmd, timeout=30, **kwargs: calls.append(cmd) or {"command":cmd,"returncode":0,"stdout":"","stderr":"","ok":True})
     result = local_agent._desktop_ydo("scroll", scroll=3)
     assert result["ok"] is True
-    assert sent[0] == ("connect", "/tmp/.ydotool_socket")
-    assert len(sent) == 3
+    assert calls == [["ydotool", "click", "--repeat", "3", "4"]]
