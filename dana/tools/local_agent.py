@@ -11,6 +11,7 @@ from dana.security.path_policy import require_path
 _BROWSER = None
 _PAGE = None
 _YDOTOOLD = None
+_YDOTOOL_VARIANT = None
 _DESKTOP_LOG = logging.getLogger("dana.desktop")
 
 def _run(cmd:list[str], timeout:int=30, dangerous:bool=False, cwd:str|None=None, input_text:str|None=None)->dict[str,Any]:
@@ -26,6 +27,7 @@ def _store(name:str)->Path:
 
 
 def _desktop_backend() -> str:
+
     """Select a desktop-control backend from the active graphical session."""
     session = os.getenv("XDG_SESSION_TYPE", "").strip().lower()
     if session == "wayland" or os.getenv("WAYLAND_DISPLAY"):
@@ -45,9 +47,131 @@ def _desktop_backend() -> str:
     raise RuntimeError("No supported desktop-control backend is installed (xdotool or ydotool).")
 
 
+def _ydotool_variant() -> str:
+    """Detect the pre-1.0 Ubuntu/Debian CLI versus the current 1.x CLI."""
+    global _YDOTOOL_VARIANT
+    if _YDOTOOL_VARIANT is not None:
+        return _YDOTOOL_VARIANT
+    if not shutil.which("ydotool"):
+        raise RuntimeError("ydotool is not installed.")
+    probe = subprocess.run(["ydotool", "help"], capture_output=True, text=True, timeout=5, check=False)
+    help_text = (probe.stdout + "\\n" + probe.stderr).lower()
+    if "recorder" in help_text and "debug" not in help_text:
+        _YDOTOOL_VARIANT = "legacy"
+    elif "debug" in help_text or "bakers" in help_text or "stdin" in help_text:
+        _YDOTOOL_VARIANT = "modern"
+    else:
+        _YDOTOOL_VARIANT = "unknown"
+    _DESKTOP_LOG.info("Detected ydotool CLI variant: %s", _YDOTOOL_VARIANT)
+    return _YDOTOOL_VARIANT
+
+
+def _ydotool_socket_available() -> bool:
+    candidates=[
+        Path(os.getenv("YDOTOOL_SOCKET","")) if os.getenv("YDOTOOL_SOCKET") else None,
+        Path(os.getenv("XDG_RUNTIME_DIR",""))/".ydotool_socket" if os.getenv("XDG_RUNTIME_DIR") else None,
+        Path(f"/run/dana-ydotool-{os.getuid()}/.ydotool_socket") if hasattr(os,"getuid") else None,
+        Path("/tmp/.ydotool_socket"),
+    ]
+    for path in candidates:
+        if not path or not path.exists():
+            continue
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
+                sock.settimeout(1)
+                sock.connect(str(path))
+            return True
+        except OSError:
+            continue
+    return False
+
+
+
+def _ydotool_socket_path() -> Path | None:
+    configured = os.getenv("YDOTOOL_SOCKET", "").strip()
+    candidates = [Path(configured)] if configured else []
+    runtime = os.getenv("XDG_RUNTIME_DIR", "").strip()
+    if runtime:
+        candidates.append(Path(runtime) / ".ydotool_socket")
+    candidates.append(Path("/run") / f"dana-ydotool-{os.getuid()}" / ".ydotool_socket")
+    candidates.append(Path("/tmp/.ydotool_socket"))
+    for path in candidates:
+        if path.exists():
+            if not configured:
+                os.environ["YDOTOOL_SOCKET"] = str(path)
+            return path
+    return None
+
+
+def _ydotool_uinput_error() -> str | None:
+    """Return an actionable uinput permission/state error, if one exists."""
+    device = Path("/dev/uinput")
+    if not device.exists():
+        return "Wayland input requires /dev/uinput, but the device does not exist. Load the kernel uinput module (modprobe uinput) and configure it to load at boot."
+    if not os.access(device, os.W_OK):
+        if not _ydotool_socket_available():
+            return "Wayland input cannot write /dev/uinput and ydotoold is not reachable. Configure a uinput rule and start ydotoold as the desktop user (or install a supported ydotool package)."
+    return None
+
+
+def _desktop_diagnostics() -> dict[str,Any]:
+    """Report the actual Linux desktop input backend readiness."""
+    session=os.getenv("XDG_SESSION_TYPE","").strip().lower() or "unknown"
+    wayland=bool(session=="wayland" or os.getenv("WAYLAND_DISPLAY"))
+    uinput=Path("/dev/uinput")
+    sockets=[
+        str(p) for p in (
+            Path(os.getenv("XDG_RUNTIME_DIR",""))/".ydotool_socket" if os.getenv("XDG_RUNTIME_DIR") else None,
+            Path(f"/run/dana-ydotool-{os.getuid()}/.ydotool_socket") if hasattr(os,"getuid") else None,
+            Path("/tmp/.ydotool_socket"),
+        ) if p and p.exists()
+    ]
+    result={
+        "ok":True,
+        "os":platform.system(),
+        "session":session,
+        "wayland_display":os.getenv("WAYLAND_DISPLAY",""),
+        "backend":None,
+        "ydotool":shutil.which("ydotool"),
+        "ydotoold":shutil.which("ydotoold"),
+        "ydotool_socket":os.getenv("YDOTOOL_SOCKET") or (sockets[0] if sockets else ""),
+        "uinput":{"exists":uinput.exists(),"writable":os.access(uinput,os.W_OK)},
+        "sockets":sockets,
+    }
+    if wayland:
+        result["backend"]="ydotool"
+        if not result["ydotool"]:
+            result["ok"]=False
+            result["error"]="ydotool is not installed."
+        else:
+            try:
+                result["ydotool_variant"]=_ydotool_variant()
+            except Exception as exc:
+                result["ok"]=False
+                result["error"]=str(exc)
+            uinput_error=_ydotool_uinput_error()
+            if uinput_error:
+                result["ok"]=False
+                result["error"]=uinput_error
+            if result.get("ydotool_variant") in {"legacy","modern"} and not result["sockets"]:
+                result["ok"]=False
+                result["error"]="ydotoold is not running or its socket is unavailable."
+    else:
+        result["backend"]="xdotool" if shutil.which("xdotool") else None
+        if result["backend"] is None:
+            result["ok"]=False
+            result["error"]="xdotool is not installed for the active X11 session."
+    return result
+
+
 def _desktop_ydo(action:str,x:int=0,y:int=0,button:str="left",clicks:int=1,scroll:int=0,text:str="",key:str="")->dict[str,Any]:
-    """Execute Wayland-safe input through ydotool/uinput."""
+    """Execute Wayland-safe input through ydotool/uinput with CLI-version compatibility."""
     global _YDOTOOLD
+    variant = _ydotool_variant()
+    uinput_error = _ydotool_uinput_error()
+    if uinput_error:
+        raise RuntimeError(uinput_error)
+
     socket_candidates=[Path(os.getenv("XDG_RUNTIME_DIR",""))/".ydotool_socket" if os.getenv("XDG_RUNTIME_DIR") else None, Path("/tmp/.ydotool_socket")]
     if not os.getenv("YDOTOOL_SOCKET"):
         for socket_path in socket_candidates:
@@ -57,7 +181,7 @@ def _desktop_ydo(action:str,x:int=0,y:int=0,button:str="left",clicks:int=1,scrol
     if _YDOTOOLD is None and shutil.which("ydotoold") and not any(p and p.exists() for p in socket_candidates):
         try:
             _YDOTOOLD = subprocess.Popen(["ydotoold"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            time.sleep(0.2)
+            time.sleep(0.35)
             if Path("/tmp/.ydotool_socket").exists() and not os.getenv("YDOTOOL_SOCKET"):
                 os.environ["YDOTOOL_SOCKET"]="/tmp/.ydotool_socket"
         except OSError as exc:
@@ -65,28 +189,63 @@ def _desktop_ydo(action:str,x:int=0,y:int=0,button:str="left",clicks:int=1,scrol
 
     def run_checked(command:list[str], timeout:int=5)->dict[str,Any]:
         result=_run(command,timeout)
-        if not result["ok"]:
-            detail=(result.get("stderr") or result.get("stdout") or "unknown ydotool error").strip()
-            raise RuntimeError(f"ydotool failed: {detail}")
+        stderr=(result.get("stderr") or "").strip()
+        stdout=(result.get("stdout") or "").strip()
+        fatal_markers=("error", "failed", "fatal", "terminate", "aborted", "unrecognised option", "backend unavailable", "cannot")
+        if result["returncode"] != 0 or any(marker in stderr.lower() for marker in fatal_markers):
+            detail=stderr or stdout or f"exit code {result['returncode']}"
+            result["ok"]=False
+            result["error"]=detail
+            return result
         return result
-    if action == "move":
-        return run_checked(["ydotool","mousemove","--absolute","-x",str(max(0,x)),"-y",str(max(0,y))])
-    if action == "click":
-        buttons={"left":"0xC0","right":"0xC1","middle":"0xC2"}
-        if button not in buttons: raise ValueError("button must be left, middle or right")
-        run_checked(["ydotool","mousemove","--absolute","-x",str(max(0,x)),"-y",str(max(0,y))])
-        return run_checked(["ydotool","click","--repeat",str(max(1,min(clicks,20))),buttons[button]])
-    if action == "type": return run_checked(["ydotool","type","--delay","1",text],10)
-    if action == "key": return run_checked(["ydotool","key",key])
-    if action == "hotkey":
-        parts=[p.strip() for p in key.replace("+"," ").split() if p.strip()]
-        if len(parts)<2: raise ValueError("hotkey requires at least two keys, e.g. ctrl+c")
-        return run_checked(["ydotool","key","+".join(parts)])
-    if action == "scroll":
-        if scroll == 0: raise ValueError("scroll must be non-zero")
-        amount=max(1,min(abs(scroll),50))
-        direction=amount if scroll > 0 else -amount
-        return run_checked(["ydotool","mousemove","--wheel","--","0",str(direction)])
+
+    if variant == "legacy":
+        # Ubuntu/Debian 0.1.x uses the old CLI. It does not understand the
+        # current --absolute/-x/-y/hex-button syntax.
+        if action == "move":
+            return run_checked(["ydotool","mousemove",str(max(0,x)),str(max(0,y))])
+        if action == "move_relative":
+            return run_checked(["ydotool","mousemove_relative","--",str(x),str(y)])
+        if action == "click":
+            buttons={"left":"1","middle":"2","right":"3"}
+            if button not in buttons: raise ValueError("button must be left, middle or right")
+            moved=run_checked(["ydotool","mousemove",str(max(0,x)),str(max(0,y))])
+            if not moved["ok"]: return moved
+            return run_checked(["ydotool","click","--repeat",str(max(1,min(clicks,20))),buttons[button]])
+        if action == "scroll":
+            if scroll == 0: raise ValueError("scroll must be non-zero")
+            amount=max(1,min(abs(scroll),50))
+            wheel="4" if scroll > 0 else "5"
+            return run_checked(["ydotool","click","--repeat",str(amount),wheel])
+
+        if action == "type": return run_checked(["ydotool","type",text],10)
+        if action == "key": return run_checked(["ydotool","key",key])
+        if action == "hotkey":
+            parts=[p.strip() for p in key.replace("+"," ").split() if p.strip()]
+            if len(parts)<2: raise ValueError("hotkey requires at least two keys, e.g. ctrl+c")
+            return run_checked(["ydotool","key","+".join(parts)])
+    else:
+        if action == "move":
+            return run_checked(["ydotool","mousemove","--absolute","-x",str(max(0,x)),"-y",str(max(0,y))])
+        if action == "click":
+            buttons={"left":"0xC0","right":"0xC1","middle":"0xC2"}
+            if button not in buttons: raise ValueError("button must be left, middle or right")
+            moved=run_checked(["ydotool","mousemove","--absolute","-x",str(max(0,x)),"-y",str(max(0,y))])
+            if not moved["ok"]: return moved
+            return run_checked(["ydotool","click","--repeat",str(max(1,min(clicks,20))),buttons[button]])
+        if action == "type": return run_checked(["ydotool","type","--delay","1",text],10)
+        if action == "key": return run_checked(["ydotool","key",key])
+        if action == "hotkey":
+            parts=[p.strip() for p in key.replace("+"," ").split() if p.strip()]
+            if len(parts)<2: raise ValueError("hotkey requires at least two keys, e.g. ctrl+c")
+            return run_checked(["ydotool","key","+".join(parts)])
+        if action == "move_relative":
+            return run_checked(["ydotool","mousemove","-x",str(x),"-y",str(y)])
+        if action == "scroll":
+            if scroll == 0: raise ValueError("scroll must be non-zero")
+            amount=max(1,min(abs(scroll),50))
+            direction=amount if scroll > 0 else -amount
+            return run_checked(["ydotool","mousemove","--wheel","--","0",str(direction)])
     raise ValueError(f"Wayland backend does not support action: {action}")
 
 
@@ -264,12 +423,14 @@ def register_local_agent_tools(mcp:FastMCP)->None:
     def desktop_control(action:str,target:str="",text:str="",key:str="",x:int=0,y:int=0,button:str="left",clicks:int=1,scroll:int=0)->dict[str,Any]:
         """Control the local Linux desktop: mouse, keyboard, windows and screenshots.
 
-        Actions: windows, activate, close, minimize, maximize, move, click, scroll,
+        Actions: windows, activate, close, minimize, maximize, move, move_relative, click, scroll,
         type, key, hotkey, position, screenshot. Automatically selects xdotool on X11
         and ydotool/uinput on Wayland where supported.
         """
         if platform.system()!="Linux": raise RuntimeError("desktop_control currently targets Linux.")
-        read_only={"windows","position","screenshot"}
+        read_only={"windows","position","screenshot","diagnostics"}
+        if action=="diagnostics":
+            return _desktop_diagnostics()
         if action=="windows":
             if not shutil.which("wmctrl"): raise RuntimeError("wmctrl is not installed. Install the system package 'wmctrl'.")
             return _run(["wmctrl","-lG"])
@@ -298,10 +459,11 @@ def register_local_agent_tools(mcp:FastMCP)->None:
                 return _run(["xdotool","getmouselocation","--shell"],5)
             return {"ok":True,"backend":_desktop_backend(),"note":"Pointer position is not queryable portably on Wayland."}
         backend=_desktop_backend()
-        if backend=="ydotool" and action in {"move","click","scroll","type","key","hotkey"}:
+        if backend=="ydotool" and action in {"move","move_relative","click","scroll","type","key","hotkey"}:
             return _desktop_ydo(action,x,y,button,clicks,scroll,text,key)
         if backend=="xdotool":
             if action=="move": return _run(["xdotool","mousemove",str(max(0,x)),str(max(0,y))],5)
+            if action=="move_relative": return _run(["xdotool","mousemove_relative",str(x),str(y)],5)
             if action=="click":
                 buttons={"left":"1","middle":"2","right":"3"}
                 if button not in buttons: raise ValueError("button must be left, middle or right")
@@ -321,6 +483,7 @@ def register_local_agent_tools(mcp:FastMCP)->None:
         except ImportError as exc:
             raise RuntimeError("Install xdotool or Dana's optional desktop dependency (pip install dana-mcp-server[desktop]).") from exc
         if action=="move": pyautogui.moveTo(max(0,x),max(0,y),duration=0.05); return {"ok":True,"x":x,"y":y,"backend":"pyautogui"}
+        if action=="move_relative": pyautogui.moveRel(x,y,duration=0.05); return {"ok":True,"dx":x,"dy":y,"backend":"pyautogui"}
         if action=="click":
             if button not in {"left","middle","right"}: raise ValueError("button must be left, middle or right")
             pyautogui.click(x=max(0,x),y=max(0,y),clicks=max(1,min(clicks,20)),button=button); return {"ok":True,"backend":"pyautogui"}
@@ -333,7 +496,7 @@ def register_local_agent_tools(mcp:FastMCP)->None:
             parts=[p.strip().lower() for p in key.replace("+"," ").split() if p.strip()]
             if len(parts)<2: raise ValueError("hotkey requires at least two keys, e.g. ctrl+c")
             pyautogui.hotkey(*parts); return {"ok":True,"backend":"pyautogui"}
-        raise ValueError("action must be windows, activate, close, minimize, maximize, move, click, scroll, type, key, hotkey, position or screenshot")
+        raise ValueError("action must be windows, activate, close, minimize, maximize, move, move_relative, click, scroll, type, key, hotkey, position or screenshot")
 
     @mcp.tool()
     def media(action:str,source:str,output:str="",width:int=0,height:int=0,fps:int=1)->dict[str,Any]:

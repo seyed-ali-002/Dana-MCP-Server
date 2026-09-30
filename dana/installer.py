@@ -244,6 +244,55 @@ def _native_tool_requirements() -> tuple[dict[str, str], dict[str, dict[str, str
     return requirements, packages
 
 
+def configure_ydotool_service() -> None:
+    """Configure a privileged ydotoold with a private per-user socket."""
+    if platform.system().lower() != "linux" or not command_exists("ydotoold"):
+        return
+    if not command_exists("systemctl") or not command_exists("modprobe"):
+        return
+
+    uid = os.getuid() if hasattr(os, "getuid") else 0
+    gid = os.getgid() if hasattr(os, "getgid") else 0
+    daemon = shutil.which("ydotoold")
+    runtime_dir = f"dana-ydotool-{uid}"
+    socket_path = f"/run/{runtime_dir}/.ydotool_socket"
+    unit_name = f"dana-ydotoold-{uid}.service"
+    unit_path = Path.home() / ".config" / "dana" / unit_name
+    unit_path.parent.mkdir(parents=True, exist_ok=True)
+    unit_path.write_text(
+        "[Unit]\n"
+        "Description=Dana ydotoold Wayland input daemon\n"
+        "After=graphical.target\n"
+        "ConditionPathExists=/dev/uinput\n\n"
+        "[Service]\n"
+        "Type=simple\n"
+        "User=root\n"
+        "RuntimeDirectory=" + runtime_dir + "\n"
+        "RuntimeDirectoryMode=0755\n"
+        f"ExecStart={daemon} --socket-path={socket_path} --socket-perm=0600 --socket-own={uid}:{gid}\n"
+        "Restart=on-failure\n"
+        "RestartSec=2\n\n"
+        "[Install]\n"
+        "WantedBy=multi-user.target\n",
+        encoding="utf-8",
+    )
+    target = Path("/etc/systemd/system") / unit_name
+    try:
+        run_command(_privileged_command(["modprobe", "uinput"]))
+        modules = Path.home() / ".config" / "dana" / "uinput.conf"
+        modules.write_text("uinput\n", encoding="utf-8")
+        run_command(_privileged_command(["install", "-m", "0644", str(modules), "/etc/modules-load.d/dana-uinput.conf"]))
+        run_command(_privileged_command(["install", "-m", "0644", str(unit_path), str(target)]))
+        run_command(_privileged_command(["systemctl", "daemon-reload"]))
+        run_command(_privileged_command(["systemctl", "enable", "--now", unit_name]))
+        success(f"Wayland input daemon configured: {unit_name}")
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            "ydotoold was installed but Dana could not configure its system service. "
+            "Run the installer again with sudo access."
+        ) from exc
+
+
 def install_tool_dependencies() -> None:
     """Install native dependencies required by Dana's currently registered tools."""
     system = platform.system().lower()
@@ -264,6 +313,7 @@ def install_tool_dependencies() -> None:
     missing_commands = [command for command in requirements if not available(command)]
     if not missing_commands:
         success("All native dependencies required by Dana tools are installed")
+        configure_ydotool_service()
         return
 
     manager_name = next(
@@ -303,9 +353,9 @@ def install_tool_dependencies() -> None:
             "The package manager returned an error; rerun the installer after fixing the package manager."
         ) from exc
 
-    # Do not run a post-install verification pass. The package manager is the
-    # installation authority; existing commands were already detected above.
+    # Configure the Wayland input daemon after native packages are present.
     success("Native dependency installation completed")
+    configure_ydotool_service()
 
 
 
