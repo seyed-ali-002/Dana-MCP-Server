@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
+import subprocess
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -224,3 +226,42 @@ def register_document_tools(mcp: FastMCP) -> None:
         if format.lower() == "pdf":
             return create_pdf(path, title, content, font_path)
         return create_docx(path, title, content, font)
+
+
+
+    @mcp.tool()
+    def document_pdf_info(path: str) -> dict[str, Any]:
+        """Return PDF metadata using pdfinfo when available."""
+        source = require_path(path, purpose="PDF metadata")
+        if source.suffix.lower() != ".pdf":
+            raise ValueError("Expected a PDF file.")
+        try:
+            result = subprocess.run(["pdfinfo", str(source)], text=True, capture_output=True, timeout=30, check=False)
+        except FileNotFoundError as exc:
+            raise RuntimeError("pdfinfo is not installed.") from exc
+        return {"ok": result.returncode == 0, "stdout": result.stdout, "stderr": result.stderr}
+
+    @mcp.tool()
+    def document_word_count(path: str) -> dict[str, Any]:
+        """Count words and characters in a UTF-8 text or extracted PDF document."""
+        source = require_path(path, purpose="document word count")
+        if source.suffix.lower() == ".pdf":
+            from pypdf import PdfReader
+            text = "\n".join(page.extract_text() or "" for page in PdfReader(str(source)).pages)
+        else:
+            text = source.read_text(encoding="utf-8", errors="replace")
+        return {"path": str(source), "words": len(text.split()), "characters": len(text), "lines": len(text.splitlines())}
+
+    @mcp.tool()
+    def document_ocr(path: str, language: str = "eng", max_chars: int = 50000) -> dict[str, Any]:
+        """Run Tesseract OCR on an image or PDF when Tesseract is installed."""
+        source = require_path(path, purpose="document OCR")
+        if shutil.which("tesseract") is None:
+            raise RuntimeError("tesseract is not installed.")
+        try:
+            result = subprocess.run(["tesseract", str(source), "stdout", "-l", language], text=True,
+                                    capture_output=True, timeout=180, check=False)
+        except subprocess.TimeoutExpired as exc:
+            raise TimeoutError("OCR timed out.") from exc
+        return {"ok": result.returncode == 0, "path": str(source), "language": language,
+                "text": result.stdout[:max(1, min(max_chars, 200000))], "stderr": result.stderr[-10000:]}

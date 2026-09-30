@@ -23,6 +23,8 @@ from .persian_writing import register_persian_writing_tools
 from .ui_sashimi import register_sashimi_ui_tools
 from .principal_engine import register_principal_engine_tools
 from .system import register_system_tools
+from .local_agent import register_local_agent_tools
+
 from .token_analytics import register_token_analytics_tools
 from .web_quality_debug_docs import register_web_quality_debug_docs_tools
 
@@ -55,3 +57,6 @@ def register_tools(mcp: FastMCP) -> None:
     register_performance_tools(mcp)
 
     register_runtime_orchestration_tools(mcp)
+
+
+    register_local_agent_tools(mcp)
