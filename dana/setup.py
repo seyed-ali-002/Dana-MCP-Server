@@ -22,6 +22,20 @@ from .installer import configure_tailscale_local, _ensure_tailscale_ready, _tail
 TAILSCALE_DOWNLOAD = "https://tailscale.com/download"
 TAILSCALE_PACKAGES = "https://pkgs.tailscale.com/stable/"
 TAILSCALE_INSTALL_SCRIPT = "https://tailscale.com/install.sh"
+TAILSCALE_INSTALL_SCRIPT_MIRROR = "https://raw.githubusercontent.com/tailscale/tailscale/main/scripts/installer.sh"
+
+_AUTH_FLOW = {"pending": False, "kind": "", "auth_url": "", "message": ""}
+_AUTH_FLOW_LOCK = __import__("threading").Lock()
+
+
+def _set_auth_flow(kind: str = "", auth_url: str = "", message: str = "", pending: bool = False) -> None:
+    with _AUTH_FLOW_LOCK:
+        _AUTH_FLOW.update(pending=pending, kind=kind, auth_url=auth_url, message=message)
+
+
+def auth_flow_status() -> dict[str, object]:
+    with _AUTH_FLOW_LOCK:
+        return dict(_AUTH_FLOW)
 
 
 _DOWNLOAD = {"active": False, "paused": False, "cancelled": False, "downloaded": 0, "total": 0, "speed": 0.0, "name": "", "message": ""}
@@ -72,9 +86,22 @@ def cancel_download() -> dict[str, object]:
 
 
 def _download_file(url: str, target: Path, label: str) -> None:
+    import urllib.error
     import urllib.request
     started = time.monotonic()
     downloaded = 0
+    candidates = [url]
+    mirror = os.getenv("DANA_TAILSCALE_MIRROR", "").strip().rstrip("/")
+    if mirror and "tailscale.com" in url:
+        candidates.insert(0, mirror + "/" + url.rsplit("/", 1)[-1])
+    if url == TAILSCALE_INSTALL_SCRIPT:
+        candidates.append(TAILSCALE_INSTALL_SCRIPT_MIRROR)
+    proxy = os.getenv("DANA_TAILSCALE_PROXY", "").strip()
+    if proxy:
+        proxy_handler = urllib.request.ProxyHandler({"http": proxy, "https": proxy})
+        opener = urllib.request.build_opener(proxy_handler)
+    else:
+        opener = urllib.request.build_opener()
     _DOWNLOAD_CANCEL.clear()
     _DOWNLOAD_PAUSE.set()
     with _DOWNLOAD_LOCK:
@@ -82,29 +109,48 @@ def _download_file(url: str, target: Path, label: str) -> None:
     _setup_log(f"Downloading {label} from {url}")
     temporary = target.with_suffix(target.suffix + ".part")
     try:
-        request = urllib.request.Request(url, headers={"User-Agent": "Dana-Setup/1"})
-        with urllib.request.urlopen(request, timeout=30) as response:
-            total = int(response.headers.get("Content-Length") or 0)
-            with _DOWNLOAD_LOCK:
-                _DOWNLOAD["total"] = total
-                _DOWNLOAD["message"] = "Downloading…"
-            with open(temporary, "wb") as handle:
-                while True:
-                    if _DOWNLOAD_CANCEL.is_set():
-                        raise InterruptedError("Download cancelled by user")
-                    _DOWNLOAD_PAUSE.wait()
-                    if _DOWNLOAD_CANCEL.is_set():
-                        raise InterruptedError("Download cancelled by user")
-                    chunk = response.read(64 * 1024)
-                    if not chunk:
-                        break
-                    handle.write(chunk)
-                    downloaded += len(chunk)
-                    elapsed = max(0.001, time.monotonic() - started)
+        last_error: Exception | None = None
+        for candidate in candidates:
+            try:
+                _setup_log(f"Trying Tailscale download source: {candidate}")
+                request = urllib.request.Request(candidate, headers={"User-Agent": "Dana-Setup/1"})
+                with opener.open(request, timeout=30) as response:
+                    total = int(response.headers.get("Content-Length") or 0)
                     with _DOWNLOAD_LOCK:
-                        _DOWNLOAD["downloaded"] = downloaded
-                        _DOWNLOAD["speed"] = downloaded / elapsed
-            temporary.replace(target)
+                        _DOWNLOAD["total"] = total
+                        _DOWNLOAD["downloaded"] = 0
+                        _DOWNLOAD["message"] = "Downloading…"
+                    downloaded = 0
+                    with open(temporary, "wb") as handle:
+                        while True:
+                            if _DOWNLOAD_CANCEL.is_set():
+                                raise InterruptedError("Download cancelled by user")
+                            _DOWNLOAD_PAUSE.wait()
+                            if _DOWNLOAD_CANCEL.is_set():
+                                raise InterruptedError("Download cancelled by user")
+                            chunk = response.read(64 * 1024)
+                            if not chunk:
+                                break
+                            handle.write(chunk)
+                            downloaded += len(chunk)
+                            elapsed = max(0.001, time.monotonic() - started)
+                            with _DOWNLOAD_LOCK:
+                                _DOWNLOAD["downloaded"] = downloaded
+                                _DOWNLOAD["speed"] = downloaded / elapsed
+                    temporary.replace(target)
+                    if candidate != url:
+                        _setup_log("Primary Tailscale download source was unavailable; fallback source succeeded.", "warning")
+                    break
+            except urllib.error.HTTPError as exc:
+                last_error = exc
+                _setup_log(f"Tailscale download source returned HTTP {exc.code}; trying the next source.", "warning")
+                continue
+            except (urllib.error.URLError, OSError) as exc:
+                last_error = exc
+                _setup_log("Tailscale download source failed; trying the next source.", "warning")
+                continue
+        else:
+            raise RuntimeError(f"All Tailscale download sources failed: {last_error}")
         with _DOWNLOAD_LOCK:
             _DOWNLOAD.update(active=False, paused=False, message="Download complete.")
         _setup_log(f"Download completed: {label}", "success")
@@ -342,6 +388,24 @@ class SetupStatus:
 def _run(command: list[str], timeout: float = 20) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, text=True, capture_output=True, check=False, timeout=timeout)
 
+
+def _privileged_run(command: list[str], timeout: float = 60) -> subprocess.CompletedProcess[str]:
+    """Run a privileged command through the desktop password agent, falling back to sudo.
+
+    pkexec is preferred for the GUI because it presents the native password dialog.
+    The terminal installer continues to use sudo directly.
+    """
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        return _run(command, timeout=timeout)
+    if shutil.which("pkexec"):
+        result = _run(["pkexec", *command], timeout=timeout)
+        if result.returncode == 0:
+            return result
+    if shutil.which("sudo"):
+        return _run(["sudo", *command], timeout=timeout)
+    raise RuntimeError("This operation requires administrator privileges, but neither pkexec nor sudo is available.")
+
+
 def _open(url: str) -> None:
     try:
         webbrowser.open(url)
@@ -498,6 +562,13 @@ def status() -> SetupStatus:
     elif not active:
         action, message = "enable_funnel", "Tailscale Funnel is not active."
     running = _dana_running()
+    with _AUTH_FLOW_LOCK:
+        if _AUTH_FLOW["pending"] and _AUTH_FLOW["kind"] == "login" and backend.lower() == "running":
+            _AUTH_FLOW.update(pending=False, auth_url="", message="")
+            _setup_log("Tailscale browser authentication detected; continuing setup.", "success")
+        elif _AUTH_FLOW["pending"] and _AUTH_FLOW["kind"] == "funnel" and active:
+            _AUTH_FLOW.update(pending=False, auth_url="", message="")
+            _setup_log("Tailscale Funnel approval detected; continuing setup.", "success")
     return SetupStatus(installed, backend, hostname, active, funnel_host, running, public_url or local_url, local_url, public_url, token, action, message)
 
 def test_connections() -> dict[str, object]:
@@ -628,13 +699,13 @@ def install_tailscale() -> dict[str, object]:
         return {"ok": True, "installed": True, "message": "Tailscale is already installed."}
     system = platform.system().lower()
     if system == "linux":
-        if not shutil.which("pkexec"):
-            return {"ok": False, "action_required": "manual_install", "message": "A graphical privilege helper (pkexec) is required for a fully graphical Linux installation.", "url": TAILSCALE_DOWNLOAD}
+        if not shutil.which("pkexec") and not shutil.which("sudo") and not (hasattr(os, "geteuid") and os.geteuid() == 0):
+            return {"ok": False, "action_required": "manual_install", "message": "Administrator privileges are required. Install sudo or a desktop policy agent and retry.", "url": TAILSCALE_DOWNLOAD}
         try:
             target = Path(tempfile.gettempdir()) / "tailscale-install.sh"
             _download_file(TAILSCALE_INSTALL_SCRIPT, target, "Tailscale installer")
-            _setup_log("Launching the privileged Tailscale installer.")
-            result = _run(["pkexec", "sh", str(target)], timeout=240)
+            _setup_log("Launching the privileged Tailscale installer; administrator authentication may be requested.")
+            result = _privileged_run(["sh", str(target)], timeout=240)
             output = (result.stderr or result.stdout or "").strip()
             if result.returncode != 0:
                 _setup_log("Tailscale installation failed: " + (output or f"installer exited with code {result.returncode}"), "error")
@@ -691,14 +762,17 @@ def login_tailscale() -> dict[str, object]:
     output = (result.stdout or "") + "\n" + (result.stderr or "")
     auth_url = _find_auth_url(output)
     if auth_url:
+        _set_auth_flow("login", auth_url, "Open the Tailscale login URL in your browser and complete authentication.", True)
         _setup_log("Tailscale requested browser authentication. Opening the login page.")
         _open(auth_url)
+        return {"ok": True, "pending": True, "message": "Complete Tailscale authentication in the browser. Dana will continue automatically.", "auth_url": auth_url}
     if result.returncode == 0:
+        _set_auth_flow()
         _setup_log("Tailscale authentication completed.", "success")
-        return {"ok": True, "message": "Tailscale is connected.", "auth_url": auth_url or ""}
+        return {"ok": True, "message": "Tailscale is connected."}
     details = output.strip() or f"tailscale up exited with code {result.returncode}"
-    _setup_log("Tailscale authentication is pending." if auth_url else "Tailscale authentication failed: " + details, "warning" if auth_url else "error")
-    return {"ok": bool(auth_url), "pending": bool(auth_url), "message": "Complete Tailscale authentication in the browser, then return to Dana." if auth_url else details, "auth_url": auth_url or ""}
+    _setup_log("Tailscale authentication failed: " + details, "error")
+    return {"ok": False, "message": details}
 
 def enable_funnel(port: int = 8765) -> dict[str, object]:
     _setup_log("Starting Tailscale Funnel setup.")
@@ -716,9 +790,10 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
         details = str(exc)
         auth_url = _find_auth_url(details)
         if auth_url:
+            _set_auth_flow("funnel", auth_url, "Open the Tailscale Funnel approval URL in your browser and approve it.", True)
             _setup_log("Tailscale requested Funnel approval in the browser. Opening the approval page.")
             _open(auth_url)
-            return {"ok": True, "pending": True, "action_required": "enable_funnel", "message": "Approve Funnel in the Tailscale browser flow, then return to Dana.", "auth_url": auth_url}
+            return {"ok": True, "pending": True, "action_required": "enable_funnel", "message": "Approve Funnel in the browser. Dana will continue automatically.", "auth_url": auth_url}
         _setup_log("Funnel configuration failed: " + details, "error")
         return {"ok": False, "message": details}
     token = write_env("local", workers=settings.workers)

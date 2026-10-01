@@ -108,3 +108,37 @@ def test_persistent_token_is_authoritative_over_install_env(monkeypatch, tmp_pat
     monkeypatch.setattr(setup, "_persistent_env_path", lambda: persistent / ".env")
     values = setup._read_env()
     assert values["DANA_AUTH_TOKEN"] == "persistent-token-123456"
+
+
+
+def test_auth_flow_status_is_persistent_and_clearable():
+    setup._set_auth_flow("login", "https://login.tailscale.com/a/test", "Complete login", True)
+    pending = setup.auth_flow_status()
+    assert pending["pending"] is True
+    assert pending["kind"] == "login"
+    setup._set_auth_flow()
+    assert setup.auth_flow_status()["pending"] is False
+
+
+def test_tailscale_download_falls_back_after_403(monkeypatch, tmp_path):
+    calls = []
+    class Response:
+        headers = {"Content-Length": "4"}
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self, _size=0): return b"test"
+    def fake_open(request, timeout=0):
+        import urllib.error
+        calls.append(request.full_url)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError(request.full_url, 403, "Forbidden", {}, None)
+        return Response()
+    class Opener:
+        def open(self, request, timeout=0):
+            return fake_open(request, timeout)
+    monkeypatch.setattr(setup.urllib.request, "build_opener", lambda *args, **kwargs: Opener())
+    target = tmp_path / "installer.sh"
+    setup._download_file(setup.TAILSCALE_INSTALL_SCRIPT, target, "Tailscale installer")
+    assert target.read_bytes() == b"test"
+    assert len(calls) == 2
+    assert "githubusercontent.com" in calls[1]

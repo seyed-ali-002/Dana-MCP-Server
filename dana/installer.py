@@ -583,11 +583,20 @@ def _tailscale_hostname_from_status() -> str | None:
 
 
 def _run_tailscale(command: list[str], *, timeout: float = 20.0) -> subprocess.CompletedProcess[str]:
-    """Run Tailscale with a hard timeout so the installer can never wait forever."""
+    """Run Tailscale with a hard timeout and elevate Funnel administration when needed."""
     try:
-        return subprocess.run(
+        result = subprocess.run(
             command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout
         )
+        details = (result.stderr or result.stdout or "").lower()
+        if result.returncode != 0 and len(command) > 1 and command[1] == "funnel" and ("permission" in details or "access" in details or "root" in details or "daemon" in details):
+            if shutil.which("pkexec"):
+                elevated = subprocess.run(["pkexec", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+                if elevated.returncode == 0:
+                    return elevated
+            if shutil.which("sudo"):
+                return subprocess.run(["sudo", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        return result
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
             "Tailscale did not respond in time. Open Tailscale, make sure you are signed in and online, "
@@ -702,7 +711,8 @@ def install_local() -> None:
     step("Configuring secure Tailscale Funnel")
     public_host = configure_tailscale_local(token)
     set_local_public_host(public_host)
-    success(f"Secure endpoint configured: https://{public_host}/mcp")
+    success(f"Secure endpoint configured: https://{public_host}/{token}/mcp")
+
     clear()
     banner("INSTALLATION COMPLETE")
     table = Table.grid(padding=(0, 2))
@@ -710,6 +720,8 @@ def install_local() -> None:
     table.add_row("MODE", "[bold cyan]LOCAL[/bold cyan]")
     table.add_row("WORKERS", str(workers))
     table.add_row("PUBLIC HOST", public_host)
+    table.add_row("MCP URL", f"https://{public_host}/{token}/mcp")
+
     table.add_row("TRANSPORT", "[green]Tailscale Funnel + MCP[/green]")
     console.print(
         Panel(

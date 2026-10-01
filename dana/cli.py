@@ -119,7 +119,9 @@ def _docker_install() -> None:
     console.print("[cyan]Starting Dana...[/cyan]")
     container.start()
     console.print("[bold green]✓ Dana is running.[/bold green]")
-    console.print("[cyan]Local MCP:[/cyan] http://127.0.0.1:8765/mcp")
+    token = os.getenv("DANA_AUTH_TOKEN", "")
+    console.print(f"[cyan]Local MCP:[/cyan] http://127.0.0.1:8765/{token}/mcp" if token else "[cyan]Local MCP:[/cyan] http://127.0.0.1:8765/mcp")
+
     console.print("[cyan]Configuring Tailscale Funnel...[/cyan]")
     _docker_connect()
 
