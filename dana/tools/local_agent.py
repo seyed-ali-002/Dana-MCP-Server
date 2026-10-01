@@ -153,7 +153,7 @@ def _desktop_diagnostics() -> dict[str,Any]:
             if uinput_error:
                 result["ok"]=False
                 result["error"]=uinput_error
-            if result.get("ydotool_variant") in {"legacy","modern"} and not result["sockets"]:
+            if result.get("ydotool_variant") in {"legacy","modern"} and not result["sockets"] and not result.get("error"):
                 result["ok"]=False
                 result["error"]="ydotoold is not running or its socket is unavailable."
     else:

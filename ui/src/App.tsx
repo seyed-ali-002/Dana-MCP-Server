@@ -23,8 +23,9 @@ function App(){
  const [confirmPublic,setConfirmPublic]=useState(false),[ack,setAck]=useState(false),[copied,setCopied]=useState("");
   const [authFlow,setAuthFlow]=useState<AuthFlow|null>(null);
 
- const ready=!!status?.dana_running&&!!status?.funnel_active;
  const progress=useMemo(()=>!status?8:!status.tailscale_installed?20:status.tailscale_backend.toLowerCase()!=="running"?40:!status.dana_running?68:!status.funnel_active?82:100,[status]);
+ const ready=!!status?.dana_running;
+
 
  async function refresh(p=port){if(!p)return;try{const r=await fetch(API(p,"/api/setup/status"));const x=await r.json();if(!r.ok)throw Error(x.message||x.error);setStatus(x);setMessage(x.message||"");const l=await fetch(API(p,"/api/setup/logs"));if(l.ok){const y=await l.json();setLogs(y.logs||[])}}catch(e){setError(String(e))}}
  async function pollDownload(p=port){if(!p)return;try{const r=await fetch(API(p,"/api/setup/download"));if(r.ok)setDownload(await r.json())}catch{}}

@@ -26,6 +26,12 @@ class DanaFunnelManager:
         )
 
     def _run(self, command: list[str]) -> bool:
+        # The watchdog must never block Dana startup on a password dialog. Use
+        # non-interactive sudo for background recovery; explicit setup actions
+        # use Dana's privileged runner and can request the user's password.
+        if command[:2] == ["tailscale", "funnel"] and hasattr(__import__("os"), "geteuid") and __import__("os").geteuid() != 0:
+            if shutil.which("sudo"):
+                command = ["sudo", "-n", *command]
         try:
             result = subprocess.run(command, text=True, capture_output=True, check=False, timeout=15)
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -57,7 +63,9 @@ class DanaFunnelManager:
     def start(self) -> None:
         if not self.enabled:
             return
-        self.ensure()
+        # Never make Dana's startup depend on Funnel availability. Funnel is a
+        # recoverable network capability and is restored asynchronously.
+        self._stop.clear()
         self._thread = threading.Thread(target=self._watch, name="dana-funnel-watchdog", daemon=True)
         self._thread.start()
 
@@ -68,6 +76,9 @@ class DanaFunnelManager:
 
     def _watch(self) -> None:
         interval = max(1, settings.tailscale_funnel_check_seconds)
+        # Give the MCP server time to bind before attempting the first route.
+        if not self._stop.wait(min(2.0, interval)):
+            self.ensure(retries=2)
         while not self._stop.wait(interval):
             # Restore Dana after another application's shutdown clears handlers.
             self.ensure(retries=1)

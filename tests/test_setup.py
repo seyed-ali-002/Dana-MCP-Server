@@ -35,6 +35,7 @@ def test_funnel_configuration_uses_current_cli_shape(monkeypatch):
     monkeypatch.setattr(setup, "_ensure_tailscale_ready", lambda: None)
     monkeypatch.setattr(setup, "configure_tailscale_local", lambda token, port, funnel_port: calls.append((token, port, funnel_port)) or "dana.example.ts.net")
     monkeypatch.setattr(setup, "verify_public_endpoint", lambda host: True)
+    monkeypatch.setattr(setup, "_funnel_status", lambda: (True, "dana.example.ts.net"))
     result = setup.enable_funnel(8765)
     assert result["ok"] is True
     assert len(calls) == 1
@@ -124,9 +125,13 @@ def test_tailscale_download_falls_back_after_403(monkeypatch, tmp_path):
     calls = []
     class Response:
         headers = {"Content-Length": "4"}
+        def __init__(self): self.done = False
         def __enter__(self): return self
         def __exit__(self, *args): return False
-        def read(self, _size=0): return b"test"
+        def read(self, _size=0):
+            if self.done: return b""
+            self.done = True
+            return b"test"
     def fake_open(request, timeout=0):
         import urllib.error
         calls.append(request.full_url)

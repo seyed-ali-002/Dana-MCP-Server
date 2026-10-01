@@ -91,11 +91,14 @@ def _download_file(url: str, target: Path, label: str) -> None:
     started = time.monotonic()
     downloaded = 0
     candidates = [url]
-    mirror = os.getenv("DANA_TAILSCALE_MIRROR", "").strip().rstrip("/")
-    if mirror and "tailscale.com" in url:
-        candidates.insert(0, mirror + "/" + url.rsplit("/", 1)[-1])
     if url == TAILSCALE_INSTALL_SCRIPT:
         candidates.append(TAILSCALE_INSTALL_SCRIPT_MIRROR)
+    # A configured mirror may be either a URL prefix (preferred) or a mirror
+    # root. Keep both forms so common GitHub proxy/mirror deployments work.
+    mirror = os.getenv("DANA_TAILSCALE_MIRROR", "").strip().rstrip("/")
+    if mirror and "tailscale.com" in url:
+        candidates.insert(0, mirror + "/" + url)
+        candidates.insert(1, mirror + "/" + url.rsplit("/", 1)[-1])
     proxy = os.getenv("DANA_TAILSCALE_PROXY", "").strip()
     if proxy:
         proxy_handler = urllib.request.ProxyHandler({"http": proxy, "https": proxy})
@@ -195,6 +198,7 @@ _CONFIG_KEYS = (
     "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS", "DANA_MAX_BODY_BYTES", "DANA_ALLOW_DANGEROUS_TOOLS",
     "DANA_ALLOWED_ORIGINS", "DANA_ALLOWED_PATHS", "DANA_DENIED_PATHS",
     "DANA_TAILSCALE_FUNNEL_ENABLED", "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS",
+    "DANA_TAILSCALE_MIRROR", "DANA_TAILSCALE_PROXY",
     "MCP_OAUTH_REDIRECT_URIS",
 )
 
@@ -260,6 +264,8 @@ def configuration() -> dict[str, object]:
         "DANA_ALLOWED_ORIGINS": settings.allowed_origins, "DANA_ALLOWED_PATHS": settings.allowed_paths,
         "DANA_DENIED_PATHS": settings.denied_paths, "DANA_TAILSCALE_FUNNEL_ENABLED": settings.tailscale_funnel_enabled,
         "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS": settings.tailscale_funnel_check_seconds,
+        "DANA_TAILSCALE_MIRROR": os.getenv("DANA_TAILSCALE_MIRROR", ""),
+        "DANA_TAILSCALE_PROXY": os.getenv("DANA_TAILSCALE_PROXY", ""),
         "MCP_OAUTH_REDIRECT_URIS": "",
     }
     def _text(value: object) -> str:
@@ -309,6 +315,8 @@ def update_configuration(values: dict[str, object]) -> dict[str, object]:
         "DANA_ALLOWED_ORIGINS": ("allowed_origins", str), "DANA_ALLOWED_PATHS": ("allowed_paths", str), "DANA_DENIED_PATHS": ("denied_paths", str),
         "DANA_TAILSCALE_FUNNEL_ENABLED": ("tailscale_funnel_enabled", lambda x: x.lower() == "true"),
         "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS": ("tailscale_funnel_check_seconds", int),
+        "DANA_TAILSCALE_MIRROR": ("tailscale_mirror", str),
+        "DANA_TAILSCALE_PROXY": ("tailscale_proxy", str),
     }
     for key in changed:
         if key.startswith("DANA_"):
@@ -390,13 +398,16 @@ def _run(command: list[str], timeout: float = 20) -> subprocess.CompletedProcess
 
 
 def _privileged_run(command: list[str], timeout: float = 60) -> subprocess.CompletedProcess[str]:
-    """Run a privileged command through the desktop password agent, falling back to sudo.
+    """Run an administrative command without hiding the user's password prompt.
 
-    pkexec is preferred for the GUI because it presents the native password dialog.
-    The terminal installer continues to use sudo directly.
+    Terminal sessions prefer sudo so the password is requested in the terminal.
+    Desktop sessions prefer pkexec, which provides the native authentication dialog.
+    The password is never captured or stored by Dana.
     """
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         return _run(command, timeout=timeout)
+    if shutil.which("sudo") and os.isatty(0):
+        return _run(["sudo", *command], timeout=timeout)
     if shutil.which("pkexec"):
         result = _run(["pkexec", *command], timeout=timeout)
         if result.returncode == 0:
@@ -758,7 +769,7 @@ def login_tailscale() -> dict[str, object]:
     if not command_exists("tailscale"):
         _setup_log("Cannot authenticate because Tailscale is not installed.", "error")
         return {"ok": False, "action_required": "install_tailscale", "message": "Install Tailscale first."}
-    result = _run(["tailscale", "up"], timeout=20)
+    result = _privileged_run(["tailscale", "up"], timeout=45)
     output = (result.stdout or "") + "\n" + (result.stderr or "")
     auth_url = _find_auth_url(output)
     if auth_url:
@@ -782,8 +793,15 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
     try:
         _ensure_tailscale_ready()
     except RuntimeError as exc:
-        _setup_log("Tailscale is not ready for Funnel: " + str(exc), "error")
-        return {"ok": False, "action_required": "login_tailscale", "message": str(exc)}
+        details = str(exc)
+        auth_url = _find_auth_url(details)
+        if auth_url:
+            _set_auth_flow("funnel", auth_url, "Open the Tailscale Funnel approval URL in your browser and approve it.", True)
+            _setup_log("Tailscale requested Funnel approval in the browser. Opening the approval page.")
+            _open(auth_url)
+            return {"ok": True, "pending": True, "action_required": "enable_funnel", "message": "Approve Funnel in the browser. Dana will continue automatically.", "auth_url": auth_url}
+        _setup_log("Tailscale is not ready for Funnel: " + details, "error")
+        return {"ok": False, "action_required": "login_tailscale", "message": details}
     try:
         host = configure_tailscale_local(settings.auth_token, port=port, funnel_port=443)
     except RuntimeError as exc:
