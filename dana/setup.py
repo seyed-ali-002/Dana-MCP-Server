@@ -938,7 +938,7 @@ def stop_dana() -> dict[str, object]:
     # Remove only the HTTPS 443 route used by Dana.
     if command_exists("tailscale"):
         try:
-            funnel_stop = _run(["tailscale", "funnel", "--https=443", "off"], timeout=15)
+            funnel_stop = _privileged_run(["tailscale", "funnel", "--https=443", "off"], timeout=15)
             if funnel_stop.returncode == 0:
                 _setup_log("Dana Tailscale Funnel route stopped.", "success")
             elif _funnel_active():
