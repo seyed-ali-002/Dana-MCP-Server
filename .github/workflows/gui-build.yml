@@ -136,27 +136,22 @@ jobs:
           find release -maxdepth 1 -type f -print
           test -n "$(find release -maxdepth 1 -type f -print -quit)"
 
-      - name: Determine next sequential release tag
+      - name: Determine SemVer release tag
         id: release_tag
         shell: bash
         run: |
           set -euo pipefail
           git fetch --tags --force origin
-          existing="$(git tag --points-at "${GITHUB_SHA}" | grep -E '^v0\\.1\\.0-build\\.[0-9]+$' | sort -V | tail -1 || true)"
-          if [[ -n "$existing" ]]; then
-            tag="$existing"
-            echo "This commit already has release tag: ${tag}"
-          else
-            latest="$(git tag --list 'v0.1.0-build.*' | sed -nE 's/^v0\\.1\\.0-build\\.([0-9]+)$/\\1/p' | sort -n | tail -1)"
-            if [[ -z "$latest" ]]; then
-              next=1
-            else
-              next=$((latest + 1))
-            fi
-            tag="v0.1.0-build.${next}"
-            echo "Previous build number: ${latest:-none}"
-            echo "Next release tag: ${tag}"
+          # Single source of truth for the release version is pyproject.toml.
+          # Releases are always published as vX.Y.Z (Semantic Versioning).
+          version="$(grep -E '^version = ' pyproject.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid SemVer version in pyproject.toml: '${version}'" >&2
+            exit 1
           fi
+          tag="v${version}"
+          echo "Project version: ${version}"
+          echo "Release tag: ${tag}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release with detailed notes
@@ -174,7 +169,7 @@ jobs:
             exit 1
           fi
 
-          previous_tag="$(git tag --list 'v0.1.0-build.*' | sed -E '/^v0\\.1\\.0-build\\.[0-9]+$/!d' | grep -Fxv "${RELEASE_TAG}" | sort -V | tail -1 || true)"
+          previous_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -Fxv "${RELEASE_TAG}" | sort -V | tail -1 || true)"
           notes_file="$(mktemp)"
           {
             echo "## Highlights"
@@ -193,8 +188,7 @@ jobs:
             echo
             echo "## Notes"
             echo
-            echo "- Release numbers are sequential and are based on published build tags, not GitHub Actions run numbers."
-            echo "- Failed or cancelled builds do not consume a release number."
+            echo "- Releases follow Semantic Versioning (vX.Y.Z) based on the version in pyproject.toml."
             if [[ -n "$previous_tag" ]]; then
               echo
               echo "**Full Changelog**: https://github.com/${REPOSITORY}/compare/${previous_tag}...${RELEASE_TAG}"

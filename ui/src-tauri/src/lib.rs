@@ -44,10 +44,26 @@ fn python_command(root: &std::path::Path) -> Option<(String, Vec<String>)> {
 
 #[tauri::command]
 fn start_setup_service(app: AppHandle) -> Result<u16, String> {
-    if let Some(child) = SETUP_AGENT.lock().map_err(|e| e.to_string())?.as_mut() {
-        if child.try_wait().map_err(|e| e.to_string())?.is_none() {
-            return Err("Dana setup service is already running without a known port.".into());
+    // A re-invocation (e.g. React StrictMode double-mount or a window reload)
+    // must reuse the already running service instead of failing.
+    if let Some(port) = *SETUP_PORT.lock().map_err(|e| e.to_string())? {
+        let mut agent = SETUP_AGENT.lock().map_err(|e| e.to_string())?;
+        let alive = match agent.as_mut() {
+            Some(child) => child
+                .try_wait()
+                .map_err(|e| e.to_string())?
+                .is_none(),
+            None => false,
+        };
+        if alive {
+            return Ok(port);
         }
+        // Reap a stale child and forget its port so a fresh service is spawned.
+        if let Some(mut stale) = agent.take() {
+            let _ = stale.kill();
+            let _ = stale.wait();
+        }
+        *SETUP_PORT.lock().map_err(|e| e.to_string())? = None;
     }
 
     let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;

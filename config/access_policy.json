@@ -1,8 +1,9 @@
 {
   "version": 1,
   "allowed_paths": [
-    "/mnt/1CEC9AE6EC9ABA0A/Ali/Codinto/codinto-wiki",
-    "/mnt/1CEC9AE6EC9ABA0A/Ali/MCP_Server/Dana"
+    "/mnt/1CEC9AE6EC9ABA0A/Ali/MCP_Server/Dana",
+    "/home",
+    "/tmp"
   ],
   "deny_paths": [],
   "shell": {

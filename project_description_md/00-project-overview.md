@@ -80,22 +80,24 @@ Streamable HTTP/MCP session در یک transport process نگهداری می‌ش
 
 ```text
 Dana/
-├── dana/                 # Backend Python package
-│   ├── tools/            # Tool implementations
-│   └── security/         # HTTP/path security
-├── tests/                # Backend tests
-├── ui/                   # React + Tauri desktop application
-├── docs/                 # Existing project documentation/assets
-├── scripts/              # Operational helper scripts
-├── packaging/            # Packaging/build resources
-├── config/               # Runtime/access configuration
-├── build/                # Build artifacts
-├── dist/                 # Distribution artifacts
-├── .github/              # GitHub automation
+├── dana/                      # Backend Python package
+│   ├── tools/                 # Tool implementations
+│   └── security/              # HTTP/path security
+├── tests/                     # Backend tests
+├── ui/                        # React + Tauri desktop application
+├── docs/                      # Project documentation assets
+├── project_description_md/    # Technical architecture & policy docs
+├── scripts/                   # Operational helper scripts
+├── packaging/                 # Packaging/build resources
+├── config/                    # Runtime/access configuration
+├── build/                     # Build artifacts
+├── dist/                      # Distribution artifacts
+├── .github/                   # GitHub automation
 ├── Dockerfile
 ├── docker-compose.yml
 ├── install.py
 ├── pyproject.toml
+├── requirements.txt
 └── README*.md
 ```
 

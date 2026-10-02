@@ -157,55 +157,19 @@ def _full_start() -> None:
         token = settings.require_auth_token()
         console.print(f"[bold green]✓ Secure MCP endpoint:[/bold green] https://{host}/{token}/mcp")
 
-def launch_gui() -> None:
-    """Launch the packaged Tauri desktop control center when available."""
-    candidates = [
-        ROOT / "ui" / "src-tauri" / "target" / "release" / ("Dana.exe" if os.name == "nt" else "Dana"),
-        ROOT / "ui" / "src-tauri" / "target" / "release" / "bundle" / "appimage" / "Dana.AppImage",
-    ]
-    if sys.platform == "darwin":
-        candidates.insert(0, ROOT / "ui" / "src-tauri" / "target" / "release" / "bundle" / "macos" / "Dana.app")
-    for candidate in candidates:
-        if candidate.exists():
-            if candidate.suffix == ".app":
-                subprocess.Popen(["open", str(candidate)])
-            else:
-                subprocess.Popen([str(candidate)], cwd=ROOT)
-            return
-    console.print("[yellow]Dana Desktop is not built in this checkout.[/yellow]")
-    console.print("[dim]Build it with the Tauri pipeline in packaging/ or install the Dana Desktop package.[/dim]")
-    raise SystemExit(1)
-
-
-
-
 def _launch_gui() -> None:
-    ui = ROOT / "ui"
-    force_tauri = "--tauri" in sys.argv[2:] or os.getenv("DANA_GUI_ENGINE", "").lower() == "tauri"
-    use_tauri = force_tauri or (
-        ui.exists()
-        and shutil.which("npm") is not None
-        and shutil.which("cargo") is not None
-        and "--native" not in sys.argv[2:]
-    )
-    if use_tauri:
-        if not shutil.which("npm"):
-            raise RuntimeError("Node.js/npm is required for the Tauri development GUI.")
-        if not ui.exists():
-            raise RuntimeError("Dana GUI sources are not installed.")
-        subprocess.run(["npm", "run", "tauri", "dev"], cwd=ui, check=True)
-        return
-    try:
-        from .gui import main as gui_main
-    except SystemExit:
-        raise
-    except Exception as exc:
-        raise RuntimeError("Dana GUI requires the optional GUI dependencies. Install with: pip install 'dana-mcp-server[gui]'") from exc
+    """Launch the Dana Desktop Control Center via :mod:`dana.gui`."""
+    from .gui import main as gui_main
+
     gui_main()
 
 
 def _native_action(command: str) -> bool:
-    """Handle terminal lifecycle commands without requiring Docker."""
+    """Handle terminal lifecycle commands without requiring Docker.
+
+    Docker is optional; the native Python runtime is the primary terminal
+    execution path on machines where Docker is unavailable.
+    """
     from . import setup
 
     if command == "start":
@@ -250,7 +214,7 @@ def _handle_command(command: str) -> bool:
 
     native_ready = (ROOT / ".env").is_file()
 
-    if command in {"gui", "setup"}:
+    if command in {"gui", "setup", "desktop"}:
         _launch_gui()
         return True
     if command in {"run", "start-all", "up"}:
@@ -306,7 +270,6 @@ def _handle_command(command: str) -> bool:
         return True
     return False
 
-
 def main() -> None:
     _reexec_inside_dana_venv()
     command = sys.argv[1].lower() if len(sys.argv) > 1 else ""
@@ -316,9 +279,6 @@ def main() -> None:
         from .doctor import main as doctor_main
         sys.argv = [sys.argv[0], *sys.argv[2:]]
         doctor_main()
-        return
-    if command in {"gui", "desktop"}:
-        launch_gui()
         return
     if not os.environ.get("DANA_AUTH_TOKEN"):
         console.print("[bold red]Dana is not installed or configured.[/bold red]")

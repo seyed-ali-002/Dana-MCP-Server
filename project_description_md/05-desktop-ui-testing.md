@@ -214,9 +214,9 @@ listener، MCP handshake، Tailscale/Funnel و connection URL.
 
 ## 9. Current baseline test result
 
-آخرین baseline ثبت‌شده در پروژه:
+آخرین baseline ثبت‌شده در پروژه (اجرای مجدد ۲۰۲۶-۱۰-۰۲):
 
-- backend tests: **126 passed, 1 warning**
+- backend tests: **128 passed, 1 warning**
 - UI build: موفق
 - warning شناخته‌شده: deprecation مربوط به استفاده از httpx با Starlette TestClient و پیشنهاد استفاده از httpx2 در آینده
 
