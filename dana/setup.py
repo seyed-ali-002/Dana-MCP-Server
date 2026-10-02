@@ -342,15 +342,23 @@ def update_configuration(values: dict[str, object]) -> dict[str, object]:
 
 
 def _restart_runtime_preserving_funnel() -> dict[str, object]:
+    """Restart only Dana while leaving the existing public Funnel route intact.
+
+    Restarting the runtime is a local operation and must not trigger an
+    administrator authentication dialog just because a Funnel already exists.
+    An explicit Funnel enable/disable action is responsible for privileged
+    Tailscale changes.
+    """
     was_funnel = _funnel_active()
     stop_result = stop_dana()
     if not stop_result.get("ok"):
         return stop_result
     result = start_dana()
-    if result.get("ok") and was_funnel:
-        funnel_result = enable_funnel(settings.port)
-        if not funnel_result.get("ok") and not funnel_result.get("pending"):
-            return funnel_result
+    if result.get("ok") and was_funnel and not _funnel_active():
+        return {
+            "ok": False,
+            "message": "Dana restarted, but the existing Tailscale Funnel route is no longer active.",
+        }
     return result
 
 
@@ -953,27 +961,26 @@ def start_dana() -> dict[str, object]:
         _setup_log("Dana runtime is already running.", "success")
         return {"ok": True, "message": "Dana is already running."}
 
-    # The desktop sidecar is a self-contained PyInstaller runtime. Its extracted
-    # bundle does not contain the source-tree Docker compose file, so Docker must
-    # never be selected merely because Docker happens to be installed.
+    # Native Python is the default runtime for both terminal and Desktop.
+    # Docker is opt-in so a GUI/CLI startup cannot block for Docker readiness
+    # or accidentally switch away from the same runtime used by the terminal.
     root = Path(__file__).resolve().parents[1]
-    docker_started = False
-    try:
-        from . import container
-        if (
-            not getattr(__import__("sys"), "frozen", False)
-            and (root / "docker-compose.yml").is_file()
-            and container.is_available()
-        ):
-            container.start()
-            docker_started = True
-            _setup_log("Dana Docker runtime started; waiting for readiness.")
-            if _wait_for_dana(timeout=30.0):
-                _setup_log("Dana Docker runtime is ready on the local MCP port.", "success")
-                return {"ok": True, "message": "Dana is running."}
-            _setup_log("Docker started but Dana did not become ready; falling back to the native runtime.", "warning")
-    except Exception as exc:
-        _setup_log(f"Docker runtime could not be started; using native runtime: {exc}", "warning")
+    if os.getenv("DANA_RUNTIME_BACKEND", "native").strip().lower() == "docker":
+        try:
+            from . import container
+            if (
+                not getattr(__import__("sys"), "frozen", False)
+                and (root / "docker-compose.yml").is_file()
+                and container.is_available()
+            ):
+                container.start()
+                _setup_log("Dana Docker runtime started; waiting for readiness.")
+                if _wait_for_dana(timeout=30.0):
+                    _setup_log("Dana Docker runtime is ready on the local MCP port.", "success")
+                    return {"ok": True, "message": "Dana is running."}
+                _setup_log("Docker started but Dana did not become ready; falling back to the native runtime.", "warning")
+        except Exception as exc:
+            _setup_log(f"Docker runtime could not be started; using native runtime: {exc}", "warning")
 
     # Generate/preserve the local credential and explicitly pass it to the
     # bundled child. Installed builds cannot rely on a source-tree .env file.
@@ -1018,7 +1025,11 @@ def start_dana() -> dict[str, object]:
     }
 
 def stop_dana() -> dict[str, object]:
-    """Stop Dana and remove the desktop-owned Funnel route."""
+    """Stop only the Dana runtime.
+
+    Funnel is intentionally left untouched. Stopping/restarting the application
+    must not request sudo/pkexec or modify routes owned by the network layer.
+    """
     global _DANA_PROCESS
     stopped = False
 
@@ -1047,17 +1058,8 @@ def stop_dana() -> dict[str, object]:
     except Exception:
         pass
 
-    # Funnel was started with --bg, so it survives independently of Dana.
-    # Remove only the HTTPS 443 route used by Dana.
-    if command_exists("tailscale"):
-        try:
-            funnel_stop = _privileged_run(["tailscale", "funnel", "--https=443", "off"], timeout=15)
-            if funnel_stop.returncode == 0:
-                _setup_log("Dana Tailscale Funnel route stopped.", "success")
-            elif _funnel_active():
-                _setup_log("Dana Funnel is still active after the stop request.", "warning")
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            _setup_log(f"Could not stop Dana Funnel: {exc}", "warning")
+    # Funnel is intentionally not changed when Dana stops.
+    # Use an explicit Funnel administration action when the public route must be changed.
 
     if _dana_running():
         _setup_log("Dana runtime is still listening after stop request.", "error")
