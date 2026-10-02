@@ -204,11 +204,55 @@ def _launch_gui() -> None:
     gui_main()
 
 
+def _native_action(command: str) -> bool:
+    """Handle terminal lifecycle commands without requiring Docker."""
+    from . import setup
+
+    if command == "start":
+        result = setup.start_dana()
+    elif command == "stop":
+        result = setup.stop_dana()
+    elif command == "restart":
+        stop_result = setup.stop_dana()
+        if not stop_result.get("ok"):
+            result = stop_result
+        else:
+            result = setup.start_dana()
+    elif command == "status":
+        status = setup.status().to_dict()
+        console.print_json(data=status)
+        return True
+    elif command == "logs":
+        logs = setup.setup_logs().get("logs", [])
+        for entry in logs:
+            console.print(str(entry))
+        return True
+    elif command == "connect":
+        from .config import settings
+        from .installer import configure_tailscale_local, set_local_public_host
+        token = settings.require_auth_token()
+        host = configure_tailscale_local(token, port=settings.port, funnel_port=443)
+        set_local_public_host(host)
+        console.print(f"[bold green]✓ Secure MCP endpoint:[/bold green] https://{host}/{token}{settings.mcp_path}")
+        return True
+    else:
+        return False
+
+    if not result.get("ok"):
+        console.print(f"[bold red]✗ {result.get('message', 'Dana operation failed.')}[/bold red]")
+        return False
+    console.print(f"[bold green]✓ {result.get('message', 'Dana operation completed.')}[/bold green]")
+    return True
+
+
 def _handle_command(command: str) -> bool:
     from . import container
 
+    native_ready = (ROOT / ".env").is_file()
+
     if command in {"gui", "setup"}:
-        _launch_gui(); return True
+        _launch_gui()
+        return True
     if command in {"run", "start-all", "up"}:
         _full_start()
         return True
@@ -221,23 +265,45 @@ def _handle_command(command: str) -> bool:
             installer_main()
         return True
     if command == "connect":
-        _docker_connect()
+        if native_ready:
+            _native_action("connect")
+        elif container.is_available():
+            _docker_connect()
+        else:
+            raise RuntimeError("Dana is not installed or configured. Run 'dana install' first.")
         return True
-    if command == "start":
-        container.start(); return True
-    if command == "stop":
-        container.stop(); return True
-    if command == "restart":
-        container.restart(); return True
-    if command == "status":
-        container.status(); return True
+    if command in {"start", "stop", "restart", "status", "logs"}:
+        if native_ready:
+            _native_action(command)
+        elif container.is_available():
+            if command == "start":
+                container.start()
+            elif command == "stop":
+                container.stop()
+            elif command == "restart":
+                container.restart()
+            elif command == "status":
+                container.status()
+            else:
+                container.logs(follow="--follow" in sys.argv[2:] or "-f" in sys.argv[2:])
+        else:
+            raise RuntimeError("Dana is not installed or configured. Run 'dana install' first.")
+        return True
     if command == "update":
-        container.update(); return True
-    if command == "logs":
-        container.logs(follow="--follow" in sys.argv[2:] or "-f" in sys.argv[2:]); return True
+        if container.is_available():
+            container.update()
+        else:
+            console.print("[yellow]Docker is unavailable; native Dana does not use Docker for updates.[/yellow]")
+            console.print("[dim]Update the Python package/repository, then restart Dana.[/dim]")
+        return True
     if command == "uninstall":
-        remove_data="--purge" in sys.argv[2:]
-        container.uninstall(remove_data=remove_data); return True
+        remove_data = "--purge" in sys.argv[2:]
+        if container.is_available():
+            container.uninstall(remove_data=remove_data)
+        else:
+            from .installer import uninstall
+            uninstall(remove_data=remove_data)
+        return True
     return False
 
 
