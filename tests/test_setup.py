@@ -170,3 +170,27 @@ def test_tailscale_static_architecture_mapping(monkeypatch):
     assert setup._tailscale_static_arch() == "amd64"
     monkeypatch.setattr(setup.platform, "machine", lambda: "aarch64")
     assert setup._tailscale_static_arch() == "arm64"
+
+
+def test_stop_dana_does_not_touch_funnel_or_request_privilege(monkeypatch):
+    calls = []
+    monkeypatch.setattr(setup, "_DANA_PROCESS", None)
+    monkeypatch.setattr(setup, "_dana_running", lambda: False)
+    monkeypatch.setattr(setup, "_privileged_run", lambda *args, **kwargs: calls.append(args) or (_ for _ in ()).throw(AssertionError("privileged Funnel command must not run")))
+    from dana import container
+    monkeypatch.setattr(container, "is_available", lambda: False)
+    result = setup.stop_dana()
+    assert result["ok"] is True
+    assert calls == []
+
+
+def test_restart_runtime_does_not_reconfigure_existing_funnel(monkeypatch):
+    sequence = iter([True, True])
+    monkeypatch.setattr(setup, "_funnel_active", lambda: next(sequence))
+    calls = {"stop": 0, "start": 0, "enable": 0}
+    monkeypatch.setattr(setup, "stop_dana", lambda: calls.__setitem__("stop", calls["stop"] + 1) or {"ok": True})
+    monkeypatch.setattr(setup, "start_dana", lambda: calls.__setitem__("start", calls["start"] + 1) or {"ok": True})
+    monkeypatch.setattr(setup, "enable_funnel", lambda *_args, **_kwargs: calls.__setitem__("enable", calls["enable"] + 1) or {"ok": True})
+    result = setup._restart_runtime_preserving_funnel()
+    assert result["ok"] is True
+    assert calls == {"stop": 1, "start": 1, "enable": 0}
