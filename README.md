@@ -69,11 +69,12 @@ After installing Dana Desktop, use the panels in this order:
 - Approve and activate Tailscale Funnel when requested.
 
 **Dashboard**
-- View Dana, Tailscale, Funnel, and usage status.
+- View Dana, Tailscale, and Funnel status.
 
 **Connections**
 - Copy the local tokenized MCP URL for software running on the same machine.
 - Copy the public tokenized MCP URL when Funnel is active.
+- Run the live MCP handshake test for each URL.
 
 Local URL format:
 ```text
@@ -87,18 +88,18 @@ https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
 
 **Runtime**
 - Start or stop Dana.
-- Check the local MCP listener and public route.
+- Use **Connections** to verify the local listener and the public route.
 
 **Security**
 - Review authentication and public exposure.
-- Copy tokenized connection URLs when needed.
+- Revoke/replace the token or apply a custom token when needed.
 
 **Logs**
 - Review setup, authentication, Funnel, and runtime events.
 
 After the first installation, the Setup panel uses **Activate Dana** for normal activation instead of asking you to repeat installation.
 
-When Dana Desktop closes, it stops the Dana runtime and the Funnel route owned by the desktop session.
+When Dana Desktop closes, it stops the Dana runtime. The Tailscale Funnel route is intentionally left untouched so other sessions and routes are not disrupted.
 
 ## Method 2 — Terminal / CLI
 
@@ -135,7 +136,7 @@ dana update
 dana uninstall
 ```
 
-`dana run`, `dana up`, and `dana start-all` prepare the runtime and networking flow.
+`dana run`, `dana up`, and `dana start-all` prepare the runtime and networking flow. `dana run`, `dana install`, and `dana connect` use Docker when Docker is available and fall back to the native runtime otherwise; once Dana is installed, the lifecycle commands (`start`, `stop`, `restart`, `status`, `logs`) prefer the native runtime. To force serving through Docker, set `DANA_RUNTIME_BACKEND=docker`.
 
 ### Tailscale Funnel
 
@@ -143,7 +144,7 @@ For Local Mode, Funnel publishes Dana through HTTPS:
 
 ```bash
 tailscale status
-tailscale funnel --https=443 --bg 8765
+tailscale funnel --https=443 --yes --bg 8765
 tailscale funnel status
 ```
 
@@ -224,7 +225,7 @@ Dana also provides MCP tools for inspecting and updating the access policy.
 Keep connection URLs and tokens private. Rotate a token when necessary:
 
 ```bash
-python scripts/regenerate_token.py
+python3 scripts/regenerate_token.py
 ```
 
 ---
@@ -425,7 +426,7 @@ Optional browser support can be installed with:
 
 ```bash
 pip install -e ".[browser]"
-playwright install chromium
+python3 -m playwright install chromium
 ```
 
 ## Database Intelligence

@@ -88,9 +88,9 @@ dana gui
 - پیکربندی Funnel پس از اتصال.
 - اعلام نیاز به تأیید System Extension در صورت درخواست macOS.
 
-Tailscale نسخه Standalone برای macOS را توصیه می‌کند و برای System Extension در macOS جدید ممکن است تأیید صریح کاربر لازم باشد. citeturn2search0turn2search1turn2search7
+Tailscale نسخه Standalone برای macOS را توصیه می‌کند و برای System Extension در macOS جدید ممکن است تأیید صریح کاربر لازم باشد.
 
-Funnel به MagicDNS، HTTPS و مجوز مناسب Tailnet نیاز دارد. اگر Tailscale نیاز به Approval داشته باشد، GUI آن را به‌عنوان یک مرحله تعاملی مدیریت می‌کند و صفحه مرورگر را باز می‌کند. citeturn0search6
+Funnel به MagicDNS، HTTPS و مجوز مناسب Tailnet نیاز دارد. اگر Tailscale نیاز به Approval داشته باشد، GUI آن را به‌عنوان یک مرحله تعاملی مدیریت می‌کند و صفحه مرورگر را باز می‌کند.
 
 ### CLI همچنان فعال است
 
@@ -98,13 +98,13 @@ Funnel به MagicDNS، HTTPS و مجوز مناسب Tailnet نیاز دارد. �
 
 ```bash
 tailscale status
-tailscale funnel --https=443 --bg 8765
+tailscale funnel --https=443 --yes --bg 8765
 tailscale funnel status
 ```
 
-گزینه `--bg` اجرای پایدار Funnel را فراهم می‌کند. citeturn0search0
+گزینه `--bg` اجرای پایدار Funnel را فراهم می‌کند.
 
-**امنیت:** Funnel سرویس را روی اینترنت عمومی قرار می‌دهد. احراز هویت Dana فعال باقی می‌ماند و Endpoint اصلی MCP روی `/mcp` است؛ اطلاعات احراز هویت و Session را عمومی نکنید. citeturn0search6
+**امنیت:** Funnel سرویس را روی اینترنت عمومی قرار می‌دهد. احراز هویت Dana فعال باقی می‌ماند و Endpoint اصلی MCP روی `/mcp` است؛ اطلاعات احراز هویت و Session را عمومی نکنید.
 
 ---
 
@@ -137,7 +137,9 @@ py -3 -m pip install -e .
 dana run
 ```
 
-`dana run` کل فرایند را انجام می‌دهد: تنظیمات را آماده می‌کند، Dana را Build و Start می‌کند، Tailscale Funnel را تنظیم و فعال می‌کند و در پایان Endpoint استاندارد `/mcp` را نمایش می‌دهد. `dana up` و `dana start-all` نیز Alias همین فرایند کامل هستند.
+`dana run` کل فرایند را انجام می‌دهد: تنظیمات را آماده می‌کند، Dana را Build و Start می‌کند، Tailscale Funnel را تنظیم و فعال می‌کند و در پایان Endpoint را نمایش می‌دهد. `dana up` و `dana start-all` نیز Alias همین فرایند کامل هستند.
+
+`dana run`، `dana install` و `dana connect` وقتی Docker در دسترس باشد از Docker استفاده می‌کنند و در غیر این صورت به Runtime بومی (Native) برمی‌گردند؛ اما دستورات روزمره (`start`، `stop`، `restart`، `status`، `logs`) بعد از نصب، Runtime بومی را ترجیح می‌دهند. برای اجبار به Runtime داکری هنگام سرویس‌دهی، `DANA_RUNTIME_BACKEND=docker` را تنظیم کنید.
 
 در یک Clone خام، مرحله نصب پکیج بالا تنها Bootstrap مربوط به Python است؛ Runtime و تنظیمات موردنیاز Dana توسط جریان CLI آماده می‌شوند.
 
@@ -226,13 +228,13 @@ Dana
    └── Intelligence
 ```
 
-Endpoint اتصال استاندارد دانا این است:
+Endpoint اتصال عمومی دانا در Local Mode توکن‌دار است:
 
 ```text
-https://<machine>.<tailnet>.ts.net/mcp
+https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
 ```
 
-توکن دائمی احراز هویت دیگر داخل URL قرار نمی‌گیرد و Clientهای سازگار از OAuth 2.0 + PKCE استفاده می‌کنند.
+این URL توکن‌دار یک credential محسوب می‌شود و نباید منتشر شود. Dana علاوه بر آن هدر استاندارد `Authorization: Bearer <TOKEN>` و discovery سازگار با OAuth 2.0 + PKCE را هم می‌پذیرد.
 
 ### Server Mode
 
@@ -252,13 +254,13 @@ https://mcp.example.com/mcp
 
 Installer می‌تواند Proxy موجود را شناسایی کند، قبل از تغییر Backup بگیرد، تنظیمات را Validate کند و در صورت خطا Rollback انجام دهد.
 
-جریان OAuth و PKCE برای Reconnect Clientهای سازگار نیز مستقل از My_PC توسط خود Dana ارائه می‌شود.
+جریان OAuth و PKCE برای Reconnect Clientهای سازگار نیز مستقل از نام دستگاه توسط خود Dana ارائه می‌شود.
 
 ### امنیت لینک اتصال
 
-لینک اتصال تولیدشده برای ChatGPT همیشه به Endpoint استاندارد `/mcp` اشاره می‌کند و **هرگز توکن دائمی Dana را داخل URL قرار نمی‌دهد**. احراز هویت Clientهای سازگار از طریق **OAuth 2.0 Authorization Code + PKCE** انجام می‌شود. کد مجوز یک‌بارمصرف و کوتاه‌عمر است و PKCE verifier نزد Client آغازکننده باقی می‌ماند؛ بنابراین صرفاً کپی‌کردن لینک مجوز باعث انتقال یک Session احراز‌شده به دستگاه دیگر نمی‌شود.
+در **Local Mode** لینک اتصال توکن‌دار (`/<TOKEN>/mcp`) credential مستقیم اتصال است و فقط باید در Client شخصی وارد شود. احراز هویت Clientهای سازگار می‌تواند از طریق **OAuth 2.0 Authorization Code + PKCE** هم انجام شود. کد مجوز یک‌بارمصرف و کوتاه‌عمر است و PKCE verifier نزد Client آغازکننده باقی می‌ماند؛ بنابراین صرفاً کپی‌کردن لینک مجوز باعث انتقال یک Session احراز‌شده به دستگاه دیگر نمی‌شود.
 
-URL قدیمی `/<token>/mcp` فقط برای سازگاری با اتصال‌های Local قبلی نگه داشته شده و دیگر در لینک Connector یا metadata مربوط به OAuth نمایش داده نمی‌شود.
+در **Server Mode** از Endpoint استاندارد `/mcp` با OAuth استفاده می‌شود و توکن دائمی داخل URL قرار نمی‌گیرد.
 
 بازکردن مستقیم `/mcp` روی دستگاه دیگر باعث احراز هویت آن دستگاه نمی‌شود و فقط Challenge مربوط به OAuth را دریافت می‌کند. تشخیص قطعی «همان دستگاه فیزیکی» از سمت سرور به‌تنهایی ممکن نیست و باید توسط Client یا پلتفرم تأمین شود.
 
@@ -297,11 +299,11 @@ URL دقیق تولیدشده توسط دانا را در Client موردنظر 
 
 ### ChatGPT — ابتدا Developer Mode
 
-برای ساخت Custom MCP App در ChatGPT، در حساب‌ها/Workspaceهایی که این قابلیت را ارائه می‌کنند ابتدا **Developer Mode** را فعال کنید. مسیر فعلی بسته به نوع حساب می‌تواند از **Settings → Apps → Advanced Settings** یا از بخش Workspace Apps باشد. OpenAI اعلام کرده که قابلیت‌های کامل MCP و رابط کاربری در حال توسعه و عرضه مرحله‌ای هستند. citeturn0search0
+برای ساخت Custom MCP App در ChatGPT، در حساب‌ها/Workspaceهایی که این قابلیت را ارائه می‌کنند ابتدا **Developer Mode** را فعال کنید. مسیر فعلی بسته به نوع حساب می‌تواند از **Settings → Apps → Advanced Settings** یا از بخش Workspace Apps باشد. OpenAI اعلام کرده که قابلیت‌های کامل MCP و رابط کاربری در حال توسعه و عرضه مرحله‌ای هستند.
 
 **مرحله ۱ — فعال‌سازی Developer Mode**
 
-وارد **Settings → Security** شوید و **Developer Mode** را فعال کنید، اگر این گزینه در حساب شما در این بخش نمایش داده می‌شود. مسیر دقیق بسته به Plan و Workspace می‌تواند متفاوت باشد؛ OpenAI در مستندات فعلی برای برخی حساب‌ها مسیر **Settings → Apps → Advanced Settings** و برای Workspaceها مسیرهای مدیریتی جداگانه را اعلام کرده است. citeturn0search0
+وارد **Settings → Security** شوید و **Developer Mode** را فعال کنید، اگر این گزینه در حساب شما در این بخش نمایش داده می‌شود. مسیر دقیق بسته به Plan و Workspace می‌تواند متفاوت باشد؛ OpenAI در مستندات فعلی برای برخی حساب‌ها مسیر **Settings → Apps → Advanced Settings** و برای Workspaceها مسیرهای مدیریتی جداگانه را اعلام کرده است.
 
 
 **مرحله ۲ — ساخت MCP App دانا**
@@ -326,7 +328,7 @@ App را ایجاد کنید و سپس در Chat از App/Connector دانا ا�
 
 
 
-> مسیر دقیق و دسترسی به Developer Mode به Plan و سطح دسترسی Workspace بستگی دارد و رابط کاربری ممکن است تغییر کند. citeturn0search0
+> مسیر دقیق و دسترسی به Developer Mode به Plan و سطح دسترسی Workspace بستگی دارد و رابط کاربری ممکن است تغییر کند.
 
 ### نصب Plugin / App
 
@@ -349,13 +351,13 @@ Dana را انتخاب کنید و مراحل اتصال/احراز هویت ر�
 
 Dana را برای گفت‌وگوی فعلی فعال کنید.
 
-**Apps / Plugins → Install plugin → Connect / Authorize → Enable در Chat**. citeturn0search14
+**Apps / Plugins → Install plugin → Connect / Authorize → Enable در Chat**.
 
 برای Custom MCP دانا، اگر Developer Mode در حساب شما فعال است، مسیر **Create custom app** را مبنا قرار دهید.
 
 ### Claude — بدون Developer Mode
 
-Claude برای Remote MCP از **Custom Connector** استفاده می‌کند و به Developer Mode مشابه ChatGPT نیاز ندارد. در حساب‌های شخصی Pro/Max مسیر فعلی **Customize → Connectors → + → Add custom connector** است؛ سپس URL عمومی MCP دانا را وارد و Connect کنید. در Team/Enterprise ممکن است Owner ابتدا Connector را در سطح سازمان اضافه کند. citeturn2search0turn2search4
+Claude برای Remote MCP از **Custom Connector** استفاده می‌کند و به Developer Mode مشابه ChatGPT نیاز ندارد. در حساب‌های شخصی Pro/Max مسیر فعلی **Customize → Connectors → + → Add custom connector** است؛ سپس URL عمومی MCP دانا را وارد و Connect کنید. در Team/Enterprise ممکن است Owner ابتدا Connector را در سطح سازمان اضافه کند.
 
 
 1. وارد **Customize → Connectors** شوید.
@@ -364,11 +366,11 @@ Claude برای Remote MCP از **Custom Connector** استفاده می‌کن�
 4. Connector را Add و در صورت نیاز Authenticate کنید.
 5. در Chat از **+ → Connectors** دانا را فعال کنید.
 
-Claude اتصال Remote MCP را از زیرساخت ابری Anthropic برقرار می‌کند؛ بنابراین Endpoint دانا باید از اینترنت عمومی قابل دسترس باشد. citeturn2search0
+Claude اتصال Remote MCP را از زیرساخت ابری Anthropic برقرار می‌کند؛ بنابراین Endpoint دانا باید از اینترنت عمومی قابل دسترس باشد.
 
 ### Grok — بدون Developer Mode
 
-در Grok نیز برای Custom MCP Connector نیازی به Developer Mode مشابه ChatGPT نیست. مسیر فعلی **grok.com/connectors → New Connector → Custom** است؛ سپس URL سرور MCP دانا را وارد و احراز هویت را تکمیل کنید. citeturn1search0
+در Grok نیز برای Custom MCP Connector نیازی به Developer Mode مشابه ChatGPT نیست. مسیر فعلی **grok.com/connectors → New Connector → Custom** است؛ سپس URL سرور MCP دانا را وارد و احراز هویت را تکمیل کنید.
 
 
 
@@ -378,7 +380,7 @@ Claude اتصال Remote MCP را از زیرساخت ابری Anthropic برق�
 4. در صورت نیاز Authentication را تکمیل کنید.
 5. بررسی کنید ابزارهای دانا Discover شده و در گفتگو قابل استفاده هستند.
 
-مستندات فعلی Grok برای Custom Connector نیاز به Endpoint قابل دسترس از اینترنت عمومی را ذکر می‌کنند؛ Tailscale Funnel در Local Mode این Endpoint عمومی HTTPS را برای دانا فراهم می‌کند. citeturn1search0turn1search1
+مستندات فعلی Grok برای Custom Connector نیاز به Endpoint قابل دسترس از اینترنت عمومی را ذکر می‌کنند؛ Tailscale Funnel در Local Mode این Endpoint عمومی HTTPS را برای دانا فراهم می‌کند.
 
 > نام منوها و دسترسی‌ها ممکن است با تغییر رابط کاربری Clientها تغییر کند؛ در صورت تفاوت، UI فعلی سرویس را ملاک قرار دهید.
 
@@ -406,7 +408,7 @@ config/access_policy.json
 برای تولید Token جدید:
 
 ```bash
-python scripts/regenerate_token.py
+python3 scripts/regenerate_token.py
 ```
 
 ---
