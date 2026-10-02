@@ -8,6 +8,7 @@ import logging
 import os
 import time
 import threading
+import subprocess
 from multiprocessing import current_process
 from pathlib import Path
 from typing import Any
@@ -197,12 +198,40 @@ class WorkerPool:
 
 WORKER_POOL = WorkerPool(settings.normalized_workers())
 
+def _tailscale_dns_name() -> str:
+    configured = os.getenv("DANA_PUBLIC_HOST", "").strip().rstrip(".").lower()
+    if configured:
+        return configured
+    try:
+        result = subprocess.run(
+            ["tailscale", "status", "--json"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=3,
+        )
+        if result.returncode == 0:
+            payload = json.loads(result.stdout or "{}")
+            name = str(payload.get("Self", {}).get("DNSName", "")).strip().rstrip(".").lower()
+            if name:
+                return name
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        pass
+    return ""
+
+
 _allowed_hosts = ["127.0.0.1", "127.0.0.1:*", "localhost", "localhost:*", "::1", "[::1]:*"]
+_tailscale_host = _tailscale_dns_name()
 if settings.public_host:
-    _allowed_hosts.extend([settings.public_host, f"{settings.public_host}:*"])
+    _allowed_hosts.extend([settings.public_host.lower(), f"{settings.public_host.lower()}:*"])
+if _tailscale_host:
+    _allowed_hosts.extend([_tailscale_host, f"{_tailscale_host}:*"])
+_allowed_hosts = list(dict.fromkeys(_allowed_hosts))
 _allowed_origins = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
 if settings.public_host:
-    _allowed_origins.append(f"https://{settings.public_host}")
+    _allowed_origins.append(f"https://{settings.public_host.lower()}")
+if _tailscale_host:
+    _allowed_origins.append(f"https://{_tailscale_host}")
 if settings.allowed_origins:
     _allowed_origins.extend(x.strip() for x in settings.allowed_origins.split(",") if x.strip())
 

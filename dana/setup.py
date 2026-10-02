@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import tarfile
 import time
 import urllib.request
 import webbrowser
@@ -23,6 +24,9 @@ TAILSCALE_DOWNLOAD = "https://tailscale.com/download"
 TAILSCALE_PACKAGES = "https://pkgs.tailscale.com/stable/"
 TAILSCALE_INSTALL_SCRIPT = "https://tailscale.com/install.sh"
 TAILSCALE_INSTALL_SCRIPT_MIRROR = "https://raw.githubusercontent.com/tailscale/tailscale/main/scripts/installer.sh"
+TAILSCALE_STATIC_MIRROR = "https://ts-mirror.xedge.cc/stable/static/"
+TAILSCALE_STATIC_OFFICIAL = "https://pkgs.tailscale.com/stable/"
+TAILSCALE_STATIC_GITHUB = "https://github.com/tailscale/tailscale/releases/download/"
 
 _AUTH_FLOW = {"pending": False, "kind": "", "auth_url": "", "message": ""}
 _AUTH_FLOW_LOCK = __import__("threading").Lock()
@@ -485,21 +489,23 @@ def _funnel_status() -> tuple[bool, str]:
         elif isinstance(allow, bool):
             allow_for_host = allow
 
-        # Tailscale has used multiple JSON schemas for Funnel. The important
-        # runtime signal is a configured Web entry on this machine's HTTPS
-        # listener; the local target may be represented as Proxy, Handler, or
-        # another nested field depending on the CLI version.
-        if web:
-            web_text = json.dumps(web, ensure_ascii=False).lower()
-            https_listener = any(marker in web_text for marker in (":443", "https"))
-            if contains_local_target(web) or (https_listener and (allow_for_host or hostname)):
-                active = True
+        # Dana owns the canonical public HTTPS endpoint on port 443. An old
+        # Funnel on 8443 (or another service on 443) must not make the status look
+        # healthy, otherwise the generated 443 URL can silently return 404.
+        canonical = web.get(f"{hostname}:443") if isinstance(web, dict) and hostname else None
+        if canonical:
+            canonical_text = json.dumps(canonical, ensure_ascii=False).lower()
+            active = contains_local_target(canonical) and (
+                allow_for_host or f"{hostname}:443" in canonical_text or "https" in canonical_text
+            )
         elif allow_for_host and hostname:
-            active = True
+            # Do not infer Dana's health from an unrelated listener.
+            active = False
 
     lowered = raw.lower()
     has_public_marker = "available on the internet" in lowered or "# funnel on:" in lowered
-    if not active and result.returncode == 0 and hostname and has_public_marker and contains_local_target(raw):
+    canonical_raw = raw.split(f"https://{hostname}:8443", 1)[0] if hostname else raw
+    if not active and result.returncode == 0 and hostname and has_public_marker and contains_local_target(canonical_raw):
         active = True
 
     if active:
@@ -510,11 +516,12 @@ def _funnel_status() -> tuple[bool, str]:
         text = (plain.stdout or "") + "\n" + (plain.stderr or "")
         plain_host = _find_funnel_hostname(text) or hostname
         plain_lower = text.lower()
+        canonical_text = text.split(f"https://{plain_host}:8443", 1)[0] if plain_host else text
         plain_active = (
             plain.returncode == 0
             and bool(plain_host)
             and ("available on the internet" in plain_lower or "# funnel on:" in plain_lower)
-            and contains_local_target(text)
+            and contains_local_target(canonical_text)
         )
         return bool(plain_active), plain_host if plain_active else hostname
     except (OSError, subprocess.TimeoutExpired):
@@ -703,6 +710,96 @@ def verify_public_endpoint(host: str, timeout: float = 8.0) -> bool:
         return False
 
 
+def _tailscale_static_arch() -> str:
+    machine = platform.machine().lower()
+    mapping = {
+        "x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64",
+        "armv7l": "arm", "armv6l": "arm", "i386": "386", "i686": "386",
+        "mips": "mips", "mips64": "mips64", "mips64le": "mips64le", "mipsle": "mipsle",
+        "riscv64": "riscv64", "geode": "geode",
+    }
+    try:
+        return mapping[machine]
+    except KeyError as exc:
+        raise RuntimeError(f"Unsupported Linux CPU architecture for Tailscale static binary: {machine}") from exc
+
+
+def _static_tailscale_urls(arch: str) -> list[str]:
+    """Discover the newest official static archive, then provide mirror fallbacks."""
+    names: list[str] = []
+    index_urls = [TAILSCALE_STATIC_OFFICIAL, TAILSCALE_STATIC_MIRROR]
+    configured = os.getenv("DANA_TAILSCALE_MIRROR", "").strip().rstrip("/")
+    if configured:
+        index_urls.insert(0, configured + "/stable/static/")
+    for index_url in index_urls:
+        try:
+            request = urllib.request.Request(index_url, headers={"User-Agent": "Dana-Setup/1"})
+            with urllib.request.urlopen(request, timeout=15) as response:
+                html = response.read().decode("utf-8", "replace")
+            matches = re.findall(r"tailscale_(\d+(?:\.\d+)+)_" + re.escape(arch) + r"\.tgz", html)
+            if matches:
+                versions = sorted(set(matches), key=lambda v: tuple(int(x) for x in v.split(".")), reverse=True)
+                version = versions[0]
+                filename = f"tailscale_{version}_{arch}.tgz"
+                base = index_url.rstrip("/") + "/"
+                names.append(base + filename)
+                names.append(TAILSCALE_STATIC_GITHUB + f"v{version}/" + filename)
+                break
+        except (OSError, urllib.error.URLError, urllib.error.HTTPError, ValueError):
+            continue
+    return list(dict.fromkeys(names))
+
+
+def _install_tailscale_static() -> dict[str, object]:
+    arch = _tailscale_static_arch()
+    urls = _static_tailscale_urls(arch)
+    if not urls:
+        raise RuntimeError("Could not discover a Tailscale static binary from the official package index or configured mirror.")
+    target = Path(tempfile.gettempdir()) / f"tailscale-{arch}.tgz"
+    last_error: Exception | None = None
+    for url in urls:
+        try:
+            _setup_log(f"Trying Tailscale static binary source: {url}")
+            _download_file(url, target, f"Tailscale static binary ({arch})")
+            break
+        except Exception as exc:
+            last_error = exc
+            _setup_log(f"Static binary source failed: {exc}", "warning")
+    else:
+        raise RuntimeError(f"All Tailscale static binary sources failed: {last_error}")
+
+    extract_dir = Path(tempfile.mkdtemp(prefix="dana-tailscale-"))
+    try:
+        with tarfile.open(target, "r:gz") as archive:
+            archive.extractall(extract_dir, filter="data")
+        tailscale_bin = next(extract_dir.rglob("tailscale"), None)
+        tailscaled_bin = next(extract_dir.rglob("tailscaled"), None)
+        service = next(extract_dir.rglob("tailscaled.service"), None)
+        if not tailscale_bin or not tailscaled_bin:
+            raise RuntimeError("Tailscale static archive does not contain tailscale and tailscaled binaries.")
+        result = _privileged_run(["install", "-Dm755", str(tailscale_bin), "/usr/bin/tailscale"], timeout=60)
+        if result.returncode != 0:
+            raise RuntimeError((result.stderr or result.stdout or "Could not install /usr/bin/tailscale").strip())
+        result = _privileged_run(["install", "-Dm755", str(tailscaled_bin), "/usr/sbin/tailscaled"], timeout=60)
+        if result.returncode != 0:
+            raise RuntimeError((result.stderr or result.stdout or "Could not install /usr/sbin/tailscaled").strip())
+        if service and command_exists("systemctl"):
+            result = _privileged_run(["install", "-Dm644", str(service), "/usr/lib/systemd/system/tailscaled.service"], timeout=60)
+            if result.returncode == 0:
+                _privileged_run(["systemctl", "daemon-reload"], timeout=30)
+                _privileged_run(["systemctl", "enable", "--now", "tailscaled"], timeout=45)
+        if not command_exists("tailscale"):
+            raise RuntimeError("Static Tailscale installation completed without a usable tailscale command.")
+        _setup_log(f"Tailscale static binary installed successfully ({arch}).", "success")
+        return {"ok": True, "installed": True, "message": f"Tailscale installed from static binary ({arch})."}
+    finally:
+        shutil.rmtree(extract_dir, ignore_errors=True)
+        try:
+            target.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def install_tailscale() -> dict[str, object]:
     _setup_log("Starting Tailscale installation.")
     if command_exists("tailscale"):
@@ -718,14 +815,30 @@ def install_tailscale() -> dict[str, object]:
             _setup_log("Launching the privileged Tailscale installer; administrator authentication may be requested.")
             result = _privileged_run(["sh", str(target)], timeout=240)
             output = (result.stderr or result.stdout or "").strip()
-            if result.returncode != 0:
-                _setup_log("Tailscale installation failed: " + (output or f"installer exited with code {result.returncode}"), "error")
-                return {"ok": False, "message": output or f"Installer exited with code {result.returncode}"}
-            installed = command_exists("tailscale")
-            _setup_log("Tailscale installation finished.", "success" if installed else "error")
-            return {"ok": installed, "message": "Tailscale installation finished." if installed else "Tailscale was not found after installation."}
+            if result.returncode == 0 and command_exists("tailscale"):
+                _setup_log("Tailscale installer completed successfully.", "success")
+                return {"ok": True, "installed": True, "message": "Tailscale installation finished."}
+            _setup_log(
+                "Official Tailscale installer failed; switching to the static binary fallback"
+                + (f": {output}" if output else "."),
+                "warning",
+            )
+            try:
+                return _install_tailscale_static()
+            except Exception as static_exc:
+                details = output or f"installer exited with code {result.returncode}"
+                _setup_log(f"Tailscale static fallback failed: {static_exc}", "error")
+                return {
+                    "ok": False,
+                    "message": f"Installer failed: {details}; static fallback failed: {static_exc}",
+                    "url": TAILSCALE_DOWNLOAD,
+                }
         except Exception as exc:
-            return {"ok": False, "message": str(exc), "url": TAILSCALE_DOWNLOAD}
+            _setup_log(f"Official Tailscale installer could not run: {exc}; trying static fallback.", "warning")
+            try:
+                return _install_tailscale_static()
+            except Exception as static_exc:
+                return {"ok": False, "message": f"{exc}; static fallback failed: {static_exc}", "url": TAILSCALE_DOWNLOAD}
     if system == "windows": return _install_windows()
     if system == "darwin": return _install_macos()
     return {"ok": False, "action_required": "manual_install", "message": f"Unsupported OS: {system}", "url": TAILSCALE_DOWNLOAD}

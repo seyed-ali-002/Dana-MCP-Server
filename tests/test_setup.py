@@ -147,3 +147,26 @@ def test_tailscale_download_falls_back_after_403(monkeypatch, tmp_path):
     assert target.read_bytes() == b"test"
     assert len(calls) == 2
     assert "githubusercontent.com" in calls[1]
+
+
+
+def test_tailscale_static_urls_use_newest_architecture_and_mirror(monkeypatch):
+    html = '''
+      <a href="tailscale_1.101.0_amd64.tgz">old</a>
+      <a href="tailscale_1.102.4_amd64.tgz">new</a>
+    '''
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self): return html.encode()
+    monkeypatch.setattr(setup.urllib.request, "urlopen", lambda *args, **kwargs: Response())
+    urls = setup._static_tailscale_urls("amd64")
+    assert urls[0].endswith("tailscale_1.102.4_amd64.tgz")
+    assert "github.com/tailscale/tailscale/releases/download/v1.102.4/" in urls[1]
+
+
+def test_tailscale_static_architecture_mapping(monkeypatch):
+    monkeypatch.setattr(setup.platform, "machine", lambda: "x86_64")
+    assert setup._tailscale_static_arch() == "amd64"
+    monkeypatch.setattr(setup.platform, "machine", lambda: "aarch64")
+    assert setup._tailscale_static_arch() == "arm64"
