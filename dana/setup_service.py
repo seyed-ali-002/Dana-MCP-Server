@@ -31,6 +31,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(setup.token_usage()); return
         if urlparse(self.path).path == "/api/setup/logs":
             self._send(setup.setup_logs()); return
+        if urlparse(self.path).path == "/api/setup/activity":
+            self._send(setup.runtime_activity()); return
         if urlparse(self.path).path == "/api/setup/download":
             self._send(setup.download_status()); return
         if urlparse(self.path).path == "/api/setup/config":

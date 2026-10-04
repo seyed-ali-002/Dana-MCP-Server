@@ -288,7 +288,45 @@ def _setup_log(message: str, level: str = "info") -> None:
 
 
 def setup_logs() -> dict[str, object]:
-    return {"logs": list(_SETUP_LOGS)}
+    logs = list(_SETUP_LOGS)
+    errors = [entry for entry in logs if entry.get("level") in {"error", "warning"}]
+    return {"logs": logs, "errors": errors}
+
+def runtime_activity(limit: int = 80) -> dict[str, object]:
+    """Recent Dana tool executions (same stream as the terminal activity log)."""
+    import time
+    from .reporting import REPORT_JSON
+
+    limit = max(1, min(int(limit or 80), 200))
+    events: list[dict[str, object]] = []
+    try:
+        payload = json.loads(REPORT_JSON.read_text(encoding="utf-8"))
+        raw = list(payload.get("events") or [])
+        for event in raw[-limit:]:
+            ts = float(event.get("time") or 0)
+            stamp = time.strftime("%H:%M:%S", time.localtime(ts)) if ts else "--:--:--"
+            events.append({
+                "time": stamp,
+                "tool": str(event.get("tool") or "unknown"),
+                "worker": str(event.get("worker") or ""),
+                "number": int(event.get("number") or 0),
+                "duration_ms": float(event.get("duration") or 0),
+                "input": int(event.get("input") or 0),
+                "output": int(event.get("output") or 0),
+                "success": bool(event.get("success")),
+                "source": str(event.get("source") or "estimate"),
+            })
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        events = []
+
+    # Newest first for the UI.
+    events.reverse()
+    return {
+        "events": events,
+        "count": len(events),
+        "report_path": str(REPORT_JSON),
+    }
+
 
 
 # Desktop-control configuration is intentionally limited to known Dana settings.
