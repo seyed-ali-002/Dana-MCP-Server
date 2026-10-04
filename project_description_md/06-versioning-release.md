@@ -179,3 +179,17 @@ Repository در زمان تهیه این مستندات دارای tagهای bui
 - [ ] GitHub Release ساخته شده
 - [ ] assetها درست هستند
 - [ ] release URL کار می‌کند
+
+
+## 9. Automated desktop releases
+
+GitHub Actions workflow `.github/workflows/gui-build.yml` runs on every push to `main` and on `workflow_dispatch`.
+
+On success it:
+
+1. computes the next SemVer tag (`vMAJOR.MINOR.PATCH`) for the current minor line
+2. builds Linux / Windows / macOS desktop packages
+3. publishes a GitHub Release with those assets
+4. aligns version metadata files with the published tag when needed
+
+Failed builds do not publish a release.

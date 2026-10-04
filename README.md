@@ -1,51 +1,41 @@
 # Dana MCP Server
 
-Turn AI chatbots into agents that can work with your computer, files, code, and tools through MCP.
+Turn AI chatbots into powerful agents that can work with your computer, code, files, and tools through MCP.
 
-🇮🇷 [Persian guide](README_FA.md) · 🇬🇧 This page
-
----
-
-## What Dana does
-
-Dana runs on **your** machine. Compatible clients (ChatGPT, Claude, Grok, …) connect over MCP and can:
-
-- read and edit files and projects
-- run commands, tests, and builds
-- use Git, Docker, browsers, and more
-
-You stay in control. The core server is free and self-hosted.
+🇮🇷 **Persian:** [README_FA.md](README_FA.md) · 🇬🇧 **English:** this page
 
 ---
 
-## Quick start (Desktop — recommended)
+## What is Dana?
 
-1. Download the latest **Dana Desktop** build for your OS from  
+Dana is a self-hosted Python MCP server. Compatible clients (ChatGPT, Claude, Grok, and others) connect to it and can act on the machine where Dana runs — files, shell, Git, Docker, browsers, and more.
+
+You keep control of the host. The core project is free and open source.
+
+---
+
+## 1. Desktop (recommended)
+
+1. Download the latest build for Windows, Linux, or macOS from  
    [GitHub Releases](https://github.com/seyed-ali-002/Dana-MCP-Server/releases/latest).
-2. Open the app and go to **Setup**.
+2. Open **Dana** → **Setup**.
 3. Click **Install & Activate** (or **Activate Dana** if Tailscale is already installed).
 
-Dana will:
+Dana will install/connect Tailscale when needed, ask the OS for admin rights if required (password is never stored), show login/Funnel links in the app, start the local MCP server, and enable Funnel after you confirm.
 
-1. Download and install **Tailscale** if needed (with automatic mirrors if a host is blocked).
-2. Ask the OS for admin rights when required (UAC on Windows, password dialog on Linux/macOS).  
-   Dana never stores your password.
-3. Show a **login / Funnel approval link** in the app — copy it or open it in the browser.
-4. Start the local MCP server and enable Tailscale Funnel when you confirm.
+Desktop packages are rebuilt automatically on every successful push to `main`.
+
+![Dana Control Center](docs/images/dana-browser.png)
 
 ![Setup](docs/images/dana-desktop-setup.svg)
 
-![Download progress](docs/images/dana-download-progress.svg)
+### Panels
 
-![Login link](docs/images/dana-auth-link.svg)
-
-### Three panels
-
-| Panel | Use it for |
+| Panel | Purpose |
 |---|---|
-| **Setup** | Install Tailscale, log in, start Dana, enable Funnel |
-| **Control** | Start/stop, copy MCP URLs, token, optional advanced settings |
-| **Logs** | Setup/errors on the left · tool activity on the right |
+| **Setup** | Install Tailscale, sign in, start Dana, enable Funnel |
+| **Control** | Start/stop, copy MCP URLs, token, advanced settings |
+| **Logs** | Setup/errors · live tool activity |
 
 ### MCP URLs
 
@@ -55,60 +45,167 @@ Local:
 http://127.0.0.1:8765/<TOKEN>/mcp
 ```
 
-Public (after Funnel):
+Public (Funnel):
 
 ```text
 https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
 ```
 
-Paste the URL into your MCP client. Use **Test connection** in Control to verify.
+Treat tokenized URLs as secrets. Use **Test connection** in Control to verify.
 
-### Admin password
+### Admin rights
 
-Installing Tailscale or enabling Funnel may require administrator rights:
-
-- **Windows** — approve the UAC prompt
-- **Linux** — polkit (`pkexec`) dialog or `sudo` in a terminal
+- **Windows** — UAC prompt
+- **Linux** — polkit (`pkexec`) or `sudo`
 - **macOS** — system password dialog
 
-If automatic download fails (for example HTTP 403), use **Open Tailscale download**, install manually, then **Continue after install**.
+If download fails (for example HTTP 403), open the manual Tailscale download page, install, then **Continue after install**.
 
 ---
 
-## Terminal install (optional)
+## 2. Terminal / CLI
+
+Use this path on servers, headless hosts, or when you prefer the shell.
+
+### Install the package
 
 ```bash
 git clone https://github.com/seyed-ali-002/Dana-MCP-Server.git
 cd Dana-MCP-Server
 python3 -m pip install -e .
-dana gui
 ```
 
-Or run the server only:
+Windows:
+
+```powershell
+py -3 -m pip install -e .
+```
+
+### One-shot setup and run
+
+```bash
+dana run
+```
+
+`dana run` (aliases: `dana up`, `dana start-all`) prepares config, starts the runtime, configures Tailscale Funnel when possible, and prints the endpoint.
+
+When Docker is available, `dana run` / `dana install` / `dana connect` prefer Docker and fall back to the native runtime otherwise. Day-to-day lifecycle commands prefer the native runtime after install. Force Docker with:
+
+```bash
+export DANA_RUNTIME_BACKEND=docker
+```
+
+### Everyday commands
+
+```bash
+dana start
+dana stop
+dana restart
+dana status
+dana logs
+dana update
+dana uninstall
+dana gui          # open Control Center when available
+```
+
+Step-by-step Docker flow:
+
+```bash
+dana install      # build/start runtime + local Funnel setup
+dana connect      # refresh public endpoint when runtime already exists
+```
+
+### Native installer (no Docker)
+
+Linux / macOS:
+
+```bash
+python3 install.py
+```
+
+Windows:
+
+```powershell
+py -3 install.py
+```
+
+The installer creates/updates a virtualenv, installs dependencies, chooses Local or Server mode, workers, and authentication.
+
+### Run the server only
 
 ```bash
 python3 -m dana.main
+# or
+dana run
 ```
 
-Default local endpoint: `http://127.0.0.1:8765/mcp` (token path is recommended).
+Default listen address: `127.0.0.1:8765`.
+
+### Tailscale Funnel (CLI)
+
+```bash
+tailscale status
+tailscale funnel --https=443 --yes --bg 8765
+tailscale funnel status
+```
+
+Show the full tokenized URL in a trusted terminal:
+
+```bash
+dana doctor --show-url
+```
 
 ---
 
-## Connect a client
+## 3. Deployment modes
 
-1. Complete Setup until Funnel is active (or use the local URL on the same machine).
-2. Copy the tokenized MCP URL from **Control → Endpoints**.
-3. Add it as a custom MCP server in ChatGPT / Claude / Grok / other compatible clients.
+### Local Mode
 
-More architecture detail: [project_description_md/](project_description_md/).
+Personal machine. Dana listens on localhost; Tailscale Funnel provides HTTPS:
+
+```text
+AI client → Tailscale Funnel → Dana → your computer
+```
+
+### Server Mode
+
+VPS / dedicated host behind Nginx, Caddy, or Apache:
+
+```text
+Internet → reverse proxy → 127.0.0.1:<port> → Dana
+```
+
+Server Mode typically uses the canonical `/mcp` path with OAuth 2.0 + PKCE. Local Mode commonly uses the tokenized URL.
 
 ---
 
-## Safety notes
+## 4. Connect a client
 
-- The auth token protects the MCP endpoint. Treat it like a password.
-- Funnel exposes Dana on the public HTTPS URL for your tailnet machine — only enable it if you intend that.
-- Closing the desktop app stops the Dana runtime; Funnel routes are left as-is.
+1. Finish Desktop Setup or CLI `dana run` until you have a working URL.
+2. Copy the tokenized MCP URL (Desktop **Control**, or CLI/`dana doctor --show-url`).
+3. Add it as a custom MCP / connector in ChatGPT, Claude, Grok, or another compatible client.
+
+Do not publish tokenized URLs in screenshots, issues, or public logs.
+
+---
+
+## 5. Security
+
+- OS permissions apply to everything Dana can do on the host.
+- Restrict filesystem scope in `config/access_policy.json` or via MCP policy tools.
+- Rotate the token when needed (Desktop **Control**, or `python3 scripts/regenerate_token.py`).
+- Funnel publishes an HTTPS endpoint for your machine — enable it only when intentional.
+- Closing the desktop app stops the Dana runtime; Funnel routes are left unchanged on purpose.
+
+---
+
+## 6. Architecture notes
+
+- **Progressive tool discovery** keeps the initial MCP tool list small; full capabilities are found via `dana_search_tools` / `dana_call_tool`.
+- Multiple workers (`DANA_WORKERS`) support concurrent clients.
+- Details: [project_description_md/](project_description_md/).
+
+![Architecture](docs/images/dana-architecture.svg)
 
 ---
 

@@ -2,46 +2,35 @@
 
 چت‌بات‌های هوش مصنوعی را به Agentهایی تبدیل کنید که روی **کامپیوتر خودتان** با فایل، کد و ابزارها کار می‌کنند.
 
-🇬🇧 [English](README.md) · 🇮🇷 این صفحه
+🇬🇧 **English:** [README.md](README.md) · 🇮🇷 **فارسی:** این صفحه
 
 ---
 
-## دانا چه می‌کند؟
+## دانا چیست؟
 
-دانا روی سیستم شما اجرا می‌شود. Clientهای سازگار (ChatGPT، Claude، Grok و …) از طریق MCP وصل می‌شوند و می‌توانند فایل بخوانند/بنویسند، دستور اجرا کنند، Git و ابزارهای دیگر را به‌کار بگیرند.
-
-هسته پروژه رایگان و self-hosted است؛ کنترل زیرساخت با شماست.
+دانا یک MCP Server خودمیزبان (self-hosted) است. Clientهای سازگار (ChatGPT، Claude، Grok و …) به آن وصل می‌شوند و می‌توانند روی همان ماشینی که دانا اجرا می‌شود کار واقعی انجام دهند.
 
 ---
 
-## شروع سریع (دسکتاپ — پیشنهادی)
+## ۱. دسکتاپ (پیشنهادی)
 
-1. آخرین نسخه **Dana Desktop** را از  
-   [GitHub Releases](https://github.com/seyed-ali-002/Dana-MCP-Server/releases/latest) برای سیستم‌عامل خود دانلود کنید.
-2. برنامه را باز کنید و به **Setup** بروید.
-3. **Install & Activate** (یا اگر Tailscale نصب است **Activate Dana**) را بزنید.
+1. آخرین بیلد را از [GitHub Releases](https://github.com/seyed-ali-002/Dana-MCP-Server/releases/latest) دانلود کنید.
+2. **Dana** را باز کنید → **Setup**.
+3. **Install & Activate** (یا **Activate Dana**) را بزنید.
 
-دانا این کارها را انجام می‌دهد:
+دانا در صورت نیاز Tailscale را نصب/وصل می‌کند، برای دسترسی ادمین از سیستم می‌پرسد (رمز ذخیره نمی‌شود)، لینک ورود/تأیید Funnel را نشان می‌دهد، سرور MCP را روشن می‌کند و پس از تأیید شما Funnel را فعال می‌کند.
 
-1. در صورت نیاز **Tailscale** را دانلود و نصب می‌کند (اگر یک منبع خطا بدهد، mirror دیگر را امتحان می‌کند).
-2. وقتی لازم باشد از سیستم **دسترسی ادمین** می‌خواهد (UAC ویندوز، پنجره رمز لینوکس/مک).  
-   دانا رمز را ذخیره نمی‌کند.
-3. **لینک ورود Tailscale یا تأیید Funnel** را در همان پنجره نشان می‌دهد — کپی کنید یا در مرورگر باز کنید.
-4. سرور MCP محلی را روشن می‌کند و در صورت تأیید شما Funnel را فعال می‌کند.
+بسته‌های دسکتاپ بعد از هر push موفق به `main` به‌صورت خودکار ساخته می‌شوند.
 
-![Setup](docs/images/dana-desktop-setup.svg)
+![Dana Control Center](docs/images/dana-browser.png)
 
-![دانلود](docs/images/dana-download-progress.svg)
+### پنل‌ها
 
-![لینک ورود](docs/images/dana-auth-link.svg)
-
-### سه بخش برنامه
-
-| بخش | کاربرد |
+| پنل | کاربرد |
 |---|---|
 | **Setup** | نصب Tailscale، ورود، روشن کردن دانا، Funnel |
-| **Control** | Start/Stop، کپی URL، توکن، تنظیمات پیشرفته اختیاری |
-| **Logs** | سمت چپ: نصب و خطاها · سمت راست: فعالیت ابزارهای دانا |
+| **Control** | Start/Stop، کپی URL، توکن، تنظیمات پیشرفته |
+| **Logs** | خطاها و نصب · فعالیت ابزارها |
 
 ### آدرس MCP
 
@@ -51,58 +40,108 @@
 http://127.0.0.1:8765/<TOKEN>/mcp
 ```
 
-عمومی (بعد از Funnel):
+عمومی (Funnel):
 
 ```text
 https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
 ```
 
-این آدرس را در Client خود وارد کنید. در Control می‌توانید **Test connection** بزنید.
-
-### رمز ادمین
-
-نصب Tailscale یا Funnel ممکن است به دسترسی مدیر نیاز داشته باشد:
-
-- **ویندوز** — تأیید UAC
-- **لینوکس** — پنجره polkit یا `sudo`
-- **مک** — پنجره رمز سیستم
-
-اگر دانلود خودکار شکست خورد، **Open Tailscale download** را بزنید، دستی نصب کنید، بعد **Continue after install**.
+URL توکن‌دار را مثل رمز نگه دارید.
 
 ---
 
-## نصب از ترمینال (اختیاری)
+## ۲. ترمینال / CLI
+
+### نصب پکیج
 
 ```bash
 git clone https://github.com/seyed-ali-002/Dana-MCP-Server.git
 cd Dana-MCP-Server
 python3 -m pip install -e .
+```
+
+ویندوز:
+
+```powershell
+py -3 -m pip install -e .
+```
+
+### اجرای کامل
+
+```bash
+dana run
+```
+
+معادل‌ها: `dana up`، `dana start-all`. اگر Docker در دسترس باشد ترجیح داده می‌شود و در غیر این صورت Runtime بومی استفاده می‌شود. اجبار به Docker:
+
+```bash
+export DANA_RUNTIME_BACKEND=docker
+```
+
+### دستورات روزمره
+
+```bash
+dana start
+dana stop
+dana restart
+dana status
+dana logs
+dana update
+dana uninstall
 dana gui
 ```
 
-فقط سرور:
+گام‌به‌گام Docker:
+
+```bash
+dana install
+dana connect
+```
+
+### نصب Native (بدون Docker)
+
+```bash
+python3 install.py          # Linux / macOS
+py -3 install.py            # Windows
+```
+
+### فقط سرور
 
 ```bash
 python3 -m dana.main
 ```
 
+### Funnel از CLI
+
+```bash
+tailscale status
+tailscale funnel --https=443 --yes --bg 8765
+tailscale funnel status
+dana doctor --show-url
+```
+
 ---
 
-## اتصال Client
+## ۳. حالت‌های استقرار
 
-1. Setup را تا فعال شدن Funnel (یا فقط URL محلی) تمام کنید.
-2. از **Control → Endpoints** آدرس را کپی کنید.
-3. در ChatGPT / Claude / Grok به‌عنوان MCP server اضافه کنید.
-
-جزئیات بیشتر: [project_description_md/](project_description_md/).
+**Local Mode** — کامپیوتر شخصی + Tailscale Funnel  
+**Server Mode** — سرور پشت Nginx / Caddy / Apache روی مسیر `/mcp`
 
 ---
 
-## نکات امنیتی
+## ۴. اتصال Client
 
-- توکن احراز هویت مثل رمز عبور است.
-- Funnel دانا را روی HTTPS عمومی ماشین tailnet شما منتشر می‌کند؛ فقط اگر لازم است فعال کنید.
-- بستن برنامه دسکتاپ runtime دانا را متوقف می‌کند؛ مسیر Funnel عمداً دست نخورده می‌ماند.
+1. Setup دسکتاپ یا `dana run` را تمام کنید.
+2. URL را از **Control** یا `dana doctor --show-url` کپی کنید.
+3. در ChatGPT / Claude / Grok به‌عنوان MCP اضافه کنید.
+
+---
+
+## ۵. امنیت
+
+- محدودیت مسیر فایل: `config/access_policy.json`
+- چرخش توکن از Control یا `python3 scripts/regenerate_token.py`
+- Funnel را فقط در صورت نیاز فعال کنید
 
 ---
 

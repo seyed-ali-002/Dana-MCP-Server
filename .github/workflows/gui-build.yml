@@ -13,7 +13,55 @@ permissions:
   contents: write
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+      tag: ${{ steps.next.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Determine next SemVer release
+        id: next
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force origin
+
+          # Base version from pyproject.toml (MAJOR.MINOR kept; PATCH advances per successful release).
+          base="$(grep -E '^version = ' pyproject.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
+          if ! [[ "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version in pyproject.toml: ${base}" >&2
+            exit 1
+          fi
+          major="${base%%.*}"
+          rest="${base#*.}"
+          minor="${rest%%.*}"
+
+          latest_patch="$(git tag --list "v${major}.${minor}.*" | sed -nE "s/^v${major}\\.${minor}\\.([0-9]+)$/\1/p" | sort -n | tail -1 || true)"
+          if [[ -z "${latest_patch}" ]]; then
+            # First release for this minor: use pyproject patch as-is if tag missing, else start at that value.
+            next_patch="${base##*.}"
+            # If that exact tag already exists (re-run), increment.
+            if git rev-parse "v${major}.${minor}.${next_patch}" >/dev/null 2>&1; then
+              next_patch=$((next_patch + 1))
+            fi
+          else
+            next_patch=$((latest_patch + 1))
+          fi
+
+          version="${major}.${minor}.${next_patch}"
+          tag="v${version}"
+          echo "Base from pyproject: ${base}"
+          echo "Next release version: ${version}"
+          echo "Next release tag: ${tag}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -24,13 +72,22 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v5
+
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
       - uses: actions/setup-node@v5
         with:
           node-version: lts/*
+
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Apply release version to project metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash ./packaging/set_version.sh "${{ needs.version.outputs.version }}"
 
       - name: Install Linux dependencies
         if: startsWith(matrix.platform, 'ubuntu')
@@ -53,9 +110,6 @@ jobs:
         shell: bash
         run: bash ./packaging/build_macos.sh
 
-      # Only publish actual distributable installers/packages. Do not upload the
-      # entire Tauri bundle tree because it contains duplicate internal files
-      # such as ui.png/AppRun and those cannot coexist as GitHub Release assets.
       - name: Prepare Linux release assets
         if: startsWith(matrix.platform, 'ubuntu')
         shell: bash
@@ -112,7 +166,7 @@ jobs:
 
   release:
     if: needs.build.result == 'success'
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -121,6 +175,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download desktop release assets
         uses: actions/download-artifact@v8
@@ -136,28 +191,11 @@ jobs:
           find release -maxdepth 1 -type f -print
           test -n "$(find release -maxdepth 1 -type f -print -quit)"
 
-      - name: Determine SemVer release tag
-        id: release_tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch --tags --force origin
-          # Single source of truth for the release version is pyproject.toml.
-          # Releases are always published as vX.Y.Z (Semantic Versioning).
-          version="$(grep -E '^version = ' pyproject.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')"
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Invalid SemVer version in pyproject.toml: '${version}'" >&2
-            exit 1
-          fi
-          tag="v${version}"
-          echo "Project version: ${version}"
-          echo "Release tag: ${tag}"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub Release with detailed notes
+      - name: Apply version and publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
           REPOSITORY: ${{ github.repository }}
           TARGET_SHA: ${{ github.sha }}
         shell: bash
@@ -168,6 +206,8 @@ jobs:
             echo "No release assets found." >&2
             exit 1
           fi
+
+          bash ./packaging/set_version.sh "${RELEASE_VERSION}"
 
           previous_tag="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -Fxv "${RELEASE_TAG}" | sort -V | tail -1 || true)"
           notes_file="$(mktemp)"
@@ -188,7 +228,8 @@ jobs:
             echo
             echo "## Notes"
             echo
-            echo "- Releases follow Semantic Versioning (vX.Y.Z) based on the version in pyproject.toml."
+            echo "- Desktop packages are built automatically on every successful push to main."
+            echo "- Version numbers follow Semantic Versioning (vX.Y.Z)."
             if [[ -n "$previous_tag" ]]; then
               echo
               echo "**Full Changelog**: https://github.com/${REPOSITORY}/compare/${previous_tag}...${RELEASE_TAG}"
@@ -205,4 +246,22 @@ jobs:
               --title "Dana ${RELEASE_TAG}" \
               --notes-file "$notes_file"
           fi
+
+          # Keep repository version metadata aligned with the published release.
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add pyproject.toml dana/__init__.py ui/package.json ui/src-tauri/tauri.conf.json ui/src-tauri/Cargo.toml || true
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: release ${RELEASE_TAG} [skip ci]"
+              git push origin HEAD:main || true
+            fi
+          fi
+
+          # Ensure the annotated SemVer tag points at this release commit when possible.
+          if ! git rev-parse "${RELEASE_TAG}" >/dev/null 2>&1; then
+            git tag -a "${RELEASE_TAG}" -m "Dana ${RELEASE_TAG}" "${TARGET_SHA}" || true
+            git push origin "${RELEASE_TAG}" || true
+          fi
+
           rm -f "$notes_file"
