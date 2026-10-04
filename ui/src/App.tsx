@@ -95,10 +95,23 @@ async function resolveSetupPort(): Promise<number> {
 }
 
 async function openExternal(url: string) {
+  if (!url) return;
   try {
     await openUrl(url);
+    return;
   } catch {
-    window.open(url, "_blank", "noopener,noreferrer");
+    /* fall through */
+  }
+  try {
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (opened) return;
+  } catch {
+    /* fall through */
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch {
+    /* ignore */
   }
 }
 
@@ -125,6 +138,9 @@ function App() {
   const [bootFailed, setBootFailed] = useState(false);
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [errorLogs, setErrorLogs] = useState<SetupLog[]>([]);
+  const [pendingInstall, setPendingInstall] = useState(false);
+  const [manualUrl, setManualUrl] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const progress = useMemo(() => {
     if (!status) return 8;
@@ -255,6 +271,8 @@ function App() {
       const r = await fetch(API(port, path), { method: "POST" });
       const x = await r.json();
       pending = !!x.pending;
+      if (x.action_required === "finish_installer") setPendingInstall(true);
+      if (typeof x.url === "string" && x.url) setManualUrl(x.url);
       if (!r.ok || (x.ok === false && !x.pending))
         throw Error(x.message || x.error || "Action failed");
       completed = x.ok === true;
@@ -275,6 +293,7 @@ function App() {
       setBusy(false);
       await refresh();
       pollDownload();
+      if (completed && !pending) setPendingInstall(false);
       if (autoContinue && completed && !pending) setTimeout(() => setup(), 150);
     }
   }
@@ -536,6 +555,40 @@ function App() {
                         ? "Activate Dana"
                         : "Install & Activate"}
                 </button>
+                {pendingInstall && (
+                  <div className="pending-banner">
+                    <p>
+                      Finish the Tailscale installer window, then continue here.
+                      The OS may ask for an administrator password (UAC / sudo / macOS prompt).
+                    </p>
+                    <button
+                      className="primary"
+                      disabled={busy}
+                      onClick={() => {
+                        setPendingInstall(false);
+                        setup();
+                      }}
+                    >
+                      Continue after install
+                    </button>
+                  </div>
+                )}
+                {!!manualUrl && !!error && (
+                  <div className="pending-banner">
+                    <p>
+                      Automatic download failed. Open the official Tailscale page, install
+                      manually, then continue.
+                    </p>
+                    <div className="modal-actions">
+                      <button className="secondary" onClick={() => openExternal(manualUrl)}>
+                        Open Tailscale download
+                      </button>
+                      <button className="primary" disabled={busy} onClick={() => setup()}>
+                        Retry / Continue
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="hero-side">
                 <div className="hero-badge">
@@ -806,6 +859,14 @@ function App() {
                   Save
                 </button>
               </div>
+              <button
+                className="secondary"
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+              >
+                {showAdvanced ? "Hide advanced settings" : "Show advanced settings"}
+              </button>
+              {showAdvanced && (
               <div className="config-grid">
                 {config?.keys
                   .filter((k) => k !== "DANA_AUTH_TOKEN")
@@ -836,6 +897,7 @@ function App() {
                     </label>
                   ))}
               </div>
+              )}
             </section>
           </div>
         )}
@@ -1076,12 +1138,22 @@ function App() {
                   </button>
                 </>
               ) : (
-                <button
-                  className="secondary"
-                  onClick={() => setDownload(null)}
-                >
-                  Close
-                </button>
+                <>
+                  {download.message.startsWith("Download failed") && !!manualUrl && (
+                    <button className="secondary" onClick={() => openExternal(manualUrl)}>
+                      Open manual download
+                    </button>
+                  )}
+                  <button
+                    className="primary"
+                    onClick={() => {
+                      setDownload(null);
+                      if (!download.message.startsWith("Download failed")) setup();
+                    }}
+                  >
+                    {download.message.startsWith("Download failed") ? "Close" : "Continue"}
+                  </button>
+                </>
               )}
             </div>
           </div>

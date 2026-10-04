@@ -28,48 +28,28 @@ Control Center برای عملیات زیر طراحی شده است:
 
 ### Setup
 
-- detect current machine state
-- install Tailscale
-- authenticate Tailscale
-- activate Dana
-- approve/enable Funnel
+- Install / activate Tailscale, Dana runtime, and Funnel
+- Download progress modal (pause / resume / cancel) with source fallbacks
+- Browser login and Funnel approval links with copy / open actions
+- Continue-after-install for Windows/macOS elevated installers
+- Clear prompts when OS admin authentication is required (password never stored)
 
-### Dashboard
+### Control
 
-نمایش وضعیت:
+Merged operational panel:
 
-- Dana
-- Tailscale
-- Funnel
-- runtime
-- usage
-
-### Connections
-
-- local tokenized URL
-- public tokenized URL
-- copy
-- connection test
-- MCP handshake result
-
-### Runtime
-
-- start
-- stop
-- restart/status
-- local listener state
-
-### Security
-
-- current token
-- custom token
-- apply token
-- revoke/replace
-- path access controls
+- Runtime start / stop
+- Tailscale login and Funnel enable
+- Local and public MCP endpoint copy + connection test
+- Auth token view / apply / revoke
+- Advanced configuration (collapsed by default)
 
 ### Logs
 
-نمایش setup/runtime diagnostics.
+Two columns:
+
+- **Setup & errors** — install, download, auth, Funnel, warnings/errors
+- **Dana tools** — recent tool activity from `report.json` and terminal activity log tail
 
 ## 3. Setup HTTP API
 

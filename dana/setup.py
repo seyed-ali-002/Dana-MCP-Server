@@ -293,7 +293,7 @@ def setup_logs() -> dict[str, object]:
     return {"logs": logs, "errors": errors}
 
 def runtime_activity(limit: int = 80) -> dict[str, object]:
-    """Recent Dana tool executions (same stream as the terminal activity log)."""
+    """Recent Dana tool executions (report.json + terminal activity log tail)."""
     import time
     from .reporting import REPORT_JSON
 
@@ -315,19 +315,70 @@ def runtime_activity(limit: int = 80) -> dict[str, object]:
                 "output": int(event.get("output") or 0),
                 "success": bool(event.get("success")),
                 "source": str(event.get("source") or "estimate"),
+                "line": "",
             })
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         events = []
 
-    # Newest first for the UI.
-    events.reverse()
+    log_path = Path(os.getenv("DANA_RUNTIME_DIR", Path.home() / ".cache" / "dana")) / "gui-server.log"
+    log_lines: list[str] = []
+    try:
+        raw_text = log_path.read_text(encoding="utf-8", errors="replace")
+        log_lines = [line.rstrip() for line in raw_text.splitlines() if line.strip()][-limit:]
+    except OSError:
+        log_lines = []
+
+    if not events and log_lines:
+        pattern = re.compile(r"^(?P<time>\d{2}:\d{2}:\d{2})\s+(?P<mark>[✓✗●])\s+(?P<body>.+)$")
+        for line in reversed(log_lines):
+            match = pattern.match(line.strip())
+            if not match:
+                continue
+            body = match.group("body")
+            success = match.group("mark") != "✗"
+            tool = ""
+            worker = ""
+            number = 0
+            duration_ms = 0.0
+            tokens = 0
+            tool_match = re.search(r"\b([a-z][a-z0-9_]{2,})\b", body)
+            if tool_match:
+                tool = tool_match.group(1)
+            worker_match = re.search(r"\b([A-Z][a-zA-Z]+)\s+#(\d+)\b", body)
+            if worker_match:
+                worker = worker_match.group(1)
+                number = int(worker_match.group(2))
+            dur_match = re.search(r"(\d+(?:\.\d+)?)\s*ms", body)
+            if dur_match:
+                duration_ms = float(dur_match.group(1))
+            tok_match = re.search(r"([\d,]+)\s*tok", body)
+            if tok_match:
+                tokens = int(tok_match.group(1).replace(",", ""))
+            events.append({
+                "time": match.group("time"),
+                "tool": tool or body[:48],
+                "worker": worker,
+                "number": number,
+                "duration_ms": duration_ms,
+                "input": 0,
+                "output": tokens,
+                "success": success,
+                "source": "terminal",
+                "line": line,
+            })
+            if len(events) >= limit:
+                break
+
+    if events and events[0].get("source") != "terminal":
+        events.reverse()
+
     return {
-        "events": events,
-        "count": len(events),
+        "events": events[:limit],
+        "count": len(events[:limit]),
         "report_path": str(REPORT_JSON),
+        "log_path": str(log_path),
+        "log_tail": list(reversed(log_lines[-40:])),
     }
-
-
 
 # Desktop-control configuration is intentionally limited to known Dana settings.
 _CONFIG_KEYS = (
@@ -544,24 +595,53 @@ def _run(command: list[str], timeout: float = 20) -> subprocess.CompletedProcess
 
 
 def _privileged_run(command: list[str], timeout: float = 60) -> subprocess.CompletedProcess[str]:
-    """Run an administrative command without hiding the user's password prompt.
+    """Run an administrative command using the OS native elevation path.
 
-    Terminal sessions prefer sudo so the password is requested in the terminal.
-    Desktop sessions prefer pkexec, which provides the native authentication dialog.
-    The password is never captured or stored by Dana.
+    Dana never captures or stores the password. Elevation uses:
+    - Linux desktop: pkexec (system password dialog)
+    - Linux terminal: sudo on a TTY
+    - macOS: AppleScript administrator privileges prompt
+    - already-root sessions: run the command directly
     """
+    system = platform.system().lower()
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         return _run(command, timeout=timeout)
+
+    if system == "darwin":
+        import shlex
+
+        shell = " ".join(shlex.quote(part) for part in command)
+        shell_as = shell.replace('\\', '\\\\').replace('"', '\\"')
+        script = 'do shell script "' + shell_as + '" with administrator privileges'
+        _setup_log("Administrator authentication required (macOS). Enter your password in the system dialog.")
+        result = _run(["osascript", "-e", script], timeout=timeout)
+        if result.returncode != 0:
+            details = (result.stderr or result.stdout or "authentication cancelled or failed").strip()
+            _setup_log(f"macOS elevation failed: {details}", "error")
+        return result
+
     if shutil.which("sudo") and os.isatty(0):
+        _setup_log("Administrator authentication required. Enter your sudo password in the terminal.")
         return _run(["sudo", *command], timeout=timeout)
+
     if shutil.which("pkexec"):
+        _setup_log("Administrator authentication required. Approve the system password dialog to continue.")
         result = _run(["pkexec", *command], timeout=timeout)
         if result.returncode == 0:
             return result
-    if shutil.which("sudo"):
-        return _run(["sudo", *command], timeout=timeout)
-    raise RuntimeError("This operation requires administrator privileges, but neither pkexec nor sudo is available.")
+        details = (result.stderr or result.stdout or f"pkexec exited with code {result.returncode}").strip()
+        _setup_log(f"pkexec elevation failed: {details}", "warning")
+        if not os.isatty(0):
+            return result
 
+    if shutil.which("sudo"):
+        _setup_log("Administrator authentication required. Enter your sudo password if prompted.")
+        return _run(["sudo", *command], timeout=timeout)
+
+    raise RuntimeError(
+        "This operation requires administrator privileges. "
+        "Install pkexec (polkit) or sudo on Linux, or run Dana with an account that can elevate."
+    )
 
 def _open(url: str) -> None:
     try:
@@ -1015,8 +1095,8 @@ def _install_windows() -> dict[str, object]:
         _download_file(win_url, target, "Tailscale Windows installer")
         import ctypes
         result = ctypes.windll.shell32.ShellExecuteW(None, "runas", str(target), None, None, 1)
-        if result <= 32: raise RuntimeError("Windows elevation was cancelled or failed.")
-        return {"ok": False, "pending": True, "message": "Tailscale installer opened. Finish the installer, then return to Dana.", "url": TAILSCALE_DOWNLOAD}
+        if result <= 32: raise RuntimeError("Windows elevation was cancelled or failed. Approve the UAC prompt and try again.")
+        return {"ok": True, "pending": True, "action_required": "finish_installer", "message": "Tailscale installer opened with Administrator rights. Complete the installer, then click Continue in Dana.", "url": TAILSCALE_DOWNLOAD}
     except Exception as exc:
         return {"ok": False, "message": str(exc), "url": TAILSCALE_DOWNLOAD}
 
@@ -1027,7 +1107,7 @@ def _install_macos() -> dict[str, object]:
         target = Path(tempfile.gettempdir()) / "Tailscale.pkg"
         _download_file(mac_url, target, "Tailscale macOS installer")
         subprocess.Popen(["open", str(target)])
-        return {"ok": False, "pending": True, "message": "Tailscale installer opened. Complete the installation and return to Dana.", "url": TAILSCALE_DOWNLOAD}
+        return {"ok": True, "pending": True, "action_required": "finish_installer", "message": "Tailscale package opened. Complete installation (enter your Mac password if asked), then click Continue in Dana.", "url": TAILSCALE_DOWNLOAD}
     except Exception as exc:
         return {"ok": False, "message": str(exc), "url": TAILSCALE_DOWNLOAD}
 
