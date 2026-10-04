@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" role="img" aria-label="Dana Control Center Setup">
+  <rect width="960" height="560" fill="#09090b"/>
+  <rect x="0" y="0" width="200" height="560" fill="#0c0c0e"/>
+  <rect x="200" y="0" width="1" height="560" fill="rgba(255,255,255,0.08)"/>
+  <circle cx="36" cy="36" r="14" fill="rgba(52,211,153,0.15)" stroke="#34d399" stroke-width="1"/>
+  <text x="58" y="34" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="12" font-weight="700" letter-spacing="2">DANA</text>
+  <text x="58" y="48" fill="#71717a" font-family="system-ui,sans-serif" font-size="10">Control Center</text>
+  <rect x="12" y="78" width="176" height="32" rx="8" fill="rgba(255,255,255,0.07)"/>
+  <circle cx="28" cy="94" r="3" fill="#34d399"/>
+  <text x="40" y="98" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="12">Setup</text>
+  <text x="28" y="138" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="12">Dashboard</text>
+  <text x="28" y="168" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="12">Connections</text>
+  <text x="28" y="198" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="12">Runtime</text>
+  <text x="28" y="228" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="12">Security</text>
+  <text x="28" y="258" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="12">Logs</text>
+  <circle cx="28" cy="530" r="4" fill="#34d399"/>
+  <text x="40" y="534" fill="#71717a" font-family="system-ui,sans-serif" font-size="11">Online · v0.1.1</text>
+  <text x="228" y="36" fill="#71717a" font-family="system-ui,sans-serif" font-size="10" letter-spacing="2">LOCAL CONTROL PLANE</text>
+  <text x="228" y="60" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="22" font-weight="650">Setup</text>
+  <rect x="720" y="28" width="210" height="32" rx="16" fill="#111114" stroke="rgba(255,255,255,0.08)"/>
+  <circle cx="740" cy="44" r="4" fill="#34d399"/>
+  <text x="752" y="48" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="11">Protected endpoint active</text>
+  <rect x="228" y="88" width="700" height="150" rx="14" fill="#111114" stroke="rgba(255,255,255,0.07)"/>
+  <text x="252" y="118" fill="#71717a" font-family="system-ui,sans-serif" font-size="10" letter-spacing="2">ONE-CLICK DEPLOYMENT</text>
+  <text x="252" y="148" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="20" font-weight="650">Bring Dana online without the terminal.</text>
+  <text x="252" y="172" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="12">Python runtime, Tailscale, Funnel and the public MCP endpoint.</text>
+  <rect x="252" y="190" width="140" height="32" rx="10" fill="#10b981"/>
+  <text x="278" y="210" fill="#052e1c" font-family="system-ui,sans-serif" font-size="12" font-weight="700">Activate Dana</text>
+  <rect x="228" y="256" width="220" height="110" rx="14" fill="#111114" stroke="rgba(255,255,255,0.07)"/>
+  <text x="244" y="280" fill="#71717a" font-family="system-ui,sans-serif" font-size="10">01</text>
+  <text x="268" y="280" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="13" font-weight="600">Tailscale</text>
+  <text x="390" y="280" fill="#34d399" font-family="system-ui,sans-serif" font-size="10" font-weight="700">READY</text>
+  <text x="244" y="304" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="11">Install and authenticate Tailscale.</text>
+  <text x="244" y="340" fill="#71717a" font-family="ui-monospace,monospace" font-size="11">Running</text>
+  <rect x="468" y="256" width="220" height="110" rx="14" fill="#111114" stroke="rgba(255,255,255,0.07)"/>
+  <text x="484" y="280" fill="#71717a" font-family="system-ui,sans-serif" font-size="10">02</text>
+  <text x="508" y="280" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="13" font-weight="600">Dana Runtime</text>
+  <text x="620" y="280" fill="#34d399" font-family="system-ui,sans-serif" font-size="10" font-weight="700">READY</text>
+  <text x="484" y="304" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="11">Start the local MCP service.</text>
+  <text x="484" y="340" fill="#71717a" font-family="ui-monospace,monospace" font-size="11">127.0.0.1:8765</text>
+  <rect x="708" y="256" width="220" height="110" rx="14" fill="#111114" stroke="rgba(255,255,255,0.07)"/>
+  <text x="724" y="280" fill="#71717a" font-family="system-ui,sans-serif" font-size="10">03</text>
+  <text x="748" y="280" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="13" font-weight="600">Funnel</text>
+  <text x="860" y="280" fill="#34d399" font-family="system-ui,sans-serif" font-size="10" font-weight="700">READY</text>
+  <text x="724" y="304" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="11">Publish the HTTPS MCP endpoint.</text>
+  <text x="724" y="340" fill="#71717a" font-family="ui-monospace,monospace" font-size="11">*.ts.net</text>
+  <rect x="228" y="386" width="700" height="100" rx="14" fill="#111114" stroke="rgba(255,255,255,0.07)"/>
+  <text x="252" y="414" fill="#71717a" font-family="system-ui,sans-serif" font-size="10" letter-spacing="2">SETUP PROGRESS</text>
+  <text x="252" y="438" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="18" font-weight="650">100%</text>
+  <rect x="252" y="452" width="652" height="5" rx="3" fill="#232329"/>
+  <rect x="252" y="452" width="652" height="5" rx="3" fill="#34d399"/>
+  <text x="252" y="478" fill="#71717a" font-family="system-ui,sans-serif" font-size="11">Tailscale</text>
+  <text x="420" y="478" fill="#71717a" font-family="system-ui,sans-serif" font-size="11">Authentication</text>
+  <text x="620" y="478" fill="#71717a" font-family="system-ui,sans-serif" font-size="11">Dana</text>
+  <text x="820" y="478" fill="#71717a" font-family="system-ui,sans-serif" font-size="11">Funnel</text>
+</svg>

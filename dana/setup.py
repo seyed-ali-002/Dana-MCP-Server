@@ -42,11 +42,25 @@ def auth_flow_status() -> dict[str, object]:
         return dict(_AUTH_FLOW)
 
 
-_DOWNLOAD = {"active": False, "paused": False, "cancelled": False, "downloaded": 0, "total": 0, "speed": 0.0, "name": "", "message": ""}
+_DOWNLOAD = {
+ "active": False,
+ "paused": False,
+ "cancelled": False,
+ "downloaded": 0,
+ "total": 0,
+ "speed": 0.0,
+ "name": "",
+ "message": "",
+ "source": "",
+ "attempt": 0,
+ "attempts_total": 0,
+ "errors": [],
+}
 _DOWNLOAD_LOCK = __import__("threading").Lock()
 _DOWNLOAD_PAUSE = __import__("threading").Event()
 _DOWNLOAD_PAUSE.set()
 _DOWNLOAD_CANCEL = __import__("threading").Event()
+_DOWNLOAD_MAX_ERRORS = 12
 
 
 def download_status() -> dict[str, object]:
@@ -59,11 +73,10 @@ def pause_download() -> dict[str, object]:
         if not _DOWNLOAD["active"]:
             return {"ok": False, "message": "No active download."}
         _DOWNLOAD["paused"] = True
-        _DOWNLOAD["message"] = "Download paused."
-    _DOWNLOAD_PAUSE.clear()
-    _setup_log("Download paused.", "warning")
-    return {"ok": True, "message": "Download paused."}
-
+        _DOWNLOAD["message"] = "Download paused. Press Resume to continue."
+        _DOWNLOAD_PAUSE.clear()
+        _setup_log("Download paused by user.", "warning")
+        return {"ok": True, "message": "Download paused."}
 
 def resume_download() -> dict[str, object]:
     with _DOWNLOAD_LOCK:
@@ -71,10 +84,9 @@ def resume_download() -> dict[str, object]:
             return {"ok": False, "message": "No active download."}
         _DOWNLOAD["paused"] = False
         _DOWNLOAD["message"] = "Downloading…"
-    _DOWNLOAD_PAUSE.set()
-    _setup_log("Download resumed.")
-    return {"ok": True, "message": "Download resumed."}
-
+        _DOWNLOAD_PAUSE.set()
+        _setup_log("Download resumed by user.")
+        return {"ok": True, "message": "Download resumed."}
 
 def cancel_download() -> dict[str, object]:
     with _DOWNLOAD_LOCK:
@@ -85,24 +97,53 @@ def cancel_download() -> dict[str, object]:
         _DOWNLOAD["cancelled"] = True
         _DOWNLOAD["paused"] = False
         _DOWNLOAD["message"] = "Cancelling download…"
-    _setup_log("Download cancellation requested.", "warning")
-    return {"ok": True, "message": "Download cancellation requested."}
+        _setup_log("Download cancellation requested by user.", "warning")
+        return {"ok": True, "message": "Download cancellation requested."}
 
+def _record_download_error(source: str, detail: str) -> None:
+    entry = f"{source}: {detail}"
+    with _DOWNLOAD_LOCK:
+        errors = list(_DOWNLOAD.get("errors") or [])
+        errors.append(entry)
+        _DOWNLOAD["errors"] = errors[-_DOWNLOAD_MAX_ERRORS:]
+    _setup_log(f"Download source failed — {entry}", "warning")
 
-def _download_file(url: str, target: Path, label: str) -> None:
-    import urllib.error
-    import urllib.request
-    started = time.monotonic()
-    downloaded = 0
-    candidates = [url]
+def _build_download_candidates(url: str, extra: list[str] | None = None) -> list[str]:
+    """Build an ordered list of download URLs with mirrors and fallbacks.
+
+    HTTP 403/404/429 from one host must not stop the install — later candidates
+    are tried until one succeeds or the list is exhausted.
+    """
+    candidates: list[str] = []
+    mirror = os.getenv("DANA_TAILSCALE_MIRROR", "").strip().rstrip("/")
+    if mirror:
+        if "tailscale.com" in url or "pkgs.tailscale.com" in url or "github.com" in url:
+            candidates.append(mirror + "/" + url)
+            candidates.append(mirror + "/" + url.rsplit("/", 1)[-1])
+    candidates.append(url)
     if url == TAILSCALE_INSTALL_SCRIPT:
         candidates.append(TAILSCALE_INSTALL_SCRIPT_MIRROR)
-    # A configured mirror may be either a URL prefix (preferred) or a mirror
-    # root. Keep both forms so common GitHub proxy/mirror deployments work.
-    mirror = os.getenv("DANA_TAILSCALE_MIRROR", "").strip().rstrip("/")
-    if mirror and "tailscale.com" in url:
-        candidates.insert(0, mirror + "/" + url)
-        candidates.insert(1, mirror + "/" + url.rsplit("/", 1)[-1])
+        candidates.append(
+            "https://cdn.jsdelivr.net/gh/tailscale/tailscale@main/scripts/installer.sh"
+        )
+    if extra:
+        candidates.extend(extra)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in candidates:
+        item = (item or "").strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        ordered.append(item)
+    return ordered
+
+def _download_file(url: str, target: Path, label: str, extra_candidates: list[str] | None = None) -> None:
+    import urllib.error
+    import urllib.request
+
+    started = time.monotonic()
+    candidates = _build_download_candidates(url, extra_candidates)
     proxy = os.getenv("DANA_TAILSCALE_PROXY", "").strip()
     if proxy:
         proxy_handler = urllib.request.ProxyHandler({"http": proxy, "https": proxy})
@@ -112,22 +153,48 @@ def _download_file(url: str, target: Path, label: str) -> None:
     _DOWNLOAD_CANCEL.clear()
     _DOWNLOAD_PAUSE.set()
     with _DOWNLOAD_LOCK:
-        _DOWNLOAD.update(active=True, paused=False, cancelled=False, downloaded=0, total=0, speed=0.0, name=label, message="Connecting…")
-    _setup_log(f"Downloading {label} from {url}")
+        _DOWNLOAD.update(
+            active=True,
+            paused=False,
+            cancelled=False,
+            downloaded=0,
+            total=0,
+            speed=0.0,
+            name=label,
+            message="Connecting to download source…",
+            source="",
+            attempt=0,
+            attempts_total=len(candidates),
+            errors=[],
+        )
+    _setup_log(f"Downloading {label} ({len(candidates)} source(s) available)")
     temporary = target.with_suffix(target.suffix + ".part")
     try:
         last_error: Exception | None = None
-        for candidate in candidates:
+        for index, candidate in enumerate(candidates, start=1):
             try:
-                _setup_log(f"Trying Tailscale download source: {candidate}")
-                request = urllib.request.Request(candidate, headers={"User-Agent": "Dana-Setup/1"})
-                with opener.open(request, timeout=30) as response:
+                with _DOWNLOAD_LOCK:
+                    _DOWNLOAD["attempt"] = index
+                    _DOWNLOAD["source"] = candidate
+                    _DOWNLOAD["message"] = f"Trying source {index}/{len(candidates)}…"
+                    _DOWNLOAD["downloaded"] = 0
+                    _DOWNLOAD["total"] = 0
+                    _DOWNLOAD["speed"] = 0.0
+                _setup_log(f"Trying download source {index}/{len(candidates)}: {candidate}")
+                request = urllib.request.Request(
+                    candidate,
+                    headers={
+                        "User-Agent": "Dana-Setup/1.0 (+https://github.com/seyed-ali-002/Dana-MCP-Server)",
+                        "Accept": "*/*",
+                    },
+                )
+                with opener.open(request, timeout=45) as response:
                     total = int(response.headers.get("Content-Length") or 0)
                     with _DOWNLOAD_LOCK:
                         _DOWNLOAD["total"] = total
-                        _DOWNLOAD["downloaded"] = 0
                         _DOWNLOAD["message"] = "Downloading…"
                     downloaded = 0
+                    chunk_started = time.monotonic()
                     with open(temporary, "wb") as handle:
                         while True:
                             if _DOWNLOAD_CANCEL.is_set():
@@ -140,26 +207,52 @@ def _download_file(url: str, target: Path, label: str) -> None:
                                 break
                             handle.write(chunk)
                             downloaded += len(chunk)
-                            elapsed = max(0.001, time.monotonic() - started)
+                            elapsed = max(0.001, time.monotonic() - chunk_started)
                             with _DOWNLOAD_LOCK:
                                 _DOWNLOAD["downloaded"] = downloaded
                                 _DOWNLOAD["speed"] = downloaded / elapsed
+                    if downloaded <= 0:
+                        raise RuntimeError("Downloaded file is empty.")
                     temporary.replace(target)
                     if candidate != url:
-                        _setup_log("Primary Tailscale download source was unavailable; fallback source succeeded.", "warning")
+                        _setup_log(
+                            f"Primary download source failed earlier; fallback succeeded: {candidate}",
+                            "warning",
+                        )
                     break
             except urllib.error.HTTPError as exc:
                 last_error = exc
-                _setup_log(f"Tailscale download source returned HTTP {exc.code}; trying the next source.", "warning")
+                code = exc.code
+                detail = f"HTTP {code}"
+                if code == 403:
+                    detail = "HTTP 403 Forbidden (blocked or geo-restricted)"
+                elif code == 404:
+                    detail = "HTTP 404 Not Found"
+                elif code == 429:
+                    detail = "HTTP 429 Rate limited"
+                _record_download_error(candidate, detail)
                 continue
-            except (urllib.error.URLError, OSError) as exc:
+            except InterruptedError:
+                raise
+            except (urllib.error.URLError, OSError, TimeoutError, RuntimeError) as exc:
                 last_error = exc
-                _setup_log("Tailscale download source failed; trying the next source.", "warning")
+                _record_download_error(candidate, str(exc) or exc.__class__.__name__)
                 continue
         else:
-            raise RuntimeError(f"All Tailscale download sources failed: {last_error}")
+            with _DOWNLOAD_LOCK:
+                errs = list(_DOWNLOAD.get("errors") or [])
+                summary = "; ".join(errs[-5:]) if errs else str(last_error)
+            raise RuntimeError(
+                f"All {len(candidates)} Tailscale download sources failed. "
+                f"Last errors: {summary}"
+            )
         with _DOWNLOAD_LOCK:
-            _DOWNLOAD.update(active=False, paused=False, message="Download complete.")
+            _DOWNLOAD.update(
+                active=False,
+                paused=False,
+                message="Download complete.",
+                speed=0.0,
+            )
         _setup_log(f"Download completed: {label}", "success")
     except Exception:
         try:
@@ -169,10 +262,13 @@ def _download_file(url: str, target: Path, label: str) -> None:
         with _DOWNLOAD_LOCK:
             _DOWNLOAD["active"] = False
             _DOWNLOAD["paused"] = False
+            _DOWNLOAD["speed"] = 0.0
             if _DOWNLOAD_CANCEL.is_set():
                 _DOWNLOAD["message"] = "Download cancelled."
             else:
-                _DOWNLOAD["message"] = "Download failed."
+                errs = list(_DOWNLOAD.get("errors") or [])
+                tail = ("; ".join(errs[-3:])) if errs else "see logs"
+                _DOWNLOAD["message"] = f"Download failed. {tail}"
         if _DOWNLOAD_CANCEL.is_set():
             _setup_log(f"Download cancelled: {label}", "warning")
         else:
@@ -436,8 +532,20 @@ def _open(url: str) -> None:
         pass
 
 def _find_auth_url(text: str) -> str | None:
-    match = re.search(r"https://login\.tailscale\.com/[A-Za-z0-9_/?=&.-]+", text)
-    return match.group(0) if match else None
+    """Extract a Tailscale browser login or Funnel approval URL from CLI output."""
+    if not text:
+        return None
+    patterns = (
+        r'https://login\.tailscale\.com/\S+',
+        r'https://login\.tailscale\.com/a/[A-Za-z0-9_-]+',
+        r'https://admin\.tailscale\.com/\S*funnel\S*',
+        r'https://tailscale\.com/\S*activate\S*',
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(0).rstrip(").,;'")
+    return None
 
 def _find_funnel_hostname(value: object) -> str | None:
     if isinstance(value, dict):
@@ -897,7 +1005,7 @@ def login_tailscale() -> dict[str, object]:
         _set_auth_flow("login", auth_url, "Open the Tailscale login URL in your browser and complete authentication.", True)
         _setup_log("Tailscale requested browser authentication. Opening the login page.")
         _open(auth_url)
-        return {"ok": True, "pending": True, "message": "Complete Tailscale authentication in the browser. Dana will continue automatically.", "auth_url": auth_url}
+        return {"ok": True, "pending": True, "message": "Copy the Tailscale login link shown in Dana and open it in your browser. Keep this window open — setup continues automatically after login.", "auth_url": auth_url}
     if result.returncode == 0:
         _set_auth_flow()
         _setup_log("Tailscale authentication completed.", "success")
@@ -920,7 +1028,7 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
             _set_auth_flow("funnel", auth_url, "Open the Tailscale Funnel approval URL in your browser and approve it.", True)
             _setup_log("Tailscale requested Funnel approval in the browser. Opening the approval page.")
             _open(auth_url)
-            return {"ok": True, "pending": True, "action_required": "enable_funnel", "message": "Approve Funnel in the browser. Dana will continue automatically.", "auth_url": auth_url}
+            return {"ok": True, "pending": True, "action_required": "enable_funnel", "message": "Copy the Funnel approval link shown in Dana and open it in your browser. Keep this window open — setup continues automatically after approval.", "auth_url": auth_url}
         _setup_log("Tailscale is not ready for Funnel: " + details, "error")
         return {"ok": False, "action_required": "login_tailscale", "message": details}
     try:
@@ -932,7 +1040,7 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
             _set_auth_flow("funnel", auth_url, "Open the Tailscale Funnel approval URL in your browser and approve it.", True)
             _setup_log("Tailscale requested Funnel approval in the browser. Opening the approval page.")
             _open(auth_url)
-            return {"ok": True, "pending": True, "action_required": "enable_funnel", "message": "Approve Funnel in the browser. Dana will continue automatically.", "auth_url": auth_url}
+            return {"ok": True, "pending": True, "action_required": "enable_funnel", "message": "Copy the Funnel approval link shown in Dana and open it in your browser. Keep this window open — setup continues automatically after approval.", "auth_url": auth_url}
         _setup_log("Funnel configuration failed: " + details, "error")
         return {"ok": False, "message": details}
     token = write_env("local", workers=settings.workers)

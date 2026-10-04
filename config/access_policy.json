@@ -3,7 +3,8 @@
   "allowed_paths": [
     "/mnt/1CEC9AE6EC9ABA0A/Ali/MCP_Server/Dana",
     "/home",
-    "/tmp"
+    "/tmp",
+    "/mnt/1CEC9AE6EC9ABA0A/Ali/telegram bot/Vidachain Bot/vidachain_panel_bot"
   ],
   "deny_paths": [],
   "shell": {

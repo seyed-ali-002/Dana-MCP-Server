@@ -16,7 +16,7 @@ function appVersion(): string {
   } catch {
     // fall through to the default below
   }
-  return "0.1.0";
+  return "0.1.1";
 }
 
 // https://vite.dev/config/

@@ -60,21 +60,41 @@ The desktop application bundles the Dana setup runtime and provides graphical co
 
 ## Method 1 — Dana Desktop (recommended)
 
-After installing Dana Desktop, use the panels in this order:
+After installing Dana Desktop, open **Setup** and use **Install & Activate** / **Activate Dana**.
 
-**Setup**
-- Install Tailscale when it is missing.
-- Connect/authenticate Tailscale in the browser.
-- Activate Dana.
-- Approve and activate Tailscale Funnel when requested.
+![Dana Control Center — Setup](docs/images/dana-desktop-setup.svg)
 
-**Dashboard**
-- View Dana, Tailscale, and Funnel status.
+### Guided setup flow
 
-**Connections**
-- Copy the local tokenized MCP URL for software running on the same machine.
-- Copy the public tokenized MCP URL when Funnel is active.
-- Run the live MCP handshake test for each URL.
+1. **Install Tailscale**  
+   Dana downloads the official installer (or a static binary). If a host returns **HTTP 403** or another error, it automatically tries mirrors and fallbacks. Every attempt is written to **Logs**.
+
+2. **Download progress**  
+   A progress window shows percent complete, speed, current source, and failed sources. You can **Pause**, **Resume**, or **Cancel** the download.
+
+![Download progress with pause/cancel](docs/images/dana-download-progress.svg)
+
+3. **Tailscale login**  
+   After install, Dana shows the Tailscale login URL in the same Control Center window. Use **Copy link** and open it in your browser (or **Open in browser**). Keep Dana open until authentication finishes — setup continues automatically.
+
+![Tailscale login link in Dana](docs/images/dana-auth-link.svg)
+
+4. **Start Dana runtime**  
+   The local MCP service is started on `127.0.0.1:8765`.
+
+5. **Enable Funnel**  
+   When asked, confirm public exposure. If Tailscale needs Funnel approval, the approval URL appears in the same window with **Copy link** / **Open in browser**. After approval, Funnel is activated on the canonical HTTPS route.
+
+### Other panels
+
+| Panel | Purpose |
+|---|---|
+| **Dashboard** | Dana / Tailscale / Funnel status |
+| **Connections** | Copy local & public tokenized MCP URLs; run handshake test |
+| **Runtime** | Start / stop Dana |
+| **Security** | View, apply, or revoke the auth token |
+| **Configuration** | Environment and path policy |
+| **Logs** | Setup, download, auth, Funnel, and runtime events |
 
 Local URL format:
 ```text
@@ -86,20 +106,20 @@ Public Funnel URL format:
 https://<machine>.<tailnet>.ts.net/<TOKEN>/mcp
 ```
 
-**Runtime**
-- Start or stop Dana.
-- Use **Connections** to verify the local listener and the public route.
-
-**Security**
-- Review authentication and public exposure.
-- Revoke/replace the token or apply a custom token when needed.
-
-**Logs**
-- Review setup, authentication, Funnel, and runtime events.
-
 After the first installation, the Setup panel uses **Activate Dana** for normal activation instead of asking you to repeat installation.
 
 When Dana Desktop closes, it stops the Dana runtime. The Tailscale Funnel route is intentionally left untouched so other sessions and routes are not disrupted.
+
+### Download fallbacks
+
+If the primary Tailscale download is blocked (for example **403 Forbidden**), Dana tries, in order:
+
+- optional `DANA_TAILSCALE_MIRROR` / `DANA_TAILSCALE_PROXY`
+- official `tailscale.com` / `pkgs.tailscale.com`
+- GitHub / mirror static packages
+- jsDelivr copy of the installer script (where applicable)
+
+All failures are logged in the **Logs** panel. If every source fails, Setup shows a clear error and a manual download URL.
 
 ## Method 2 — Terminal / CLI
 

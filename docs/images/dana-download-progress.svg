@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420" role="img" aria-label="Dana download progress">
+  <rect width="640" height="420" fill="rgba(0,0,0,0.72)"/>
+  <rect x="70" y="50" width="500" height="320" rx="16" fill="#18181c" stroke="rgba(255,255,255,0.08)"/>
+  <text x="94" y="88" fill="#71717a" font-family="system-ui,sans-serif" font-size="10" letter-spacing="2">DOWNLOAD</text>
+  <text x="94" y="114" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="18" font-weight="650">Tailscale installer</text>
+  <text x="430" y="100" fill="#34d399" font-family="system-ui,sans-serif" font-size="11" font-weight="700">IN PROGRESS</text>
+  <text x="94" y="142" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="12">Downloading… source 2/4 after HTTP 403 on primary host</text>
+  <rect x="94" y="158" width="452" height="48" rx="10" fill="#0c0c0f" stroke="rgba(255,255,255,0.07)"/>
+  <text x="108" y="178" fill="#71717a" font-family="system-ui,sans-serif" font-size="9" letter-spacing="1">SOURCE</text>
+  <text x="108" y="196" fill="#a1a1aa" font-family="ui-monospace,monospace" font-size="11">2/4 · pkgs.tailscale.com/stable/…</text>
+  <rect x="94" y="224" width="452" height="6" rx="3" fill="#232329"/>
+  <rect x="94" y="224" width="280" height="6" rx="3" fill="#34d399"/>
+  <text x="94" y="252" fill="#a1a1aa" font-family="ui-monospace,monospace" font-size="11">62.1%</text>
+  <text x="260" y="252" fill="#a1a1aa" font-family="ui-monospace,monospace" font-size="11">18.4 MB / 29.6 MB</text>
+  <text x="460" y="252" fill="#a1a1aa" font-family="ui-monospace,monospace" font-size="11">4.2 MB/s</text>
+  <rect x="94" y="270" width="452" height="54" rx="10" fill="rgba(248,113,113,0.08)" stroke="rgba(248,113,113,0.22)"/>
+  <text x="108" y="290" fill="#71717a" font-family="system-ui,sans-serif" font-size="9" letter-spacing="1">FAILED SOURCES (LOGGED)</text>
+  <text x="108" y="310" fill="#f87171" font-family="ui-monospace,monospace" font-size="10">tailscale.com/install.sh: HTTP 403 Forbidden</text>
+  <rect x="280" y="340" width="120" height="22" rx="8" fill="#1f1f24" stroke="rgba(255,255,255,0.08)"/>
+  <text x="318" y="355" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="11">Pause</text>
+  <rect x="414" y="340" width="132" height="22" rx="8" fill="#1f1f24" stroke="rgba(248,113,113,0.3)"/>
+  <text x="430" y="355" fill="#f87171" font-family="system-ui,sans-serif" font-size="11">Cancel download</text>
+</svg>

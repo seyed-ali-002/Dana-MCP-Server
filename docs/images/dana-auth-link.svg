@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" role="img" aria-label="Dana Tailscale login link">
+  <rect width="640" height="400" fill="rgba(0,0,0,0.72)"/>
+  <rect x="90" y="40" width="460" height="320" rx="16" fill="#18181c" stroke="rgba(255,255,255,0.08)"/>
+  <rect x="114" y="64" width="34" height="34" rx="10" fill="rgba(251,191,36,0.1)"/>
+  <text x="124" y="86" fill="#fbbf24" font-family="system-ui,sans-serif" font-size="16" font-weight="700">↗</text>
+  <text x="114" y="120" fill="#71717a" font-family="system-ui,sans-serif" font-size="10" letter-spacing="2">BROWSER ACTION REQUIRED</text>
+  <text x="114" y="148" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="18" font-weight="650">Sign in to Tailscale</text>
+  <text x="114" y="176" fill="#a1a1aa" font-family="system-ui,sans-serif" font-size="12">Complete Tailscale authentication in the browser.</text>
+  <text x="114" y="200" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="12">Copy this link and open it in your browser to complete the step.</text>
+  <rect x="114" y="216" width="412" height="58" rx="10" fill="#0c0c0f" stroke="rgba(255,255,255,0.07)"/>
+  <text x="128" y="236" fill="#71717a" font-family="system-ui,sans-serif" font-size="9" letter-spacing="1">TAILSCALE LOGIN URL</text>
+  <text x="128" y="258" fill="#f4f4f5" font-family="ui-monospace,monospace" font-size="11">https://login.tailscale.com/a/xxxxxxxx</text>
+  <rect x="114" y="292" width="196" height="36" rx="10" fill="#1f1f24" stroke="rgba(255,255,255,0.08)"/>
+  <text x="176" y="314" fill="#f4f4f5" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Copy link</text>
+  <rect x="330" y="292" width="196" height="36" rx="10" fill="#10b981"/>
+  <text x="368" y="314" fill="#052e1c" font-family="system-ui,sans-serif" font-size="12" font-weight="700">Open in browser</text>
+</svg>
