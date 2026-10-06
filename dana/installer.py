@@ -120,7 +120,7 @@ def write_env(
     mode: str, public_host: str = "", public_port: int = 0, workers: int = 5
 ) -> str:
     env_path = ROOT / ".env"
-    persistent_env_path = Path.home() / ".config" / "dana" / ".env"
+    persistent_env_path = (Path(os.environ["APPDATA"]) if os.name == "nt" and os.environ.get("APPDATA") else Path.home() / ".config") / "dana" / ".env"
     values: dict[str, str] = {}
     source_path = persistent_env_path if persistent_env_path.exists() else env_path
     if source_path.exists():
@@ -309,7 +309,7 @@ def configure_ydotool_service() -> None:
     runtime_dir = f"dana-ydotool-{uid}"
     socket_path = f"/run/{runtime_dir}/.ydotool_socket"
     unit_name = f"dana-ydotoold-{uid}.service"
-    unit_path = Path.home() / ".config" / "dana" / unit_name
+    unit_path = (Path(os.environ["APPDATA"]) if os.name == "nt" and os.environ.get("APPDATA") else Path.home() / ".config") / "dana" / unit_name
     unit_path.parent.mkdir(parents=True, exist_ok=True)
     unit_path.write_text(
         "[Unit]\n"
@@ -332,7 +332,7 @@ def configure_ydotool_service() -> None:
     target = Path("/etc/systemd/system") / unit_name
     try:
         run_command(_privileged_command(["modprobe", "uinput"]))
-        modules = Path.home() / ".config" / "dana" / "uinput.conf"
+        modules = (Path(os.environ["APPDATA"]) if os.name == "nt" and os.environ.get("APPDATA") else Path.home() / ".config") / "dana" / "uinput.conf"
         modules.write_text("uinput\n", encoding="utf-8")
         run_command(_privileged_command(["install", "-m", "0644", str(modules), "/etc/modules-load.d/dana-uinput.conf"]))
         run_command(_privileged_command(["install", "-m", "0644", str(unit_path), str(target)]))
@@ -765,7 +765,7 @@ def set_local_public_host(host: str) -> None:
         lines.append(f"DANA_PUBLIC_HOST={host}")
     rendered = "\n".join(lines) + "\n"
     env_path.write_text(rendered, encoding="utf-8")
-    persistent_env_path = Path.home() / ".config" / "dana" / ".env"
+    persistent_env_path = (Path(os.environ["APPDATA"]) if os.name == "nt" and os.environ.get("APPDATA") else Path.home() / ".config") / "dana" / ".env"
     if persistent_env_path.exists():
         persistent_lines = []
         persistent_found = False

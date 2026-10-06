@@ -19,17 +19,28 @@ class DanaFunnelManager:
 
     @property
     def enabled(self) -> bool:
+        try:
+            from .installer import command_exists
+            has_tailscale = command_exists("tailscale")
+        except Exception:
+            has_tailscale = shutil.which("tailscale") is not None
         return (
             settings.normalized_mode() == "local"
             and settings.tailscale_funnel_enabled
-            and shutil.which("tailscale") is not None
+            and has_tailscale
         )
 
     def _run(self, command: list[str]) -> bool:
         # The watchdog must never block Dana startup on a password dialog. Use
         # non-interactive sudo for background recovery; explicit setup actions
         # use Dana's privileged runner and can request the user's password.
-        if command[:2] == ["tailscale", "funnel"] and hasattr(__import__("os"), "geteuid") and __import__("os").geteuid() != 0:
+        try:
+            from .installer import _tailscale_cmd
+            if command and command[0] == "tailscale":
+                command = _tailscale_cmd(*command[1:])
+        except Exception:
+            pass
+        if len(command) >= 2 and command[1] == "funnel" and hasattr(__import__("os"), "geteuid") and __import__("os").geteuid() != 0:
             if shutil.which("sudo"):
                 command = ["sudo", "-n", *command]
         try:

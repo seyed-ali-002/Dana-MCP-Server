@@ -10,12 +10,17 @@ from dana import setup
 class Handler(BaseHTTPRequestHandler):
     def _send(self, payload: dict[str, object], code: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
+        except (ConnectionError, BrokenPipeError, OSError) as exc:
+            # Windows often raises WinError 10053/10054 when the UI aborts a long
+            # setup request. Log softly; the action may still have completed.
+            setup._setup_log(f"Setup client connection closed while responding: {exc}", "warning")
     def do_OPTIONS(self) -> None:
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -83,9 +88,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send({"error": "not_found"}, 404); return
         try:
             self._send(action())
+        except (ConnectionError, BrokenPipeError, OSError) as exc:
+            # Do not treat a dropped HTTP client as a failed setup action.
+            setup._setup_log(f"Setup client disconnected during action: {exc}", "warning")
         except Exception as exc:
             setup._setup_log(f"Unhandled setup error: {exc}", "error")
-            self._send({"ok": False, "message": str(exc)}, 500)
+            try:
+                self._send({"ok": False, "message": str(exc)}, 500)
+            except Exception:
+                pass
     def log_message(self, _format: str, *_args: object) -> None:
         return
 

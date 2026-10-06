@@ -277,6 +277,7 @@ def _download_file(url: str, target: Path, label: str, extra_candidates: list[st
 
 _SETUP_LOGS: deque[dict[str, str]] = deque(maxlen=250)
 _DANA_PROCESS: subprocess.Popen[str] | None = None
+_DANA_THREAD: object | None = None
 
 
 def _setup_log(message: str, level: str = "info") -> None:
@@ -397,7 +398,7 @@ def _env_path() -> Path:
 
 
 def _persistent_env_path() -> Path:
-    return Path.home() / ".config" / "dana" / ".env"
+    return (Path(os.environ["APPDATA"]) if os.name == "nt" and os.environ.get("APPDATA") else Path.home() / ".config") / "dana" / ".env"
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
@@ -1185,6 +1186,11 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
     if not (_tailscale_binary("tailscale") or command_exists("tailscale")):
         _setup_log("Cannot enable Funnel because Tailscale is not installed.", "error")
         return {"ok": False, "action_required": "install_tailscale", "message": "Install Tailscale first."}
+    if not _dana_running():
+        _setup_log("Dana is not listening yet; starting runtime before Funnel.", "warning")
+        started = start_dana()
+        if not started.get("ok"):
+            return started
     _setup_log("Administrator authentication may be required to start Funnel.")
     try:
         _ensure_tailscale_ready()
@@ -1230,15 +1236,79 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
     token_path = f"/{settings.auth_token}/mcp" if settings.auth_token else "/mcp"
     return {"ok": True, "pending": True, "hostname": host, "url": f"https://{host}{token_path}", "endpoint_verified": False, "action_required": "enable_funnel", "message": "Funnel approval completed; waiting for Tailscale to publish the endpoint."}
 
+def _runtime_log_path() -> Path:
+    if os.name == "nt":
+        base = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+        directory = base / "Dana"
+    else:
+        directory = Path(os.getenv("DANA_RUNTIME_DIR", Path.home() / ".cache" / "dana"))
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / "gui-server.log"
+
+def _tail_log(path: Path, limit: int = 40) -> str:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    return "\n".join(lines[-limit:])
+
+_DANA_UVICORN: object | None = None
+
+def _run_embedded_dana() -> None:
+    """Run the MCP server inside the setup-service process.
+
+    Packaged Desktop builds use a frozen dana-agent executable. Spawning a
+    second copy of the same one-file binary on Windows often fails or exceeds
+    the readiness timeout because of PyInstaller extraction contention.
+    """
+    global _DANA_UVICORN
+    try:
+        import logging
+        import uvicorn
+        from .config import settings as runtime_settings
+        from .file_logging import configure_file_logging, install_terminal_mirror
+        from .tailscale import DanaFunnelManager
+
+        configure_file_logging()
+        try:
+            install_terminal_mirror()
+        except Exception:
+            pass
+        for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "mcp", "mcp.server"):
+            logger = logging.getLogger(name)
+            logger.setLevel(logging.CRITICAL)
+            logger.handlers.clear()
+            logger.propagate = False
+
+        config = uvicorn.Config(
+            "dana.http:app",
+            host=runtime_settings.host or "127.0.0.1",
+            port=int(runtime_settings.port or 8765),
+            log_level="error",
+            access_log=False,
+            reload=False,
+            workers=1,
+        )
+        server = uvicorn.Server(config)
+        _DANA_UVICORN = server
+        funnel = DanaFunnelManager()
+        funnel.start()
+        try:
+            server.run()
+        finally:
+            funnel.stop()
+            _DANA_UVICORN = None
+    except Exception as exc:  # pragma: no cover - surfaced via readiness failure
+        _DANA_UVICORN = None
+        _setup_log(f"Embedded Dana runtime crashed: {exc}", "error")
+
 def start_dana() -> dict[str, object]:
+    global _DANA_PROCESS, _DANA_THREAD
     _setup_log("Starting Dana runtime.")
     if _dana_running():
         _setup_log("Dana runtime is already running.", "success")
         return {"ok": True, "message": "Dana is already running."}
 
-    # Native Python is the default runtime for both terminal and Desktop.
-    # Docker is opt-in so a GUI/CLI startup cannot block for Docker readiness
-    # or accidentally switch away from the same runtime used by the terminal.
     root = Path(__file__).resolve().parents[1]
     if os.getenv("DANA_RUNTIME_BACKEND", "native").strip().lower() == "docker":
         try:
@@ -1250,15 +1320,13 @@ def start_dana() -> dict[str, object]:
             ):
                 container.start()
                 _setup_log("Dana Docker runtime started; waiting for readiness.")
-                if _wait_for_dana(timeout=30.0):
+                if _wait_for_dana(timeout=45.0):
                     _setup_log("Dana Docker runtime is ready on the local MCP port.", "success")
                     return {"ok": True, "message": "Dana is running."}
                 _setup_log("Docker started but Dana did not become ready; falling back to the native runtime.", "warning")
         except Exception as exc:
             _setup_log(f"Docker runtime could not be started; using native runtime: {exc}", "warning")
 
-    # Generate/preserve the local credential and explicitly pass it to the
-    # bundled child. Installed builds cannot rely on a source-tree .env file.
     token = write_env("local", workers=settings.workers)
     os.environ["DANA_AUTH_TOKEN"] = token
     os.environ["DANA_DEPLOYMENT_MODE"] = "local"
@@ -1266,38 +1334,78 @@ def start_dana() -> dict[str, object]:
     os.environ["DANA_PORT"] = str(settings.port)
     settings.auth_token = token
 
+    log = _runtime_log_path()
+    frozen = bool(getattr(__import__("sys"), "frozen", False))
+    # Prefer in-process runtime for the desktop setup agent on every OS.
+    # This avoids Windows one-file re-extraction failures and keeps logs in one place.
+    use_embedded = frozen or os.environ.get("DANA_EMBEDDED_RUNTIME", "1").strip().lower() in {"1", "true", "yes"}
+
+    if use_embedded:
+        import threading
+
+        alive = isinstance(_DANA_THREAD, threading.Thread) and _DANA_THREAD.is_alive()
+        if not alive:
+            _setup_log("Launching embedded Dana runtime in the setup service process.")
+            thread = threading.Thread(target=_run_embedded_dana, name="dana-mcp-runtime", daemon=True)
+            _DANA_THREAD = thread
+            thread.start()
+        else:
+            _setup_log("Embedded Dana runtime thread is already active; waiting for the local MCP port.")
+        # Cold import + bind can exceed 30s on Windows packaged builds.
+        if _wait_for_dana(timeout=60.0):
+            _setup_log("Dana runtime is ready on the local MCP port.", "success")
+            return {"ok": True, "message": "Dana is running."}
+        tail = _tail_log(log)
+        detail = "Dana did not become ready on the local MCP port within 60 seconds."
+        if tail:
+            detail = f"{detail} Recent log:\n{tail[-1200:]}"
+        _setup_log(detail, "error")
+        return {"ok": False, "action_required": "start_dana", "message": detail}
+
     python = Path(os.environ["DANA_PYTHON"]) if os.environ.get("DANA_PYTHON") else Path(__import__("sys").executable)
-    log = Path(os.getenv("DANA_RUNTIME_DIR", Path.home() / ".cache" / "dana")) / "gui-server.log"
-    log.parent.mkdir(parents=True, exist_ok=True)
-    if getattr(__import__("sys"), "frozen", False):
-        command = [str(python), "--serve"]
-    else:
-        command = [str(python), "-m", "dana.main"]
+    command = [str(python), "-m", "dana.main"]
     _setup_log("Dana server process launched; waiting for the local MCP port.")
-    global _DANA_PROCESS
+    child_env = os.environ.copy()
+    child_env.update({
+        "DANA_AUTH_TOKEN": token,
+        "DANA_DEPLOYMENT_MODE": "local",
+        "DANA_HOST": "127.0.0.1",
+        "DANA_PORT": str(settings.port),
+    })
+    popen_kwargs: dict[str, object] = {
+        "cwd": str(root),
+        "env": child_env,
+        "stdout": None,
+        "stderr": subprocess.STDOUT,
+    }
     try:
-        with open(log, "a", encoding="utf-8") as handle:
-            _DANA_PROCESS = subprocess.Popen(
-                command,
-                cwd=root,
-                stdout=handle,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
+        handle = open(log, "a", encoding="utf-8")
+        popen_kwargs["stdout"] = handle
+        if os.name == "nt":
+            # CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
+            popen_kwargs["creationflags"] = 0x00000200 | 0x08000000
+        else:
+            popen_kwargs["start_new_session"] = True
+        _DANA_PROCESS = subprocess.Popen(command, **popen_kwargs)  # type: ignore[arg-type]
     except OSError as exc:
         _setup_log(f"Could not launch Dana runtime: {exc}", "error")
         return {"ok": False, "message": f"Could not launch Dana runtime: {exc}"}
 
-    if _wait_for_dana(timeout=30.0):
+    if _wait_for_dana(timeout=45.0):
         _setup_log("Dana runtime is ready on the local MCP port.", "success")
         return {"ok": True, "message": "Dana is running."}
 
-    _setup_log("Dana runtime did not become ready within 30 seconds.", "error")
-    return {
-        "ok": False,
-        "action_required": "start_dana",
-        "message": "Dana did not become ready on the local MCP port within 30 seconds. Check the runtime log and try again.",
-    }
+    exit_info = ""
+    if _DANA_PROCESS is not None:
+        code = _DANA_PROCESS.poll()
+        if code is not None:
+            exit_info = f" Process exited early with code {code}."
+    tail = _tail_log(log)
+    detail = f"Dana did not become ready on the local MCP port within 45 seconds.{exit_info}"
+    if tail:
+        detail = f"{detail} Recent log:\n{tail[-1200:]}"
+    _setup_log(detail, "error")
+    return {"ok": False, "action_required": "start_dana", "message": detail}
 
 def stop_dana() -> dict[str, object]:
     """Stop only the Dana runtime.
@@ -1305,8 +1413,18 @@ def stop_dana() -> dict[str, object]:
     Funnel is intentionally left untouched. Stopping/restarting the application
     must not request sudo/pkexec or modify routes owned by the network layer.
     """
-    global _DANA_PROCESS
+    global _DANA_PROCESS, _DANA_THREAD, _DANA_UVICORN
     stopped = False
+
+    if _DANA_UVICORN is not None:
+        try:
+            getattr(_DANA_UVICORN, "should_exit", None)
+            _DANA_UVICORN.should_exit = True  # type: ignore[attr-defined]
+            stopped = True
+            _setup_log("Embedded Dana runtime stop requested.")
+        except Exception as exc:
+            _setup_log(f"Could not signal embedded Dana runtime: {exc}", "warning")
+        _DANA_UVICORN = None
 
     if _DANA_PROCESS is not None:
         try:

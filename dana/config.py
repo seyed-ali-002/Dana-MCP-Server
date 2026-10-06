@@ -1,10 +1,11 @@
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 _ROOT_ENV = Path(__file__).resolve().parents[1] / ".env"
-_PERSISTENT_ENV = Path.home() / ".config" / "dana" / ".env"
+_PERSISTENT_ENV = (Path(os.environ["APPDATA"]) if os.name == "nt" and os.environ.get("APPDATA") else Path.home() / ".config") / "dana" / ".env"
 
 
 def _persistent_auth_token() -> str:
