@@ -719,18 +719,17 @@ h1 {
   flex-direction: column;
   gap: 4px;
 }
-.logs-split {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  align-items: start;
+.logs-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
-.logs-split .logs-panel {
+.logs-stack .logs-panel {
   margin-top: 0;
   min-height: 0;
 }
-.logs-split .log-list {
-  max-height: min(52vh, 480px);
+.logs-stack .log-list {
+  max-height: min(36vh, 360px);
 }
 .log-head-actions {
   display: flex;
@@ -764,11 +763,6 @@ h1 {
 .tool-row code {
   color: #a5f3c4;
   font-size: 11px;
-}
-@media (max-width: 980px) {
-  .logs-split {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ---------- scrollbars ---------- */
@@ -814,4 +808,93 @@ h1 {
 @media (prefers-reduced-motion: reduce) {
   .pulse.on, .boot-spinner { animation: none; }
   .track-fill, .download-fill { transition: none; }
+}
+
+/* ---------- nav polish ---------- */
+.nav {
+  gap: 6px;
+  padding: 8px 6px;
+}
+.nav-item {
+  border-radius: 10px;
+  padding: 10px 12px;
+  letter-spacing: 0.02em;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.nav-item.active {
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.28);
+  color: #ecfdf5;
+}
+.nav-item:not(.active):hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ---------- usage ---------- */
+.usage-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.usage-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.usage-value {
+  margin-top: 10px;
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+.usage-breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.usage-breakdown > div {
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #0c0c0f;
+}
+.usage-breakdown strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 20px;
+}
+
+/* ---------- spacing polish ---------- */
+.hero {
+  gap: 18px;
+}
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 4px;
+}
+.card-actions {
+  margin-top: 14px;
+  gap: 10px;
+}
+.modal-actions {
+  gap: 10px;
+  margin-top: 16px;
+}
+.connections-panel {
+  margin-top: 12px;
+}
+.connection-row {
+  gap: 14px;
+  padding: 14px 0;
+}
+.token-editor {
+  gap: 10px;
+  margin-top: 12px;
+}
+@media (max-width: 980px) {
+  .usage-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }

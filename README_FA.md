@@ -22,8 +22,6 @@
 
 بسته‌های دسکتاپ بعد از هر push موفق به `main` به‌صورت خودکار ساخته می‌شوند.
 
-![Dana Control Center](docs/images/dana-browser.png)
-
 ### پنل‌ها
 
 | پنل | کاربرد |
@@ -111,12 +109,38 @@ py -3 install.py            # Windows
 python3 -m dana.main
 ```
 
-### Funnel از CLI
+### Tailscale و Funnel از CLI
+
+نصب Tailscale (اگر از دسکتاپ نصب نشده):
 
 ```bash
+# Linux
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# macOS
+brew install --cask tailscale
+
+# Windows — از https://tailscale.com/download
+```
+
+ورود و بررسی اتصال:
+
+```bash
+sudo tailscale up
 tailscale status
-tailscale funnel --https=443 --yes --bg 8765
+```
+
+فعال‌سازی Funnel برای پورت Dana (ممکن است به دسترسی ادمین نیاز باشد):
+
+```bash
+sudo tailscale funnel --https=443 --yes --bg 8765
 tailscale funnel status
+sudo tailscale funnel reset
+```
+
+نمایش URL کامل توکن‌دار:
+
+```bash
 dana doctor --show-url
 ```
 

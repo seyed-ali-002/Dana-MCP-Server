@@ -4,6 +4,7 @@ from dana import setup
 
 def test_setup_status_shape(monkeypatch):
     monkeypatch.setattr(setup, "command_exists", lambda _name: False)
+    monkeypatch.setattr(setup, "_tailscale_binary", lambda _name="tailscale": None)
     monkeypatch.setattr(setup, "_dana_running", lambda: False)
     result = setup.status().to_dict()
     assert result["tailscale_installed"] is False
@@ -11,6 +12,8 @@ def test_setup_status_shape(monkeypatch):
 
 def test_setup_status_requires_login(monkeypatch):
     monkeypatch.setattr(setup, "command_exists", lambda _name: True)
+    monkeypatch.setattr(setup, "_tailscale_binary", lambda _name="tailscale": "/usr/bin/tailscale")
+    monkeypatch.setattr(setup, "_ts_run", lambda *args, **kwargs: type("R", (), {"returncode": 0, "stdout": json.dumps({"BackendState": "NeedsLogin", "Self": {}}), "stderr": ""})())
     monkeypatch.setattr(setup, "_run", lambda *args, **kwargs: type("R", (), {"returncode": 0, "stdout": json.dumps({"BackendState": "NeedsLogin", "Self": {}}), "stderr": ""})())
     monkeypatch.setattr(setup, "_funnel_active", lambda: False)
     monkeypatch.setattr(setup, "_dana_running", lambda: False)

@@ -45,6 +45,17 @@ type ConnectionTest = {
   checks: Array<{ name: string; url: string; ok: boolean; status?: number; error?: string }>;
 };
 type AuthFlow = { pending: boolean; kind: string; auth_url: string; message: string };
+type UsageState = {
+  available: boolean;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  operations: number;
+  active_seconds?: number;
+  session_seconds?: number;
+  exact_tokens?: number;
+  estimated_tokens?: number;
+};
 type ToolEvent = {
   time: string;
   tool: string;
@@ -71,6 +82,16 @@ const bytes = (n: number) => {
     i++;
   }
   return x.toFixed(i ? 1 : 0) + " " + u[i];
+};
+
+const fmtDuration = (seconds: number) => {
+  const s = Math.max(0, Math.floor(seconds || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  if (h) return `${h}h ${m}m ${r}s`;
+  if (m) return `${m}m ${r}s`;
+  return `${r}s`;
 };
 const speed = (n: number) => (n ? bytes(n) + "/s" : "—");
 
@@ -141,6 +162,7 @@ function App() {
   const [pendingInstall, setPendingInstall] = useState(false);
   const [manualUrl, setManualUrl] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [usage, setUsage] = useState<UsageState | null>(null);
 
   const progress = useMemo(() => {
     if (!status) return 8;
@@ -181,6 +203,11 @@ function App() {
       if (a.ok) {
         const y = await a.json();
         setToolEvents(y.events || []);
+      }
+      const u = await fetch(API(p, "/api/setup/usage"));
+      if (u.ok) {
+        const y = await u.json();
+        setUsage(y);
       }
       return x;
     } catch (e) {
@@ -440,7 +467,7 @@ function App() {
       ? 30
       : 100;
 
-  const navItems = ["Setup", "Control", "Logs"];
+  const navItems = ["Setup", "Control", "Usage", "Logs"];
 
   return (
     <div className="shell">
@@ -902,8 +929,72 @@ function App() {
           </div>
         )}
 
+        {port && view === "Usage" && (
+          <div className="usage-view">
+            <section className="card glass usage-hero">
+              <div className="card-head">
+                <span>USAGE</span>
+                <strong>Tokens & time</strong>
+                <b className={usage?.available ? "state success" : "state warning"}>
+                  {usage?.available ? "LIVE" : "WAITING"}
+                </b>
+              </div>
+              <p className="logs-description">
+                Totals from Dana tool activity on this machine. Values update while MCP clients run tools.
+              </p>
+            </section>
+            <div className="grid usage-grid">
+              <section className="card glass">
+                <span className="eyebrow">TOTAL TOKENS</span>
+                <div className="usage-value">{(usage?.total_tokens ?? 0).toLocaleString()}</div>
+              </section>
+              <section className="card glass">
+                <span className="eyebrow">INPUT</span>
+                <div className="usage-value">{(usage?.input_tokens ?? 0).toLocaleString()}</div>
+              </section>
+              <section className="card glass">
+                <span className="eyebrow">OUTPUT</span>
+                <div className="usage-value">{(usage?.output_tokens ?? 0).toLocaleString()}</div>
+              </section>
+              <section className="card glass">
+                <span className="eyebrow">OPERATIONS</span>
+                <div className="usage-value">{(usage?.operations ?? 0).toLocaleString()}</div>
+              </section>
+              <section className="card glass">
+                <span className="eyebrow">ACTIVE TOOL TIME</span>
+                <div className="usage-value">{fmtDuration(usage?.active_seconds ?? 0)}</div>
+              </section>
+              <section className="card glass">
+                <span className="eyebrow">SESSION WINDOW</span>
+                <div className="usage-value">{fmtDuration(usage?.session_seconds ?? 0)}</div>
+              </section>
+            </div>
+            <section className="connections-panel glass">
+              <div className="logs-head">
+                <div>
+                  <span className="eyebrow">BREAKDOWN</span>
+                  <h2>Estimation source</h2>
+                </div>
+                <button className="secondary" onClick={() => refresh()}>
+                  Refresh
+                </button>
+              </div>
+              <div className="usage-breakdown">
+                <div>
+                  <span className="eyebrow">EXACT</span>
+                  <strong>{(usage?.exact_tokens ?? 0).toLocaleString()}</strong>
+                </div>
+                <div>
+                  <span className="eyebrow">ESTIMATED</span>
+                  <strong>{(usage?.estimated_tokens ?? 0).toLocaleString()}</strong>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+
         {port && view === "Logs" && (
-          <div className="logs-split">
+          <div className="logs-stack">
             <section className="logs-panel glass">
               <div className="logs-head">
                 <div>

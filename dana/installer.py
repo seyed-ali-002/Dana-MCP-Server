@@ -63,7 +63,57 @@ def run_command(
 
 
 def command_exists(name: str) -> bool:
-    return shutil.which(name) is not None
+    if shutil.which(name) is not None:
+        return True
+    if name in {"tailscale", "tailscaled"}:
+        return _tailscale_binary(name) is not None
+    return False
+
+def _tailscale_binary(name: str = "tailscale") -> str | None:
+    """Locate Tailscale even when the GUI process PATH is incomplete."""
+    found = shutil.which(name)
+    if found:
+        return found
+    system = platform.system().lower()
+    candidates: list[str] = []
+    if system == "windows":
+        pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+        pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        local = os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))
+        exe = "tailscale.exe" if name == "tailscale" else "tailscaled.exe"
+        candidates = [
+            str(Path(pf) / "Tailscale" / exe),
+            str(Path(pf86) / "Tailscale" / exe),
+            str(Path(local) / "Tailscale" / exe),
+        ]
+    elif system == "darwin":
+        if name == "tailscale":
+            candidates = [
+                "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+                "/usr/local/bin/tailscale",
+                "/opt/homebrew/bin/tailscale",
+            ]
+        else:
+            candidates = ["/usr/local/bin/tailscaled", "/opt/homebrew/bin/tailscaled"]
+    else:
+        candidates = [
+            f"/usr/bin/{name}",
+            f"/usr/local/bin/{name}",
+            f"/snap/bin/{name}",
+            f"/usr/sbin/{name}",
+        ]
+    for candidate in candidates:
+        path_obj = Path(candidate)
+        try:
+            if path_obj.is_file() and os.access(path_obj, os.X_OK):
+                return str(path_obj)
+        except OSError:
+            continue
+    return None
+
+def _tailscale_cmd(*args: str) -> list[str]:
+    binary = _tailscale_binary("tailscale") or "tailscale"
+    return [binary, *args]
 
 
 def write_env(
@@ -582,27 +632,62 @@ def _tailscale_hostname_from_status() -> str | None:
     return None
 
 
+def _elevate_command(command: list[str], *, timeout: float = 60.0) -> subprocess.CompletedProcess[str]:
+    """Request OS elevation without capturing the password."""
+    system = platform.system().lower()
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+    if system == "darwin":
+        import shlex
+        shell = " ".join(shlex.quote(part) for part in command)
+        shell_as = shell.replace('\\', '\\\\').replace('"', '\\"')
+        script = 'do shell script "' + shell_as + '" with administrator privileges'
+        return subprocess.run(["osascript", "-e", script], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+    if system == "windows":
+        return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+    if shutil.which("pkexec"):
+        elevated = subprocess.run(["pkexec", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        if elevated.returncode == 0 or not shutil.which("sudo"):
+            return elevated
+    if shutil.which("sudo"):
+        return subprocess.run(["sudo", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+    return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+
 def _run_tailscale(command: list[str], *, timeout: float = 20.0) -> subprocess.CompletedProcess[str]:
     """Run Tailscale with a hard timeout and elevate Funnel administration when needed."""
+    if command and command[0] == "tailscale":
+        command = _tailscale_cmd(*command[1:])
     try:
         result = subprocess.run(
             command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout
         )
         details = (result.stderr or result.stdout or "").lower()
-        if result.returncode != 0 and len(command) > 1 and command[1] == "funnel" and ("permission" in details or "access" in details or "root" in details or "daemon" in details):
-            if shutil.which("pkexec"):
-                elevated = subprocess.run(["pkexec", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
-                if elevated.returncode == 0:
-                    return elevated
-            if shutil.which("sudo"):
-                return subprocess.run(["sudo", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        needs_elevation = result.returncode != 0 and any(
+            marker in details
+            for marker in (
+                "permission",
+                "access denied",
+                "access is denied",
+                "root",
+                "daemon",
+                "privilege",
+                "operation not permitted",
+                "must be run as",
+            )
+        )
+        is_funnel = any(part == "funnel" for part in command)
+        if needs_elevation or (result.returncode != 0 and is_funnel):
+            elevated = _elevate_command(command, timeout=max(timeout, 90.0))
+            if elevated.returncode == 0:
+                return elevated
+            if elevated.stderr or elevated.stdout:
+                return elevated
         return result
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
             "Tailscale did not respond in time. Open Tailscale, make sure you are signed in and online, "
-            "then run `tailscale status` and rerun the installer."
+            "then run `tailscale status` and retry."
         ) from exc
-
 
 def _ensure_tailscale_ready() -> None:
     result = _run_tailscale(["tailscale", "status", "--json"], timeout=12)

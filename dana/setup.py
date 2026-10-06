@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Callable
 
 from .config import settings
-from .installer import configure_tailscale_local, _ensure_tailscale_ready, _tailscale_hostname_from_status, command_exists, set_local_public_host, write_env
+from .installer import configure_tailscale_local, _ensure_tailscale_ready, _tailscale_hostname_from_status, command_exists, set_local_public_host, write_env, _tailscale_binary, _tailscale_cmd
 
 TAILSCALE_DOWNLOAD = "https://tailscale.com/download"
 TAILSCALE_PACKAGES = "https://pkgs.tailscale.com/stable/"
@@ -590,6 +590,10 @@ class SetupStatus:
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
 
+def _ts_run(args: list[str], timeout: float = 20) -> subprocess.CompletedProcess[str]:
+    """Run a Tailscale CLI command using a resolved binary path when possible."""
+    return _run(_tailscale_cmd(*args), timeout=timeout)
+
 def _run(command: list[str], timeout: float = 20) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, text=True, capture_output=True, check=False, timeout=timeout)
 
@@ -685,7 +689,7 @@ def _find_funnel_hostname(value: object) -> str | None:
 def _funnel_status() -> tuple[bool, str]:
     """Read Funnel state across current Tailscale CLI schemas."""
     try:
-        result = _run(["tailscale", "funnel", "status", "--json"], timeout=10)
+        result = _ts_run(["funnel", "status", "--json"], timeout=10)
         raw = (result.stdout or "") + "\n" + (result.stderr or "")
     except (OSError, subprocess.TimeoutExpired):
         return False, ""
@@ -746,7 +750,7 @@ def _funnel_status() -> tuple[bool, str]:
         return True, hostname
 
     try:
-        plain = _run(["tailscale", "funnel", "status"], timeout=10)
+        plain = _ts_run(["funnel", "status"], timeout=10)
         text = (plain.stdout or "") + "\n" + (plain.stderr or "")
         plain_host = _find_funnel_hostname(text) or hostname
         plain_lower = text.lower()
@@ -785,12 +789,12 @@ def _wait_for_dana(timeout: float = 30.0) -> bool:
     return _dana_running(timeout=0.75)
 
 def status() -> SetupStatus:
-    installed = command_exists("tailscale")
+    installed = bool(_tailscale_binary("tailscale") or command_exists("tailscale"))
     backend = ""
     hostname = ""
     if installed:
         try:
-            result = _run(["tailscale", "status", "--json"], timeout=8)
+            result = _ts_run(["status", "--json"], timeout=8)
             if result.returncode == 0:
                 payload = json.loads(result.stdout)
                 backend = str(payload.get("BackendState", ""))
@@ -886,7 +890,37 @@ def test_connections() -> dict[str, object]:
 
 
 def token_usage() -> dict[str, object]:
-    """Read lightweight token totals for the desktop control center."""
+    """Aggregate token and active-time usage for the desktop Usage panel."""
+    import time
+    from .reporting import REPORT_JSON
+
+    # Prefer the live report.json written after every tool call.
+    try:
+        payload = json.loads(REPORT_JSON.read_text(encoding="utf-8"))
+        events = list(payload.get("events") or [])
+        inp = int(payload.get("input") or 0)
+        out = int(payload.get("output") or 0)
+        ops = int(payload.get("operations") or len(events))
+        active_seconds = float(payload.get("active_seconds") or 0.0)
+        if not active_seconds:
+            for event in events:
+                active_seconds += max(0.0, float(event.get("duration") or 0.0)) / 1000.0
+        started = float(payload.get("start") or 0.0)
+        last = float(payload.get("last") or 0.0)
+        return {
+            "available": True,
+            "input_tokens": inp,
+            "output_tokens": out,
+            "total_tokens": inp + out,
+            "operations": ops,
+            "active_seconds": round(active_seconds, 1),
+            "session_seconds": round(max(0.0, (last or time.time()) - started), 1) if started else 0.0,
+            "exact_tokens": int(payload.get("exact_tokens") or 0),
+            "estimated_tokens": int(payload.get("estimated_tokens") or 0),
+        }
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        pass
+
     import sqlite3
 
     candidates: list[Path] = []
@@ -919,17 +953,30 @@ def token_usage() -> dict[str, object]:
                     "SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), "
                     "COALESCE(SUM(total_tokens),0), COUNT(*) FROM events"
                 ).fetchone()
-            return {
-                "available": True,
-                "input_tokens": int(row[0]),
-                "output_tokens": int(row[1]),
-                "total_tokens": int(row[2]),
-                "operations": int(row[3]),
-            }
+                return {
+                    "available": True,
+                    "input_tokens": int(row[0]),
+                    "output_tokens": int(row[1]),
+                    "total_tokens": int(row[2]),
+                    "operations": int(row[3]),
+                    "active_seconds": 0.0,
+                    "session_seconds": 0.0,
+                    "exact_tokens": 0,
+                    "estimated_tokens": int(row[2]),
+                }
         except (sqlite3.Error, OSError):
             continue
-    return {"available": False, "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "operations": 0}
-
+    return {
+        "available": False,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "operations": 0,
+        "active_seconds": 0.0,
+        "session_seconds": 0.0,
+        "exact_tokens": 0,
+        "estimated_tokens": 0,
+    }
 
 def verify_public_endpoint(host: str, timeout: float = 8.0) -> bool:
     import urllib.error
@@ -1036,8 +1083,9 @@ def _install_tailscale_static() -> dict[str, object]:
 
 def install_tailscale() -> dict[str, object]:
     _setup_log("Starting Tailscale installation.")
-    if command_exists("tailscale"):
-        _setup_log("Tailscale is already installed.")
+    binary = _tailscale_binary("tailscale")
+    if binary or command_exists("tailscale"):
+        _setup_log(f"Tailscale is already installed ({binary or 'PATH'}). Skipping download and install.", "success")
         return {"ok": True, "installed": True, "message": "Tailscale is already installed."}
     system = platform.system().lower()
     if system == "linux":
@@ -1113,10 +1161,10 @@ def _install_macos() -> dict[str, object]:
 
 def login_tailscale() -> dict[str, object]:
     _setup_log("Checking Tailscale authentication.")
-    if not command_exists("tailscale"):
+    if not (_tailscale_binary("tailscale") or command_exists("tailscale")):
         _setup_log("Cannot authenticate because Tailscale is not installed.", "error")
         return {"ok": False, "action_required": "install_tailscale", "message": "Install Tailscale first."}
-    result = _privileged_run(["tailscale", "up"], timeout=45)
+    result = _privileged_run(_tailscale_cmd("up"), timeout=45)
     output = (result.stdout or "") + "\n" + (result.stderr or "")
     auth_url = _find_auth_url(output)
     if auth_url:
@@ -1134,9 +1182,10 @@ def login_tailscale() -> dict[str, object]:
 
 def enable_funnel(port: int = 8765) -> dict[str, object]:
     _setup_log("Starting Tailscale Funnel setup.")
-    if not command_exists("tailscale"):
+    if not (_tailscale_binary("tailscale") or command_exists("tailscale")):
         _setup_log("Cannot enable Funnel because Tailscale is not installed.", "error")
         return {"ok": False, "action_required": "install_tailscale", "message": "Install Tailscale first."}
+    _setup_log("Administrator authentication may be required to start Funnel.")
     try:
         _ensure_tailscale_ready()
     except RuntimeError as exc:

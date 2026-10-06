@@ -25,8 +25,6 @@ Dana will install/connect Tailscale when needed, ask the OS for admin rights if 
 
 Desktop packages are rebuilt automatically on every successful push to `main`.
 
-![Dana Control Center](docs/images/dana-browser.png)
-
 ![Setup](docs/images/dana-desktop-setup.svg)
 
 ### Panels
@@ -141,15 +139,46 @@ dana run
 
 Default listen address: `127.0.0.1:8765`.
 
-### Tailscale Funnel (CLI)
+### Tailscale and Funnel (CLI)
+
+Install Tailscale (if the desktop app did not):
 
 ```bash
-tailscale status
-tailscale funnel --https=443 --yes --bg 8765
-tailscale funnel status
+# Linux
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# macOS — install from https://tailscale.com/download or Homebrew
+brew install --cask tailscale
+
+# Windows — use the official installer from https://tailscale.com/download
 ```
 
-Show the full tokenized URL in a trusted terminal:
+Sign in and verify connectivity:
+
+```bash
+sudo tailscale up          # Linux; on macOS/Windows use the Tailscale app UI if preferred
+tailscale status
+tailscale status --json
+```
+
+Publish Dana on HTTPS port 443 (Funnel). Admin rights may be required:
+
+```bash
+# Serve local Dana port 8765 on https://<machine>.<tailnet>.ts.net
+sudo tailscale funnel --https=443 --yes --bg 8765
+
+# Inspect / stop
+tailscale funnel status
+sudo tailscale funnel reset
+```
+
+Notes:
+
+- Funnel must be allowed for your tailnet (Tailscale admin console).
+- MagicDNS / HTTPS certificates should be enabled for the tailnet.
+- Dana expects the canonical public listener on **443** targeting `127.0.0.1:8765`.
+
+Show the full tokenized MCP URL in a trusted terminal:
 
 ```bash
 dana doctor --show-url
