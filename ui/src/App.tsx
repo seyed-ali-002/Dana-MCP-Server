@@ -553,7 +553,41 @@ function App() {
     }
   }
 
-  const navItems = ["Setup", "Control", "Usage", "Logs"];
+  const navItems: { id: "Setup" | "Control" | "Usage" | "Logs"; label: string; icon: string }[] = [
+    { id: "Setup", label: "Setup", icon: "setup" },
+    { id: "Control", label: "Control", icon: "control" },
+    { id: "Usage", label: "Usage", icon: "usage" },
+    { id: "Logs", label: "Logs", icon: "logs" },
+  ];
+
+  function NavIcon({ name }: { name: string }) {
+    if (name === "setup")
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.7" />
+        </svg>
+      );
+    if (name === "control")
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="1.7" />
+          <path d="M7 9h4M7 13h10M7 17h7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+        </svg>
+      );
+    if (name === "usage")
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 19V5M4 19h16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          <path d="M8 15v-4M12 15V8M16 15v-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+        </svg>
+      );
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M5 6h14M5 12h14M5 18h10" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      </svg>
+    );
+  }
 
   return (
     <div className={`shell theme-${theme} accent-${accent}`} data-theme={theme} data-accent={accent}>
@@ -570,12 +604,14 @@ function App() {
         <nav>
           {navItems.map((x) => (
             <button
-              key={x}
-              className={view === x ? "nav-item active" : "nav-item"}
-              onClick={() => setView(x)}
+              key={x.id}
+              className={view === x.id ? "nav-item active" : "nav-item"}
+              onClick={() => setView(x.id)}
             >
-              <span className="nav-dot" />
-              {x}
+              <span className="nav-icon">
+                <NavIcon name={x.icon} />
+              </span>
+              {x.label}
             </button>
           ))}
         </nav>
@@ -584,7 +620,17 @@ function App() {
             <span className={ready ? "pulse on" : "pulse"} />
             {ready ? "Online" : port ? "Setup required" : "Connecting…"}
           </div>
-          <span>v{APP_VERSION}</span>
+          <div className="sidebar-version-row">
+            <span className="version-badge">v{APP_VERSION}</span>
+            <button
+              type="button"
+              className="update-check-btn"
+              onClick={() => checkUpdates()}
+              disabled={updateBusy || !port}
+            >
+              {updateBusy ? "Checking…" : "Check for updates"}
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -604,59 +650,43 @@ function App() {
                   : "Starting service…"}
             </div>
                       <div className="theme-controls" role="group" aria-label="Theme">
-            <div className="accent-picks">
-              {(["blue", "green", "red"] as const).map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className={accent === c ? `accent-swatch ${c} active` : `accent-swatch ${c}`}
-                  title={c.charAt(0).toUpperCase() + c.slice(1) + " accent"}
-                  aria-label={c + " accent"}
-                  onClick={() => setAccent(c)}
-                />
-              ))}
+              <label className="accent-select-wrap" title="Accent color">
+                <span className={`accent-dot ${accent}`} aria-hidden="true" />
+                <select
+                  className="accent-select"
+                  value={accent}
+                  onChange={(e) => setAccent(e.target.value as "blue" | "green" | "red")}
+                  aria-label="Accent color"
+                >
+                  <option value="blue">Blue</option>
+                  <option value="green">Green</option>
+                  <option value="red">Red</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                className="icon-button theme-toggle"
+                onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+                title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              >
+                {theme === "dark" ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M21 14.3A8.5 8.5 0 0 1 9.7 3 7 7 0 1 0 21 14.3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
+                    <path d="M12 2v2.2M12 19.8V22M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2 12h2.2M19.8 12H22M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                )}
+              </button>
+              <button type="button" className="icon-button" onClick={() => refresh()} title="Refresh" aria-label="Refresh">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
             </div>
-            <button
-              type="button"
-              className={theme === "dark" ? "icon-button theme-toggle active" : "icon-button theme-toggle"}
-              onClick={() => setTheme("dark")}
-              title="Dark mode"
-              aria-label="Dark mode"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M21 14.3A8.5 8.5 0 0 1 9.7 3 7 7 0 1 0 21 14.3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className={theme === "light" ? "icon-button theme-toggle active" : "icon-button theme-toggle"}
-              onClick={() => setTheme("light")}
-              title="Light mode"
-              aria-label="Light mode"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
-                <path d="M12 2v2.2M12 19.8V22M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2 12h2.2M19.8 12H22M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-            </button>
-            <button type="button" className="icon-button" onClick={() => refresh()} title="Refresh" aria-label="Refresh">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={() => checkUpdates()}
-            title="Check for updates"
-            aria-label="Check for updates"
-            disabled={updateBusy || !port}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 3v6m0 0 2.5-2.5M12 9 9.5 6.5M5 12a7 7 0 0 0 12.2 3.5M19 12A7 7 0 0 0 6.8 8.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          </div>
           </div>
         </header>
 
