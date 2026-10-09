@@ -169,6 +169,13 @@ function App() {
     } catch { /* ignore */ }
     return "dark";
   });
+  const [accent, setAccent] = useState<"blue" | "green" | "red">(() => {
+    try {
+      const saved = localStorage.getItem("dana-accent");
+      if (saved === "blue" || saved === "green" || saved === "red") return saved;
+    } catch { /* ignore */ }
+    return "blue";
+  });
   const [usage, setUsage] = useState<UsageState | null>(null);
 
   const progress = useMemo(() => {
@@ -298,9 +305,11 @@ function App() {
   useEffect(() => {
     try {
       localStorage.setItem("dana-theme", theme);
+      localStorage.setItem("dana-accent", accent);
     } catch { /* ignore */ }
     document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
+    document.documentElement.setAttribute("data-accent", accent);
+  }, [theme, accent]);
 
   async function run(path: string, autoContinue = false) {
     if (!port || busy) return;
@@ -505,7 +514,7 @@ function App() {
   const navItems = ["Setup", "Control", "Usage", "Logs"];
 
   return (
-    <div className={`shell theme-${theme}`} data-theme={theme}>
+    <div className={`shell theme-${theme} accent-${accent}`} data-theme={theme} data-accent={accent}>
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
@@ -552,16 +561,48 @@ function App() {
                   ? "Configuration in progress"
                   : "Starting service…"}
             </div>
+                      <div className="theme-controls" role="group" aria-label="Theme">
+            <div className="accent-picks">
+              {(["blue", "green", "red"] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={accent === c ? `accent-swatch ${c} active` : `accent-swatch ${c}`}
+                  title={c.charAt(0).toUpperCase() + c.slice(1) + " accent"}
+                  aria-label={c + " accent"}
+                  onClick={() => setAccent(c)}
+                />
+              ))}
+            </div>
             <button
-            className="icon-button"
-            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-            title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          >
-            {theme === "dark" ? "Light" : "Dark"}
-          </button>
-          <button className="icon-button" onClick={() => refresh()} title="Refresh">
-              ↻
+              type="button"
+              className={theme === "dark" ? "icon-button theme-toggle active" : "icon-button theme-toggle"}
+              onClick={() => setTheme("dark")}
+              title="Dark mode"
+              aria-label="Dark mode"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M21 14.3A8.5 8.5 0 0 1 9.7 3 7 7 0 1 0 21 14.3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+              </svg>
             </button>
+            <button
+              type="button"
+              className={theme === "light" ? "icon-button theme-toggle active" : "icon-button theme-toggle"}
+              onClick={() => setTheme("light")}
+              title="Light mode"
+              aria-label="Light mode"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
+                <path d="M12 2v2.2M12 19.8V22M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2 12h2.2M19.8 12H22M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
+            <button type="button" className="icon-button" onClick={() => refresh()} title="Refresh" aria-label="Refresh">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
           </div>
         </header>
 

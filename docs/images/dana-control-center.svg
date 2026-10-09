@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1220"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" rx="18" fill="url(#bg)"/>
+  <!-- sidebar -->
+  <rect x="0" y="0" width="220" height="720" fill="#0a1020"/>
+  <rect x="219" y="0" width="1" height="720" fill="#1e293b"/>
+  <circle cx="40" cy="40" r="16" fill="#1e3a5f"/>
+  <text x="64" y="38" fill="#e5e7eb" font-family="Segoe UI, Arial" font-size="14" font-weight="600">DANA</text>
+  <text x="64" y="54" fill="#64748b" font-family="Segoe UI, Arial" font-size="11">Control Center</text>
+  <rect x="16" y="90" width="188" height="36" rx="10" fill="#1e3a5f"/>
+  <circle cx="34" cy="108" r="4" fill="#3b82f6"/>
+  <text x="48" y="113" fill="#e5e7eb" font-family="Segoe UI, Arial" font-size="13">Setup</text>
+  <circle cx="34" cy="156" r="4" fill="#475569"/>
+  <text x="48" y="161" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="13">Control</text>
+  <circle cx="34" cy="196" r="4" fill="#475569"/>
+  <text x="48" y="201" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="13">Usage</text>
+  <circle cx="34" cy="236" r="4" fill="#475569"/>
+  <text x="48" y="241" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="13">Logs</text>
+  <circle cx="28" cy="690" r="4" fill="#3b82f6"/>
+  <text x="40" y="694" fill="#64748b" font-family="Segoe UI, Arial" font-size="11">Online</text>
+  <text x="170" y="694" fill="#64748b" font-family="Segoe UI, Arial" font-size="11">v0.1.5</text>
+  <!-- main -->
+  <text x="248" y="36" fill="#64748b" font-family="Segoe UI, Arial" font-size="11" letter-spacing="1.5">LOCAL CONTROL PLANE</text>
+  <text x="248" y="60" fill="#e5e7eb" font-family="Segoe UI, Arial" font-size="18" font-weight="600">Setup</text>
+  <!-- theme controls -->
+  <rect x="980" y="28" width="260" height="36" rx="12" fill="#111827" stroke="#1e293b"/>
+  <circle cx="1000" cy="46" r="6" fill="#3b82f6"/>
+  <circle cx="1020" cy="46" r="6" fill="#22c55e"/>
+  <circle cx="1040" cy="46" r="6" fill="#ef4444"/>
+  <text x="1060" y="50" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="12">Dark / Light · Refresh</text>
+  <!-- hero -->
+  <rect x="248" y="90" width="1000" height="150" rx="14" fill="#111827" stroke="#1e293b"/>
+  <text x="272" y="122" fill="#3b82f6" font-family="Segoe UI, Arial" font-size="11" font-weight="600">ONE-CLICK DEPLOYMENT</text>
+  <text x="272" y="150" fill="#e5e7eb" font-family="Segoe UI, Arial" font-size="18" font-weight="600">Bring Dana online without the terminal.</text>
+  <text x="272" y="174" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="14">Python runtime, Tailscale, Funnel and the public MCP endpoint.</text>
+  <rect x="272" y="192" width="130" height="32" rx="10" fill="url(#accent)"/>
+  <text x="292" y="213" fill="#eff6ff" font-family="Segoe UI, Arial" font-size="13" font-weight="600">Dana is active</text>
+  <!-- steps -->
+  <rect x="248" y="260" width="320" height="130" rx="14" fill="#111827" stroke="#1e293b"/>
+  <rect x="588" y="260" width="320" height="130" rx="14" fill="#111827" stroke="#1e293b"/>
+  <rect x="928" y="260" width="320" height="130" rx="14" fill="#111827" stroke="#1e293b"/>
+  <text x="268" y="290" fill="#64748b" font-family="Segoe UI, Arial" font-size="11">01</text>
+  <text x="300" y="290" fill="#e5e7eb" font-family="Segoe UI, Arial" font-size="15" font-weight="600">Tailscale</text>
+  <rect x="500" y="276" width="50" height="18" rx="9" fill="#1e3a5f"/>
+  <text x="508" y="289" fill="#3b82f6" font-family="Segoe UI, Arial" font-size="10" font-weight="700">READY</text>
+  <text x="268" y="318" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="14">Install and authenticate Tailscale.</text>
+  <text x="268" y="348" fill="#64748b" font-family="Consolas, monospace" font-size="12">Running</text>
+  <text x="608" y="290" fill="#64748b" font-family="Segoe UI, Arial" font-size="11">02</text>
+  <text x="640" y="290" fill="#e5e7eb" font-family="Segoe UI, Arial" font-size="15" font-weight="600">Dana Runtime</text>
+  <rect x="840" y="276" width="50" height="18" rx="9" fill="#1e3a5f"/>
+  <text x="848" y="289" fill="#3b82f6" font-family="Segoe UI, Arial" font-size="10" font-weight="700">READY</text>
+  <text x="608" y="318" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="14">Start the local MCP service.</text>
+  <text x="608" y="348" fill="#64748b" font-family="Consolas, monospace" font-size="12">127.0.0.1:8765</text>
+  <text x="948" y="290" fill="#64748b" font-family="Segoe UI, Arial" font-size="11">03</text>
+  <text x="980" y="290" fill="#e5e7eb" font-family="Segoe UI, Arial" font-size="15" font-weight="600">Funnel</text>
+  <rect x="1180" y="276" width="50" height="18" rx="9" fill="#1e3a5f"/>
+  <text x="1188" y="289" fill="#3b82f6" font-family="Segoe UI, Arial" font-size="10" font-weight="700">READY</text>
+  <text x="948" y="318" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="14">Publish the HTTPS MCP endpoint.</text>
+  <text x="948" y="348" fill="#64748b" font-family="Consolas, monospace" font-size="12">*.ts.net</text>
+  <!-- progress -->
+  <rect x="248" y="410" width="1000" height="120" rx="14" fill="#111827" stroke="#1e293b"/>
+  <text x="272" y="440" fill="#64748b" font-family="Segoe UI, Arial" font-size="11">SETUP PROGRESS</text>
+  <text x="272" y="462" fill="#e5e7eb" font-family="Segoe UI, Arial" font-size="16" font-weight="600">100%</text>
+  <text x="1100" y="450" fill="#94a3b8" font-family="Segoe UI, Arial" font-size="13">Ready when you are.</text>
+  <rect x="272" y="480" width="952" height="8" rx="4" fill="#243049"/>
+  <rect x="272" y="480" width="952" height="8" rx="4" fill="url(#accent)"/>
+  <rect x="272" y="502" width="72" height="22" rx="11" fill="#1e3a5f"/>
+  <text x="282" y="517" fill="#3b82f6" font-family="Segoe UI, Arial" font-size="11">Tailscale</text>
+  <rect x="354" y="502" width="100" height="22" rx="11" fill="#1e3a5f"/>
+  <text x="364" y="517" fill="#3b82f6" font-family="Segoe UI, Arial" font-size="11">Authentication</text>
+  <rect x="464" y="502" width="52" height="22" rx="11" fill="#1e3a5f"/>
+  <text x="478" y="517" fill="#3b82f6" font-family="Segoe UI, Arial" font-size="11">Dana</text>
+  <rect x="526" y="502" width="58" height="22" rx="11" fill="#1e3a5f"/>
+  <text x="538" y="517" fill="#3b82f6" font-family="Segoe UI, Arial" font-size="11">Funnel</text>
+</svg>

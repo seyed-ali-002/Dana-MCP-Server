@@ -25,9 +25,11 @@ Dana will install/connect Tailscale when needed, ask the OS for admin rights if 
 
 Desktop packages are rebuilt automatically on every successful push to `main`.
 
+![Dana Control Center](docs/images/dana-control-center.svg)
+
 ![Setup](docs/images/dana-desktop-setup.svg)
 
-The Control Center uses a modern dark dashboard layout with an optional **light theme** (toggle in the top bar).
+The Control Center uses a clean desktop layout with **dark/light** mode (moon/sun icons) and **blue / green / red** accent colors.
 
 ### Panels
 
