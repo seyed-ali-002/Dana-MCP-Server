@@ -27,6 +27,8 @@ Desktop packages are rebuilt automatically on every successful push to `main`.
 
 ![Setup](docs/images/dana-desktop-setup.svg)
 
+The Control Center uses a modern dark dashboard layout with an optional **light theme** (toggle in the top bar).
+
 ### Panels
 
 | Panel | Purpose |
@@ -34,6 +36,7 @@ Desktop packages are rebuilt automatically on every successful push to `main`.
 | **Setup** | Install Tailscale, sign in, start Dana, enable Funnel |
 | **Control** | Start/stop, copy MCP URLs, token, advanced settings |
 | **Logs** | Setup/errors · live tool activity |
+| **Usage** | Token totals and active tool time |
 
 ### MCP URLs
 

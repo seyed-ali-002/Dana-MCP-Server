@@ -162,6 +162,13 @@ function App() {
   const [pendingInstall, setPendingInstall] = useState(false);
   const [manualUrl, setManualUrl] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    try {
+      const saved = localStorage.getItem("dana-theme");
+      if (saved === "light" || saved === "dark") return saved;
+    } catch { /* ignore */ }
+    return "dark";
+  });
   const [usage, setUsage] = useState<UsageState | null>(null);
 
   const progress = useMemo(() => {
@@ -288,6 +295,13 @@ function App() {
     if (port && view === "Control") loadConfig(port);
   }, [port, view]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem("dana-theme", theme);
+    } catch { /* ignore */ }
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
   async function run(path: string, autoContinue = false) {
     if (!port || busy) return;
     setBusy(true);
@@ -321,9 +335,30 @@ function App() {
       await refresh();
       pollDownload();
       if (completed && !pending) setPendingInstall(false);
-      if (autoContinue && completed && !pending) setTimeout(() => setup(), 150);
+      // After installer actions, give PATH/status a moment to settle then continue.
+      if (autoContinue && completed && !pending) setTimeout(() => setup(), 400);
+      if (autoContinue && completed && pending && path.includes("install-tailscale")) {
+        // Windows/macOS open an external installer — keep polling for CLI presence.
+        setPendingInstall(true);
+      }
     }
   }
+
+  // After external Tailscale installer finishes, detect CLI and continue setup
+  // without requiring the user to restart the whole application.
+  useEffect(() => {
+    if (!port || !pendingInstall) return;
+    const t = window.setInterval(async () => {
+      const current = await refresh(port, true);
+      if (!current) return;
+      if (current.tailscale_installed) {
+        setPendingInstall(false);
+        setMessage("Tailscale detected. Continuing setup…");
+        setTimeout(() => setup(), 200);
+      }
+    }, 2000);
+    return () => clearInterval(t);
+  }, [port, pendingInstall]);
 
   useEffect(() => {
     if (!port || !authFlow?.pending) return;
@@ -470,7 +505,7 @@ function App() {
   const navItems = ["Setup", "Control", "Usage", "Logs"];
 
   return (
-    <div className="shell">
+    <div className={`shell theme-${theme}`} data-theme={theme}>
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
@@ -517,7 +552,14 @@ function App() {
                   ? "Configuration in progress"
                   : "Starting service…"}
             </div>
-            <button className="icon-button" onClick={() => refresh()} title="Refresh">
+            <button
+            className="icon-button"
+            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+            title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          >
+            {theme === "dark" ? "Light" : "Dark"}
+          </button>
+          <button className="icon-button" onClick={() => refresh()} title="Refresh">
               ↻
             </button>
           </div>

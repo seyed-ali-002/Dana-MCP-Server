@@ -61,7 +61,13 @@ class TeeStream:
         self._buffer = ""
 
     def write(self, data):
-        result = self._stream.write(data)
+        try:
+            result = self._stream.write(data)
+        except UnicodeEncodeError:
+            safe = data.encode(getattr(self._stream, "encoding", None) or "utf-8", errors="replace").decode(
+                getattr(self._stream, "encoding", None) or "utf-8", errors="replace"
+            ) if isinstance(data, str) else data
+            result = self._stream.write(safe)
         self._stream.flush()
         self._buffer += data
         while "\n" in self._buffer:

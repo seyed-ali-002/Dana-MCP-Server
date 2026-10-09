@@ -781,13 +781,19 @@ def _dana_running(timeout: float = 0.5) -> bool:
         return False
 
 
-def _wait_for_dana(timeout: float = 30.0) -> bool:
+def _wait_for_dana(timeout: float = 20.0) -> bool:
     deadline = time.monotonic() + max(0.5, timeout)
+    last_report = 0.0
     while time.monotonic() < deadline:
-        if _dana_running(timeout=0.75):
+        if _dana_running(timeout=0.5):
             return True
-        time.sleep(0.25)
-    return _dana_running(timeout=0.75)
+        elapsed = timeout - max(0.0, deadline - time.monotonic())
+        if elapsed - last_report >= 5.0:
+            remaining = max(0.0, deadline - time.monotonic())
+            _setup_log(f"Waiting for local MCP port {settings.port}… {remaining:.0f}s remaining")
+            last_report = elapsed
+        time.sleep(0.2)
+    return _dana_running(timeout=0.5)
 
 def status() -> SetupStatus:
     installed = bool(_tailscale_binary("tailscale") or command_exists("tailscale"))
@@ -1221,11 +1227,13 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
     os.environ["DANA_AUTH_TOKEN"] = token
     set_local_public_host(host)
     active = False
-    for _ in range(20):
+    for attempt in range(12):
         active, detected_host = _funnel_status()
         host = detected_host or host
         if active:
             break
+        if attempt in {3, 7}:
+            _setup_log(f"Waiting for Funnel to publish on {host or 'hostname'}…")
         time.sleep(0.5)
     verified = verify_public_endpoint(host) if active else False
     if active:
@@ -1266,14 +1274,12 @@ def _run_embedded_dana() -> None:
         import logging
         import uvicorn
         from .config import settings as runtime_settings
-        from .file_logging import configure_file_logging, install_terminal_mirror
+        from .file_logging import configure_file_logging
         from .tailscale import DanaFunnelManager
 
         configure_file_logging()
-        try:
-            install_terminal_mirror()
-        except Exception:
-            pass
+        # Do not mirror stdout in the desktop agent: Windows legacy code pages
+        # crash on status glyphs, and the GUI already shows logs via the API.
         for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "mcp", "mcp.server"):
             logger = logging.getLogger(name)
             logger.setLevel(logging.CRITICAL)
@@ -1320,7 +1326,7 @@ def start_dana() -> dict[str, object]:
             ):
                 container.start()
                 _setup_log("Dana Docker runtime started; waiting for readiness.")
-                if _wait_for_dana(timeout=45.0):
+                if _wait_for_dana(timeout=20.0):
                     _setup_log("Dana Docker runtime is ready on the local MCP port.", "success")
                     return {"ok": True, "message": "Dana is running."}
                 _setup_log("Docker started but Dana did not become ready; falling back to the native runtime.", "warning")
@@ -1352,11 +1358,11 @@ def start_dana() -> dict[str, object]:
         else:
             _setup_log("Embedded Dana runtime thread is already active; waiting for the local MCP port.")
         # Cold import + bind can exceed 30s on Windows packaged builds.
-        if _wait_for_dana(timeout=60.0):
+        if _wait_for_dana(timeout=20.0):
             _setup_log("Dana runtime is ready on the local MCP port.", "success")
             return {"ok": True, "message": "Dana is running."}
         tail = _tail_log(log)
-        detail = "Dana did not become ready on the local MCP port within 60 seconds."
+        detail = "Dana did not become ready on the local MCP port within 20 seconds."
         if tail:
             detail = f"{detail} Recent log:\n{tail[-1200:]}"
         _setup_log(detail, "error")
@@ -1391,7 +1397,7 @@ def start_dana() -> dict[str, object]:
         _setup_log(f"Could not launch Dana runtime: {exc}", "error")
         return {"ok": False, "message": f"Could not launch Dana runtime: {exc}"}
 
-    if _wait_for_dana(timeout=45.0):
+    if _wait_for_dana(timeout=20.0):
         _setup_log("Dana runtime is ready on the local MCP port.", "success")
         return {"ok": True, "message": "Dana is running."}
 
@@ -1401,7 +1407,7 @@ def start_dana() -> dict[str, object]:
         if code is not None:
             exit_info = f" Process exited early with code {code}."
     tail = _tail_log(log)
-    detail = f"Dana did not become ready on the local MCP port within 45 seconds.{exit_info}"
+    detail = f"Dana did not become ready on the local MCP port within 20 seconds.{exit_info}"
     if tail:
         detail = f"{detail} Recent log:\n{tail[-1200:]}"
     _setup_log(detail, "error")

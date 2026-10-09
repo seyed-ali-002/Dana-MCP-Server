@@ -10,7 +10,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-console = Console()
+# Windows packaged builds often use a legacy code page (cp1252). Force a
+# Unicode-capable console so status glyphs never crash startup.
+console = Console(force_terminal=True, legacy_windows=False, soft_wrap=True)
 
 
 def _row(table: Table, key: str, value: str) -> None:
@@ -36,7 +38,7 @@ def server_dashboard(settings: Any, mode: str, public_url: str | None = None) ->
     grid = Table.grid(expand=True, padding=(0, 2))
     grid.add_column(style="dim", justify="right", width=11)
     grid.add_column(ratio=1)
-    _row(grid, "STATUS", "[bold green]● ONLINE[/bold green]")
+    _row(grid, "STATUS", "[bold green]* ONLINE[/bold green]")
     _row(grid, "MODE", f"[bold cyan]{mode.upper()}[/bold cyan]")
     _row(grid, "TRANSPORT", "HTTP Streamable MCP")
     _row(grid, "WORKERS", f"[bold]{settings.normalized_workers()}[/bold]")
@@ -100,7 +102,7 @@ def worker_event(
 def worker_ready(worker_name: str, worker_number: int) -> None:
     now = datetime.now().strftime("%H:%M:%S")
     console.print(
-        f"[dim]{now}[/dim]  [green]●[/green] [bold cyan]{worker_name}[/bold cyan] "
+        f"[dim]{now}[/dim]  [green]*[/green] [bold cyan]{worker_name}[/bold cyan] "
         f"[dim]#{worker_number}[/dim] [green]ONLINE[/green]"
     )
 
