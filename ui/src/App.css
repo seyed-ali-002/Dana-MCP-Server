@@ -953,3 +953,97 @@ input:focus, select:focus, textarea:focus {
 .connection-row + .connection-row {
   border-top: 1px solid var(--border);
 }
+
+/* Notification cards */
+.notice-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.notice-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.notice-body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  min-width: 0;
+  flex: 1;
+}
+.notice-body p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.45;
+  word-break: break-word;
+}
+.notice-body strong {
+  font-size: 14px;
+  font-weight: 600;
+  display: block;
+}
+.notice-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.notice-close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+}
+.notice-close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.notice-error {
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+}
+.notice-error .notice-badge {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.notice-error strong { color: var(--danger); }
+.notice-success {
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+.notice-success .notice-badge {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.notice-info {
+  border-color: color-mix(in srgb, #60a5fa 40%, transparent);
+  background: color-mix(in srgb, #60a5fa 8%, var(--surface));
+}
+.notice-info .notice-badge {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.14);
+}
+.notice-muted {
+  border-color: var(--border-strong);
+}
+.notice-muted .notice-badge {
+  color: var(--muted);
+  background: var(--surface-2);
+}

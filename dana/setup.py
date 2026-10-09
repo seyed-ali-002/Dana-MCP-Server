@@ -772,6 +772,14 @@ def _funnel_hostname() -> str:
 def _funnel_active() -> bool:
     return _funnel_status()[0]
 
+
+def _port_listening(timeout: float = 0.4) -> bool:
+    """Wrapper so tests that mock _dana_running() without kwargs still pass."""
+    try:
+        return bool(_dana_running(timeout=timeout))  # type: ignore[call-arg]
+    except TypeError:
+        return bool(_dana_running())
+
 def _dana_running(timeout: float = 0.5) -> bool:
     import socket
     try:
@@ -1469,17 +1477,29 @@ def stop_dana() -> dict[str, object]:
     must not request sudo/pkexec or modify routes owned by the network layer.
     """
     global _DANA_PROCESS, _DANA_THREAD, _DANA_UVICORN
+    import threading
+
+    alive_thread = isinstance(_DANA_THREAD, threading.Thread) and _DANA_THREAD.is_alive()
+    if (
+        not _port_listening(0.3)
+        and _DANA_PROCESS is None
+        and _DANA_UVICORN is None
+        and not alive_thread
+    ):
+        _setup_log("Dana runtime is already stopped.", "success")
+        return {"ok": True, "stopped": False, "message": "Dana is already stopped."}
+
     stopped = False
 
     if _DANA_UVICORN is not None:
         try:
-            getattr(_DANA_UVICORN, "should_exit", None)
-            _DANA_UVICORN.should_exit = True  # type: ignore[attr-defined]
+            setattr(_DANA_UVICORN, "should_exit", True)
+            if hasattr(_DANA_UVICORN, "force_exit"):
+                setattr(_DANA_UVICORN, "force_exit", True)
             stopped = True
             _setup_log("Embedded Dana runtime stop requested.")
         except Exception as exc:
             _setup_log(f"Could not signal embedded Dana runtime: {exc}", "warning")
-        _DANA_UVICORN = None
 
     if _DANA_PROCESS is not None:
         try:
@@ -1489,10 +1509,13 @@ def stop_dana() -> dict[str, object]:
                     _DANA_PROCESS.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     _DANA_PROCESS.kill()
-                    _DANA_PROCESS.wait(timeout=3)
-                stopped = True
+                    try:
+                        _DANA_PROCESS.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        pass
+            stopped = True
         except OSError as exc:
-            _setup_log(f"Could not stop Dana runtime: {exc}", "error")
+            _setup_log(f"Could not stop Dana runtime process: {exc}", "error")
             return {"ok": False, "message": str(exc)}
         finally:
             _DANA_PROCESS = None
@@ -1506,15 +1529,28 @@ def stop_dana() -> dict[str, object]:
     except Exception:
         pass
 
-    # Funnel is intentionally not changed when Dana stops.
-    # Use an explicit Funnel administration action when the public route must be changed.
+    # Allow uvicorn / child process to release the local MCP port before reporting.
+    deadline = time.monotonic() + 8.0
+    while time.monotonic() < deadline:
+        if not _port_listening(0.25):
+            break
+        time.sleep(0.2)
 
-    if _dana_running():
-        _setup_log("Dana runtime is still listening after stop request.", "error")
-        return {"ok": False, "message": "Dana could not be stopped cleanly."}
+    if isinstance(_DANA_THREAD, threading.Thread) and _DANA_THREAD.is_alive():
+        _DANA_THREAD.join(timeout=2.0)
+
+    _DANA_UVICORN = None
+
+    if _port_listening(0.4):
+        detail = (
+            f"Dana is still listening on 127.0.0.1:{settings.port}. "
+            "Close any other Dana process using that port, then try Stop again."
+        )
+        _setup_log(detail, "error")
+        return {"ok": False, "message": detail}
 
     _setup_log("Dana runtime stopped.", "success")
-    return {"ok": True, "stopped": stopped, "message": "Dana is stopped."}
+    return {"ok": True, "stopped": True, "message": "Dana is stopped."}
 
 
 def bootstrap(progress: Callable[[str], None] | None = None) -> dict[str, object]:

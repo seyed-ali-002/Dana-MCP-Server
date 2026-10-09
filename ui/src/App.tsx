@@ -354,6 +354,7 @@ function App() {
         throw Error(x.message || x.error || "Action failed");
       completed = x.ok === true;
       setMessage(x.message || "Completed.");
+      setUpdateInfo(null);
       if (x.auth_url) {
         const kind = path.includes("login-tailscale") ? "login" : "funnel";
         setAuthFlow({
@@ -365,7 +366,9 @@ function App() {
         await openExternal(x.auth_url);
       }
     } catch (e) {
-      setError(String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg.replace(/^Error:\s*/i, ""));
+      setUpdateInfo(null);
     } finally {
       setBusy(false);
       await refresh();
@@ -690,38 +693,68 @@ function App() {
           </div>
         </header>
 
+        <div className="notice-stack">
         {updateInfo && (
-        <section className={updateInfo.available ? "banner-info" : "banner-info"}>
-          <strong>{updateInfo.message || "Update check"}</strong>
-          {updateInfo.available && updateInfo.html_url && (
-            <div className="card-actions" style={{ marginTop: 8 }}>
-              <button className="primary" onClick={() => openExternal(updateInfo.html_url || "")}>
-                Open release v{updateInfo.latest}
-              </button>
-              {(updateInfo.assets || []).slice(0, 3).map((a) => (
-                <button key={a.url} className="secondary" onClick={() => openExternal(a.url)}>
-                  {a.name}
-                </button>
-              ))}
+          <section
+            className={
+              updateInfo.available ? "notice-card notice-info" : "notice-card notice-success"
+            }
+          >
+            <div className="notice-body">
+              <span className="notice-badge">{updateInfo.available ? "UPDATE" : "OK"}</span>
+              <div>
+                <strong>{updateInfo.message || "Update check"}</strong>
+                {updateInfo.available && updateInfo.html_url && (
+                  <div className="card-actions" style={{ marginTop: 8 }}>
+                    <button className="primary" onClick={() => openExternal(updateInfo.html_url || "")}>
+                      Open release v{updateInfo.latest}
+                    </button>
+                    {(updateInfo.assets || []).slice(0, 3).map((a) => (
+                      <button key={a.url} className="secondary" onClick={() => openExternal(a.url)}>
+                        {a.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-        </section>
-      )}
-
-      {error && (
-          <section className="alert-banner glass alert-error">
-            <div className="alert-icon">!</div>
-            <div className="alert-copy">
-              <strong>Action error</strong>
-              <p>{error}</p>
-            </div>
-            <button className="alert-close" onClick={() => setError("")}>
+            <button type="button" className="notice-close" onClick={() => setUpdateInfo(null)} aria-label="Dismiss">
               ×
             </button>
           </section>
         )}
 
-        {!port && !bootFailed && (
+        {error && (
+          <section className="notice-card notice-error">
+            <div className="notice-body">
+              <span className="notice-badge">ERROR</span>
+              <div>
+                <strong>Action failed</strong>
+                <p>{error}</p>
+              </div>
+            </div>
+            <button type="button" className="notice-close" onClick={() => setError("")} aria-label="Dismiss">
+              ×
+            </button>
+          </section>
+        )}
+
+        {!error && !!message && !!port && !message.startsWith("Starting") && (
+          <section className="notice-card notice-muted">
+            <div className="notice-body">
+              <span className="notice-badge">INFO</span>
+              <div>
+                <strong>{message}</strong>
+              </div>
+            </div>
+            <button type="button" className="notice-close" onClick={() => setMessage("")} aria-label="Dismiss">
+              ×
+            </button>
+          </section>
+        )}
+      </div>
+
+      {!port && !bootFailed && (
           <section className="boot-panel glass">
             <div className="boot-spinner" />
             <div>
