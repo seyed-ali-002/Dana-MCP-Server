@@ -55,6 +55,31 @@ type UsageState = {
   session_seconds?: number;
   exact_tokens?: number;
   estimated_tokens?: number;
+  success_rate?: number;
+  started_at?: string;
+  last_at?: string;
+  top_tools?: { name: string; count: number }[];
+  recent_events?: {
+    time: string;
+    tool: string;
+    worker: string;
+    input: number;
+    output: number;
+    duration_ms: number;
+    success: boolean;
+    source: string;
+  }[];
+  report_json?: string;
+  report_html?: string;
+};
+type UpdateInfo = {
+  ok: boolean;
+  current?: string;
+  latest?: string;
+  available?: boolean;
+  html_url?: string;
+  message?: string;
+  assets?: { name: string; url: string }[];
 };
 type ToolEvent = {
   time: string;
@@ -177,6 +202,8 @@ function App() {
     return "blue";
   });
   const [usage, setUsage] = useState<UsageState | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
 
   const progress = useMemo(() => {
     if (!status) return 8;
@@ -511,6 +538,21 @@ function App() {
       ? 30
       : 100;
 
+  async function checkUpdates() {
+    if (!port || updateBusy) return;
+    setUpdateBusy(true);
+    try {
+      const r = await fetch(API(port, "/api/setup/updates/check"));
+      const x = await r.json();
+      setUpdateInfo(x);
+      if (x.message) setMessage(x.message);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setUpdateBusy(false);
+    }
+  }
+
   const navItems = ["Setup", "Control", "Usage", "Logs"];
 
   return (
@@ -602,11 +644,41 @@ function App() {
                 <path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => checkUpdates()}
+            title="Check for updates"
+            aria-label="Check for updates"
+            disabled={updateBusy || !port}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3v6m0 0 2.5-2.5M12 9 9.5 6.5M5 12a7 7 0 0 0 12.2 3.5M19 12A7 7 0 0 0 6.8 8.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
           </div>
           </div>
         </header>
 
-        {error && (
+        {updateInfo && (
+        <section className={updateInfo.available ? "banner-info" : "banner-info"}>
+          <strong>{updateInfo.message || "Update check"}</strong>
+          {updateInfo.available && updateInfo.html_url && (
+            <div className="card-actions" style={{ marginTop: 8 }}>
+              <button className="primary" onClick={() => openExternal(updateInfo.html_url || "")}>
+                Open release v{updateInfo.latest}
+              </button>
+              {(updateInfo.assets || []).slice(0, 3).map((a) => (
+                <button key={a.url} className="secondary" onClick={() => openExternal(a.url)}>
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {error && (
           <section className="alert-banner glass alert-error">
             <div className="alert-icon">!</div>
             <div className="alert-copy">
@@ -1013,54 +1085,76 @@ function App() {
         )}
 
         {port && view === "Usage" && (
-          <div className="usage-view">
-            <section className="card glass usage-hero">
-              <div className="card-head">
-                <span>USAGE</span>
-                <strong>Tokens & time</strong>
-                <b className={usage?.available ? "state success" : "state warning"}>
-                  {usage?.available ? "LIVE" : "WAITING"}
-                </b>
-              </div>
-              <p className="logs-description">
-                Totals from Dana tool activity on this machine. Values update while MCP clients run tools.
-              </p>
-            </section>
-            <div className="grid usage-grid">
-              <section className="card glass">
-                <span className="eyebrow">TOTAL TOKENS</span>
-                <div className="usage-value">{(usage?.total_tokens ?? 0).toLocaleString()}</div>
-              </section>
-              <section className="card glass">
-                <span className="eyebrow">INPUT</span>
-                <div className="usage-value">{(usage?.input_tokens ?? 0).toLocaleString()}</div>
-              </section>
-              <section className="card glass">
-                <span className="eyebrow">OUTPUT</span>
-                <div className="usage-value">{(usage?.output_tokens ?? 0).toLocaleString()}</div>
-              </section>
-              <section className="card glass">
-                <span className="eyebrow">OPERATIONS</span>
-                <div className="usage-value">{(usage?.operations ?? 0).toLocaleString()}</div>
-              </section>
-              <section className="card glass">
-                <span className="eyebrow">ACTIVE TOOL TIME</span>
-                <div className="usage-value">{fmtDuration(usage?.active_seconds ?? 0)}</div>
-              </section>
-              <section className="card glass">
-                <span className="eyebrow">SESSION WINDOW</span>
-                <div className="usage-value">{fmtDuration(usage?.session_seconds ?? 0)}</div>
-              </section>
+        <div className="usage-view">
+          <section className="card glass usage-hero">
+            <div className="card-head">
+              <span>USAGE</span>
+              <strong>Lifetime report</strong>
+              <b className={usage?.available ? "state success" : "state warning"}>
+                {usage?.available ? "LIVE" : "WAITING"}
+              </b>
             </div>
+            <p className="logs-description">
+              Cumulative totals stored locally (same data as the terminal report). Started{" "}
+              {usage?.started_at || "—"} · Last activity {usage?.last_at || "—"}.
+            </p>
+          </section>
+          <div className="grid usage-grid">
+            <section className="card glass">
+              <span className="eyebrow">TOTAL TOKENS</span>
+              <div className="usage-value">{(usage?.total_tokens ?? 0).toLocaleString()}</div>
+            </section>
+            <section className="card glass">
+              <span className="eyebrow">INPUT</span>
+              <div className="usage-value">{(usage?.input_tokens ?? 0).toLocaleString()}</div>
+            </section>
+            <section className="card glass">
+              <span className="eyebrow">OUTPUT</span>
+              <div className="usage-value">{(usage?.output_tokens ?? 0).toLocaleString()}</div>
+            </section>
+            <section className="card glass">
+              <span className="eyebrow">OPERATIONS</span>
+              <div className="usage-value">{(usage?.operations ?? 0).toLocaleString()}</div>
+            </section>
+            <section className="card glass">
+              <span className="eyebrow">SUCCESS RATE</span>
+              <div className="usage-value">{(usage?.success_rate ?? 100).toFixed(1)}%</div>
+            </section>
+            <section className="card glass">
+              <span className="eyebrow">ACTIVE TOOL TIME</span>
+              <div className="usage-value">{fmtDuration(usage?.active_seconds ?? 0)}</div>
+            </section>
+          </div>
+          <div className="grid two">
             <section className="connections-panel glass">
               <div className="logs-head">
                 <div>
-                  <span className="eyebrow">BREAKDOWN</span>
-                  <h2>Estimation source</h2>
+                  <span className="eyebrow">TOP TOOLS</span>
+                  <h2>Most used</h2>
                 </div>
                 <button className="secondary" onClick={() => refresh()}>
                   Refresh
                 </button>
+              </div>
+              <div className="usage-tool-list">
+                {(usage?.top_tools || []).length ? (
+                  (usage?.top_tools || []).map((t) => (
+                    <div className="usage-tool-row" key={t.name}>
+                      <code>{t.name}</code>
+                      <strong>{t.count.toLocaleString()}</strong>
+                    </div>
+                  ))
+                ) : (
+                  <div className="log-empty">No tool activity yet.</div>
+                )}
+              </div>
+            </section>
+            <section className="connections-panel glass">
+              <div className="logs-head">
+                <div>
+                  <span className="eyebrow">BREAKDOWN</span>
+                  <h2>Token source</h2>
+                </div>
               </div>
               <div className="usage-breakdown">
                 <div>
@@ -1072,11 +1166,43 @@ function App() {
                   <strong>{(usage?.estimated_tokens ?? 0).toLocaleString()}</strong>
                 </div>
               </div>
+              <p className="logs-description" style={{ marginTop: 12 }}>
+                Report file: <code>{usage?.report_json || "—"}</code>
+              </p>
             </section>
           </div>
-        )}
+          <section className="connections-panel glass">
+            <div className="logs-head">
+              <div>
+                <span className="eyebrow">RECENT OPERATIONS</span>
+                <h2>Activity</h2>
+              </div>
+            </div>
+            <div className="log-list tool-log-list">
+              {(usage?.recent_events || []).length ? (
+                (usage?.recent_events || []).map((e, i) => (
+                  <div
+                    className={"log-row log-" + (e.success ? "success" : "error")}
+                    key={e.time + e.tool + i}
+                  >
+                    <span className="log-time">{e.time}</span>
+                    <span className={"log-level " + (e.success ? "success" : "error")}>
+                      {e.success ? "OK" : "FAIL"}
+                    </span>
+                    <span className="log-message">
+                      {e.tool} · {e.input + e.output} tok · {Math.round(e.duration_ms)}ms
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="log-empty">No operations recorded yet.</div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
-        {port && view === "Logs" && (
+      {port && view === "Logs" && (
           <div className="logs-stack">
             <section className="logs-panel glass">
               <div className="logs-head">

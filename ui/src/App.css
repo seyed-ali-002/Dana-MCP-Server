@@ -738,3 +738,18 @@ input:focus, select:focus, textarea:focus {
     grid-template-columns: 1fr;
   }
 }
+
+.grid.two { grid-template-columns: 1fr 1fr; }
+.usage-tool-list { display: grid; gap: 6px; }
+.usage-tool-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+.usage-tool-row code { color: var(--accent); }
+.log-empty { color: var(--faint); font-size: 13px; padding: 8px 0; }

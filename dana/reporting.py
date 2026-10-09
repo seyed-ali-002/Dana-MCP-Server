@@ -10,11 +10,24 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REPORT_DIR = ROOT / ".dana"
+
+def _persistent_report_dir() -> Path:
+    """Prefer a user-level directory so desktop builds keep lifetime usage."""
+    if os.name == "nt":
+        base = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+        return base / "Dana" / "reports"
+    xdg = os.environ.get("XDG_CONFIG_HOME", "").strip()
+    if xdg:
+        return Path(xdg) / "dana" / "reports"
+    return Path.home() / ".config" / "dana" / "reports"
+
+# Project-local .dana remains supported; persistent dir is the primary store.
+REPORT_DIR = _persistent_report_dir()
 REPORT_JSON = REPORT_DIR / "report.json"
-# Keep the stable report at the project root for backwards compatibility.
-# Temporary atomic-write files are stored under .dana and never beside source files.
-REPORT_HTML = ROOT / "report.html"
+REPORT_HTML = REPORT_DIR / "report.html"
+# Back-compat copy beside the source tree when developing from a checkout.
+LEGACY_REPORT_JSON = ROOT / ".dana" / "report.json"
+LEGACY_REPORT_HTML = ROOT / "report.html"
 _LOCK = threading.Lock()
 MAX_EVENTS = 1000
 
@@ -50,10 +63,13 @@ def _fmt_duration(seconds: float) -> str:
 
 
 def _load() -> dict:
-    try:
-        data = json.loads(REPORT_JSON.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        data = {}
+    data = {}
+    for candidate in (REPORT_JSON, LEGACY_REPORT_JSON):
+        try:
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+            break
+        except (OSError, ValueError, TypeError):
+            continue
     data.setdefault("start", time.time())
     data.setdefault("last", None)
     data.setdefault("input", 0)

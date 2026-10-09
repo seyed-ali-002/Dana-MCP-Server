@@ -3,7 +3,11 @@ use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
 use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
 
-use tauri::{AppHandle, Manager, RunEvent};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Manager, RunEvent, WindowEvent,
+};
 
 static SETUP_AGENT: Mutex<Option<Child>> = Mutex::new(None);
 static SETUP_PORT: Mutex<Option<u16>> = Mutex::new(None);
@@ -44,21 +48,15 @@ fn python_command(root: &std::path::Path) -> Option<(String, Vec<String>)> {
 
 #[tauri::command]
 fn start_setup_service(app: AppHandle) -> Result<u16, String> {
-    // A re-invocation (e.g. React StrictMode double-mount or a window reload)
-    // must reuse the already running service instead of failing.
     if let Some(port) = *SETUP_PORT.lock().map_err(|e| e.to_string())? {
         let mut agent = SETUP_AGENT.lock().map_err(|e| e.to_string())?;
         let alive = match agent.as_mut() {
-            Some(child) => child
-                .try_wait()
-                .map_err(|e| e.to_string())?
-                .is_none(),
+            Some(child) => child.try_wait().map_err(|e| e.to_string())?.is_none(),
             None => false,
         };
         if alive {
             return Ok(port);
         }
-        // Reap a stale child and forget its port so a fresh service is spawned.
         if let Some(mut stale) = agent.take() {
             let _ = stale.kill();
             let _ = stale.wait();
@@ -90,9 +88,6 @@ fn start_setup_service(app: AppHandle) -> Result<u16, String> {
         cmd
     };
 
-    // A file-based handshake is used instead of stdout. Bundled sidecars may
-    // emit bootloader/runtime output before application startup, and Windows
-    // suppresses console output for GUI-launched processes.
     let port_file = std::env::temp_dir().join(format!("dana-setup-port-{}.txt", std::process::id()));
     let _ = std::fs::remove_file(&port_file);
     command.env("DANA_SETUP_PORT_FILE", &port_file);
@@ -133,6 +128,14 @@ fn start_setup_service(app: AppHandle) -> Result<u16, String> {
     Ok(port)
 }
 
+fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
 fn stop_dana_before_exit() {
     if SHUTDOWN_STARTED.swap(true, Ordering::SeqCst) {
         return;
@@ -170,6 +173,54 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![start_setup_service])
+        .setup(|app| {
+            let show_i = MenuItem::with_id(app, "show", "Show Dana", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
+
+            let icon = app
+                .default_window_icon()
+                .cloned()
+                .expect("Dana window icon is required for the tray");
+
+            let _tray = TrayIconBuilder::new()
+                .icon(icon)
+                .tooltip("Dana · MCP Control Center")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => show_main_window(app),
+                    "quit" => {
+                        stop_dana_before_exit();
+                        stop_setup_service();
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle());
+                    }
+                })
+                .build(app)?;
+
+            if let Some(window) = app.get_webview_window("main") {
+                let window_handle = window.clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        // Keep Dana in the background via the system tray.
+                        api.prevent_close();
+                        let _ = window_handle.hide();
+                    }
+                });
+            }
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("error while building Dana")
         .run(|_app, event| {

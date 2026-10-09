@@ -897,93 +897,142 @@ def test_connections() -> dict[str, object]:
 
 
 def token_usage() -> dict[str, object]:
-    """Aggregate token and active-time usage for the desktop Usage panel."""
+    """Lifetime usage report for the desktop Usage panel (lifetime + recent activity)."""
     import time
-    from .reporting import REPORT_JSON
+    from collections import Counter
+    from .reporting import REPORT_JSON, REPORT_HTML, LEGACY_REPORT_JSON
 
-    # Prefer the live report.json written after every tool call.
-    try:
-        payload = json.loads(REPORT_JSON.read_text(encoding="utf-8"))
-        events = list(payload.get("events") or [])
-        inp = int(payload.get("input") or 0)
-        out = int(payload.get("output") or 0)
-        ops = int(payload.get("operations") or len(events))
-        active_seconds = float(payload.get("active_seconds") or 0.0)
-        if not active_seconds:
-            for event in events:
-                active_seconds += max(0.0, float(event.get("duration") or 0.0)) / 1000.0
-        started = float(payload.get("start") or 0.0)
-        last = float(payload.get("last") or 0.0)
+    payload: dict = {}
+    for candidate in (REPORT_JSON, LEGACY_REPORT_JSON):
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+            break
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            continue
+    if not payload:
         return {
-            "available": True,
-            "input_tokens": inp,
-            "output_tokens": out,
-            "total_tokens": inp + out,
-            "operations": ops,
-            "active_seconds": round(active_seconds, 1),
-            "session_seconds": round(max(0.0, (last or time.time()) - started), 1) if started else 0.0,
-            "exact_tokens": int(payload.get("exact_tokens") or 0),
-            "estimated_tokens": int(payload.get("estimated_tokens") or 0),
+            "available": False,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "operations": 0,
+            "active_seconds": 0.0,
+            "session_seconds": 0.0,
+            "exact_tokens": 0,
+            "estimated_tokens": 0,
+            "success_rate": 100.0,
+            "started_at": "",
+            "last_at": "",
+            "top_tools": [],
+            "recent_events": [],
+            "report_json": str(REPORT_JSON),
+            "report_html": str(REPORT_HTML),
         }
-    except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        pass
 
-    import sqlite3
-
-    candidates: list[Path] = []
-    for value in (
-        os.getenv("DANA_ANALYTICS_PATH"),
-        os.getenv("DANA_WORKSPACE"),
-        os.getenv("DANA_ROOT"),
-    ):
-        if value:
-            candidates.append(Path(value))
-    try:
-        candidates.append(Path.cwd())
-    except OSError:
-        pass
-    candidates.extend([Path(__file__).resolve().parents[1], Path.home() / ".dana"])
-
-    seen: set[Path] = set()
-    for base in candidates:
-        db = base if base.name == "analytics.db" else base / ".dana" / "analytics.db"
-        try:
-            db = db.resolve()
-        except OSError:
-            continue
-        if db in seen or not db.is_file():
-            continue
-        seen.add(db)
-        try:
-            with sqlite3.connect(db, timeout=0.5) as conn:
-                row = conn.execute(
-                    "SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), "
-                    "COALESCE(SUM(total_tokens),0), COUNT(*) FROM events"
-                ).fetchone()
-                return {
-                    "available": True,
-                    "input_tokens": int(row[0]),
-                    "output_tokens": int(row[1]),
-                    "total_tokens": int(row[2]),
-                    "operations": int(row[3]),
-                    "active_seconds": 0.0,
-                    "session_seconds": 0.0,
-                    "exact_tokens": 0,
-                    "estimated_tokens": int(row[2]),
-                }
-        except (sqlite3.Error, OSError):
-            continue
+    events = list(payload.get("events") or [])
+    inp = int(payload.get("input") or 0)
+    out = int(payload.get("output") or 0)
+    ops = int(payload.get("operations") or len(events))
+    active_seconds = float(payload.get("active_seconds") or 0.0)
+    if not active_seconds:
+        for event in events:
+            active_seconds += max(0.0, float(event.get("duration") or 0.0)) / 1000.0
+    started = float(payload.get("start") or 0.0)
+    last = float(payload.get("last") or 0.0)
+    successes = sum(1 for e in events if e.get("success"))
+    success_rate = (successes / len(events) * 100.0) if events else 100.0
+    tools = Counter(str(e.get("tool", "unknown")) for e in events)
+    top_tools = [{"name": name, "count": count} for name, count in tools.most_common(12)]
+    recent = []
+    for event in reversed(events[-40:]):
+        recent.append({
+            "time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(float(event.get("time") or 0))),
+            "tool": str(event.get("tool", "")),
+            "worker": str(event.get("worker", "")),
+            "input": int(event.get("input") or 0),
+            "output": int(event.get("output") or 0),
+            "duration_ms": float(event.get("duration") or 0),
+            "success": bool(event.get("success")),
+            "source": str(event.get("source", "estimate")),
+        })
     return {
-        "available": False,
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "total_tokens": 0,
-        "operations": 0,
-        "active_seconds": 0.0,
-        "session_seconds": 0.0,
-        "exact_tokens": 0,
-        "estimated_tokens": 0,
+        "available": True,
+        "input_tokens": inp,
+        "output_tokens": out,
+        "total_tokens": inp + out,
+        "operations": ops,
+        "active_seconds": round(active_seconds, 1),
+        "session_seconds": round(max(0.0, (last or time.time()) - started), 1) if started else 0.0,
+        "exact_tokens": int(payload.get("exact_tokens") or 0),
+        "estimated_tokens": int(payload.get("estimated_tokens") or 0),
+        "success_rate": round(success_rate, 1),
+        "started_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(started)) if started else "",
+        "last_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(last)) if last else "",
+        "top_tools": top_tools,
+        "recent_events": recent,
+        "report_json": str(REPORT_JSON),
+        "report_html": str(REPORT_HTML),
     }
+
+
+def check_for_updates() -> dict[str, object]:
+    """Compare the running version against the latest GitHub Release."""
+    import urllib.request
+    from . import __version__ as current
+
+    repo = os.environ.get("DANA_GITHUB_REPO", "seyed-ali-002/Dana-MCP-Server").strip()
+    api = f"https://api.github.com/repos/{repo}/releases/latest"
+    try:
+        request = urllib.request.Request(
+            api,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": f"Dana-Control-Center/{current}",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=12) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        return {
+            "ok": False,
+            "current": current,
+            "message": f"Could not check for updates: {exc}",
+        }
+
+    tag = str(payload.get("tag_name") or "").lstrip("v")
+    html_url = str(payload.get("html_url") or f"https://github.com/{repo}/releases/latest")
+    body = str(payload.get("body") or "")[:1200]
+    assets = []
+    for item in payload.get("assets") or []:
+        name = str(item.get("name") or "")
+        url = str(item.get("browser_download_url") or "")
+        if name and url:
+            assets.append({"name": name, "url": url})
+
+    def parts(v: str) -> tuple[int, int, int]:
+        bits = (v or "0").split(".")
+        nums = []
+        for i in range(3):
+            try:
+                nums.append(int(re.sub(r"[^0-9].*", "", bits[i]) if i < len(bits) else 0))
+            except Exception:
+                nums.append(0)
+        return nums[0], nums[1], nums[2]
+
+    available = parts(tag) > parts(str(current))
+    return {
+        "ok": True,
+        "current": current,
+        "latest": tag or current,
+        "available": available,
+        "html_url": html_url,
+        "notes": body,
+        "assets": assets,
+        "message": (
+            f"Update available: v{tag}" if available else f"Dana is up to date (v{current})."
+        ),
+    }
+
 
 def verify_public_endpoint(host: str, timeout: float = 8.0) -> bool:
     import urllib.error

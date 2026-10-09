@@ -45,6 +45,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(setup.auth_flow_status()); return
         if urlparse(self.path).path == "/api/setup/usage":
             self._send(setup.token_usage()); return
+        if urlparse(self.path).path == "/api/setup/updates/check":
+            self._send(setup.check_for_updates()); return
         if urlparse(self.path).path == "/api/setup/logs":
             self._send(setup.setup_logs()); return
         if urlparse(self.path).path == "/api/setup/activity":

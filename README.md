@@ -229,7 +229,9 @@ Do not publish tokenized URLs in screenshots, issues, or public logs.
 - Restrict filesystem scope in `config/access_policy.json` or via MCP policy tools.
 - Rotate the token when needed (Desktop **Control**, or `python3 scripts/regenerate_token.py`).
 - Funnel publishes an HTTPS endpoint for your machine — enable it only when intentional.
-- Closing the desktop app stops the Dana runtime; Funnel routes are left unchanged on purpose.
+- Closing the desktop window hides Dana to the **system tray** (Quit from the tray menu to fully exit). Use the update icon in the top bar to check GitHub Releases without opening the browser first.
+
+Funnel routes are left unchanged when the window is hidden.
 
 ---
 
