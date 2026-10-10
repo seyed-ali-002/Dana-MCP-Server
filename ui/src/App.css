@@ -258,35 +258,62 @@ nav {
   background: var(--surface);
 }
 .accent-select-wrap {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 8px 4px 6px;
-  border-radius: 9px;
+  padding: 6px 28px 6px 10px;
+  border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--bg-2);
   cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.accent-select-wrap:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: var(--surface-2);
 }
 .accent-dot {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   flex-shrink: 0;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .accent-dot.blue { background: #3b82f6; }
 .accent-dot.green { background: #22c55e; }
 .accent-dot.red { background: #ef4444; }
 .accent-select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
   appearance: none;
   border: none;
   background: transparent;
   color: var(--text);
   font-size: 13px;
-  font-weight: 500;
-  padding: 2px 4px;
-  min-width: 64px;
+  font-weight: 600;
+  padding: 0 2px;
+  min-width: 58px;
   cursor: pointer;
   outline: none;
+  line-height: 1.2;
+}
+.accent-select option {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 500;
+}
+.accent-select-wrap::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 1.8px solid var(--muted);
+  border-bottom: 1.8px solid var(--muted);
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
 }
 .icon-button {
   width: 34px;
@@ -1089,4 +1116,51 @@ input:focus, select:focus, textarea:focus {
 }
 .control-view .config-grid label {
   gap: 8px;
+}
+
+/* Logs scroll areas */
+.logs-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+}
+.logs-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(42vh, 420px);
+}
+.logs-panel .log-stream,
+.logs-panel .log-list,
+.logs-panel pre,
+.logs-panel .logs-body,
+.logs-panel .activity-list {
+  flex: 1;
+  min-height: 120px;
+  max-height: min(34vh, 340px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.logs-panel .log-stream::-webkit-scrollbar,
+.logs-panel .log-list::-webkit-scrollbar,
+.logs-panel pre::-webkit-scrollbar,
+.logs-panel .logs-body::-webkit-scrollbar,
+.logs-panel .activity-list::-webkit-scrollbar {
+  width: 8px;
+}
+.logs-panel .log-stream::-webkit-scrollbar-thumb,
+.logs-panel .log-list::-webkit-scrollbar-thumb,
+.logs-panel pre::-webkit-scrollbar-thumb,
+.logs-panel .logs-body::-webkit-scrollbar-thumb,
+.logs-panel .activity-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+.content:has(.logs-stack) {
+  overflow: hidden;
 }

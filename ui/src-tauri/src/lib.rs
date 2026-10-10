@@ -65,67 +65,161 @@ fn start_setup_service(app: AppHandle) -> Result<u16, String> {
     }
 
     let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
-    let bundled_candidates = [
+    let mut agent_bins: Vec<std::path::PathBuf> = vec![
         resource_dir.join("dana-agent"),
         resource_dir.join("dana-agent.exe"),
         resource_dir.join("resources").join("dana-agent"),
         resource_dir.join("resources").join("dana-agent.exe"),
-        app.path().executable_dir().ok().map(|p| p.join("resources").join("dana-agent")).unwrap_or_default(),
-        app.path().executable_dir().ok().map(|p| p.join("resources").join("dana-agent.exe")).unwrap_or_default(),
+        std::path::PathBuf::from("/usr/lib/Dana/dana-agent"),
+        std::path::PathBuf::from("/usr/local/lib/Dana/dana-agent"),
     ];
-    let bundled = bundled_candidates.into_iter().find(|p| p.is_file());
-
-    let mut command = if let Some(bundled) = bundled {
-        let mut cmd = Command::new(bundled);
-        cmd.current_dir(&resource_dir);
-        cmd
-    } else {
-        let root = find_project_root().ok_or("Dana bundled runtime was not found. Set DANA_ROOT only for source development.")?;
-        let (python, prefix) = python_command(&root).ok_or("Python runtime was not found.")?;
-        let mut cmd = Command::new(python);
-        for arg in prefix { cmd.arg(arg); }
-        cmd.arg("-m").arg("dana.setup_service").current_dir(root);
-        cmd
-    };
-
-    let port_file = std::env::temp_dir().join(format!("dana-setup-port-{}.txt", std::process::id()));
-    let _ = std::fs::remove_file(&port_file);
-    command.env("DANA_SETUP_PORT_FILE", &port_file);
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-    }
-    command.stdout(Stdio::null()).stderr(Stdio::null());
-    let mut child = command.spawn().map_err(|e| format!("Could not start setup service: {e}"))?;
-
-    let mut port = None;
-    for _ in 0..100 {
-        if let Ok(contents) = std::fs::read_to_string(&port_file) {
-            if let Ok(value) = contents.trim().parse::<u16>() {
-                if value != 0 {
-                    port = Some(value);
-                    break;
-                }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            agent_bins.push(parent.join("dana-agent"));
+            agent_bins.push(parent.join("resources").join("dana-agent"));
+            if let Some(grand) = parent.parent() {
+                agent_bins.push(grand.join("lib").join("Dana").join("dana-agent"));
             }
         }
-        if let Some(status) = child.try_wait().map_err(|e| format!("Could not check setup service: {e}"))? {
-            let _ = std::fs::remove_file(&port_file);
-            return Err(format!("Setup service exited before announcing its port (status: {status})."));
+    }
+    if let Ok(dir) = app.path().executable_dir() {
+        agent_bins.push(dir.join("resources").join("dana-agent"));
+        agent_bins.push(dir.join("dana-agent"));
+    }
+
+    let project_root = find_project_root();
+    let mut launchers: Vec<(String, Vec<String>, Option<std::path::PathBuf>, Option<std::path::PathBuf>)> = Vec::new();
+    // (program, args, current_dir, PYTHONPATH)
+
+    for bin in agent_bins.into_iter().filter(|p| p.is_file()) {
+        launchers.push((bin.to_string_lossy().into_owned(), vec![], Some(resource_dir.clone()), None));
+    }
+
+    // Python module fallbacks (source tree, DANA_ROOT, common paths)
+    let mut python_roots: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(root) = project_root.clone() {
+        python_roots.push(root);
+    }
+    if let Ok(env_root) = std::env::var("DANA_ROOT") {
+        python_roots.push(std::path::PathBuf::from(env_root));
+    }
+    python_roots.push(std::path::PathBuf::from("/mnt/1CEC9AE6EC9ABA0A/Ali/MCP_Server/Dana"));
+    python_roots.push(std::path::PathBuf::from("/usr/lib/Dana"));
+
+    for root in python_roots {
+        if !root.join("dana").join("setup_service.py").exists() {
+            continue;
         }
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        if let Some((python, prefix)) = python_command(&root) {
+            let mut args = prefix;
+            args.push("-m".into());
+            args.push("dana.setup_service".into());
+            launchers.push((python, args, Some(root.clone()), Some(root)));
+        }
+    }
+    // System-installed dana package (no project root required)
+    for candidate in ["python3", "python"] {
+        if Command::new(candidate).arg("-c").arg("import dana.setup_service").output().map(|o| o.status.success()).unwrap_or(false) {
+            launchers.push((candidate.into(), vec!["-m".into(), "dana.setup_service".into()], None, None));
+            break;
+        }
+    }
+
+    if launchers.is_empty() {
+        return Err("Dana setup runtime was not found. Reinstall the package or set DANA_ROOT to the source tree.".into());
+    }
+
+    let port_file = std::env::temp_dir().join(format!("dana-setup-port-{}.txt", std::process::id()));
+    let log_path = std::env::temp_dir().join(format!("dana-setup-agent-{}.log", std::process::id()));
+    let mut last_error = String::from("No launcher succeeded.");
+
+    for (program, args, cwd, pythonpath) in launchers {
+        let _ = std::fs::remove_file(&port_file);
+        let _ = std::fs::remove_file(&log_path);
+
+        let mut command = Command::new(&program);
+        for arg in &args {
+            command.arg(arg);
+        }
+        if let Some(dir) = cwd {
+            command.current_dir(dir);
+        }
+        if let Some(path) = pythonpath {
+            let mut pp = path.to_string_lossy().into_owned();
+            if let Ok(existing) = std::env::var("PYTHONPATH") {
+                if !existing.is_empty() {
+                    pp = format!("{pp}:{existing}");
+                }
+            }
+            command.env("PYTHONPATH", pp);
+        }
+        command.env("DANA_SETUP_PORT_FILE", &port_file);
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000);
+        }
+
+        if let (Ok(out), Ok(err)) = (
+            std::fs::File::create(&log_path),
+            std::fs::OpenOptions::new().create(true).append(true).open(&log_path),
+        ) {
+            command.stdout(Stdio::from(out)).stderr(Stdio::from(err));
+        } else {
+            command.stdout(Stdio::null()).stderr(Stdio::null());
+        }
+
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(e) => {
+                last_error = format!("Could not start {program}: {e}");
+                continue;
+            }
+        };
+
+        let mut port = None;
+        for _ in 0..120 {
+            if let Ok(contents) = std::fs::read_to_string(&port_file) {
+                if let Ok(value) = contents.trim().parse::<u16>() {
+                    if value != 0 {
+                        port = Some(value);
+                        break;
+                    }
+                }
+            }
+            if let Ok(Some(status)) = child.try_wait() {
+                let detail = std::fs::read_to_string(&log_path).unwrap_or_default();
+                let tail = detail.trim();
+                let tail = if tail.is_empty() {
+                    String::new()
+                } else {
+                    let lines: Vec<&str> = tail.lines().collect();
+                    let start = lines.len().saturating_sub(6);
+                    format!(" | {}", lines[start..].join(" | "))
+                };
+                last_error = format!(
+                    "Launcher `{program}` exited before announcing its port (status: {status}){tail}"
+                );
+                port = None;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        if let Some(port) = port {
+            let _ = std::fs::remove_file(&port_file);
+            *SETUP_PORT.lock().map_err(|e| e.to_string())? = Some(port);
+            *SETUP_AGENT.lock().map_err(|e| e.to_string())? = Some(child);
+            return Ok(port);
+        }
+
+        let _ = child.kill();
+        let _ = child.wait();
     }
 
     let _ = std::fs::remove_file(&port_file);
-    let port = port.ok_or_else(|| {
-        let _ = child.kill();
-        format!("Invalid setup service port. Setup service did not start its local API within 5 seconds.")
-    })?;
-
-    *SETUP_PORT.lock().map_err(|e| e.to_string())? = Some(port);
-    *SETUP_AGENT.lock().map_err(|e| e.to_string())? = Some(child);
-    Ok(port)
+    Err(last_error)
 }
 
 fn show_main_window(app: &AppHandle) {

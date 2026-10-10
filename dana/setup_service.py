@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from .ssl_util import configure_ssl_environment
+try:
+    from .ssl_util import configure_ssl_environment
+except ImportError:  # PyInstaller / script entrypoint has no package context
+    from dana.ssl_util import configure_ssl_environment  # type: ignore
 
 configure_ssl_environment()
 import json
