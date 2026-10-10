@@ -1,3 +1,6 @@
+from .ssl_util import configure_ssl_environment
+configure_ssl_environment()
+
 from __future__ import annotations
 import json
 import os

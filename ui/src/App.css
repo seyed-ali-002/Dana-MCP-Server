@@ -550,7 +550,8 @@ button.danger, .danger {
 /* Forms */
 input, select, textarea {
   width: 100%;
-  padding: 9px 11px;
+  padding: 10px 12px;
+  min-height: 40px;
   border-radius: 9px;
   border: 1px solid var(--border);
   background: var(--bg-2);
@@ -1046,4 +1047,46 @@ input:focus, select:focus, textarea:focus {
 .notice-muted .notice-badge {
   color: var(--muted);
   background: var(--surface-2);
+}
+
+.control-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.control-view .grid {
+  gap: 16px;
+}
+.control-view .card {
+  padding: 18px 20px;
+}
+.control-view .card-actions {
+  margin-top: 14px;
+  gap: 10px;
+}
+.control-view .connections-panel {
+  margin-top: 0;
+  padding: 18px 20px;
+}
+.control-view .connection-row {
+  padding: 14px 0;
+  gap: 16px;
+}
+.control-view .token-editor {
+  margin-top: 12px;
+  gap: 10px;
+}
+.control-view .token-editor input,
+.control-view input,
+.control-view select,
+.control-view textarea {
+  padding: 10px 12px;
+  min-height: 40px;
+}
+.control-view .config-grid {
+  gap: 14px;
+  margin-top: 12px;
+}
+.control-view .config-grid label {
+  gap: 8px;
 }

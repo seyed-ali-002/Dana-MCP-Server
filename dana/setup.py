@@ -10,6 +10,10 @@ import tempfile
 import tarfile
 import time
 import urllib.request
+
+from .ssl_util import configure_ssl_environment, ssl_context
+
+configure_ssl_environment()
 import webbrowser
 from collections import deque
 from datetime import datetime, timezone
@@ -61,6 +65,25 @@ _DOWNLOAD_PAUSE = __import__("threading").Event()
 _DOWNLOAD_PAUSE.set()
 _DOWNLOAD_CANCEL = __import__("threading").Event()
 _DOWNLOAD_MAX_ERRORS = 12
+
+
+def clear_download() -> None:
+    """Reset the download UI state so the modal does not stick after success."""
+    with _DOWNLOAD_LOCK:
+        _DOWNLOAD.update(
+            active=False,
+            paused=False,
+            cancelled=False,
+            downloaded=0,
+            total=0,
+            speed=0.0,
+            name="",
+            message="",
+            source="",
+            attempt=0,
+            attempts_total=0,
+            errors=[],
+        )
 
 
 def download_status() -> dict[str, object]:
@@ -145,11 +168,13 @@ def _download_file(url: str, target: Path, label: str, extra_candidates: list[st
     started = time.monotonic()
     candidates = _build_download_candidates(url, extra_candidates)
     proxy = os.getenv("DANA_TAILSCALE_PROXY", "").strip()
+    ctx = ssl_context()
+    https_handler = urllib.request.HTTPSHandler(context=ctx)
     if proxy:
         proxy_handler = urllib.request.ProxyHandler({"http": proxy, "https": proxy})
-        opener = urllib.request.build_opener(proxy_handler)
+        opener = urllib.request.build_opener(proxy_handler, https_handler)
     else:
-        opener = urllib.request.build_opener()
+        opener = urllib.request.build_opener(https_handler)
     _DOWNLOAD_CANCEL.clear()
     _DOWNLOAD_PAUSE.set()
     with _DOWNLOAD_LOCK:
@@ -602,11 +627,9 @@ def _run(command: list[str], timeout: float = 20) -> subprocess.CompletedProcess
 def _privileged_run(command: list[str], timeout: float = 60) -> subprocess.CompletedProcess[str]:
     """Run an administrative command using the OS native elevation path.
 
-    Dana never captures or stores the password. Elevation uses:
-    - Linux desktop: pkexec (system password dialog)
-    - Linux terminal: sudo on a TTY
-    - macOS: AppleScript administrator privileges prompt
-    - already-root sessions: run the command directly
+    Dana does not store the password on disk. On Linux it reuses an active
+    sudo timestamp (sudo -n / sudo -v keepalive) so the user is only prompted
+    once per setup session when possible.
     """
     system = platform.system().lower()
     if hasattr(os, "geteuid") and os.geteuid() == 0:
@@ -614,10 +637,9 @@ def _privileged_run(command: list[str], timeout: float = 60) -> subprocess.Compl
 
     if system == "darwin":
         import shlex
-
         shell = " ".join(shlex.quote(part) for part in command)
-        shell_as = shell.replace('\\', '\\\\').replace('"', '\\"')
-        script = 'do shell script "' + shell_as + '" with administrator privileges'
+        shell_as = shell.replace("\\", "\\\\").replace(chr(34), "\\" + chr(34))
+        script = "do shell script " + chr(34) + shell_as + chr(34) + " with administrator privileges"
         _setup_log("Administrator authentication required (macOS). Enter your password in the system dialog.")
         result = _run(["osascript", "-e", script], timeout=timeout)
         if result.returncode != 0:
@@ -625,9 +647,16 @@ def _privileged_run(command: list[str], timeout: float = 60) -> subprocess.Compl
             _setup_log(f"macOS elevation failed: {details}", "error")
         return result
 
-    if shutil.which("sudo") and os.isatty(0):
-        _setup_log("Administrator authentication required. Enter your sudo password in the terminal.")
-        return _run(["sudo", *command], timeout=timeout)
+    if shutil.which("sudo"):
+        noninteractive = _run(["sudo", "-n", *command], timeout=timeout)
+        if noninteractive.returncode == 0:
+            _start_sudo_keepalive()
+            return noninteractive
+        _setup_log("Administrator authentication required. Enter your sudo password if prompted.")
+        result = _run(["sudo", *command], timeout=timeout)
+        if result.returncode == 0:
+            _start_sudo_keepalive()
+        return result
 
     if shutil.which("pkexec"):
         _setup_log("Administrator authentication required. Approve the system password dialog to continue.")
@@ -636,17 +665,36 @@ def _privileged_run(command: list[str], timeout: float = 60) -> subprocess.Compl
             return result
         details = (result.stderr or result.stdout or f"pkexec exited with code {result.returncode}").strip()
         _setup_log(f"pkexec elevation failed: {details}", "warning")
-        if not os.isatty(0):
-            return result
-
-    if shutil.which("sudo"):
-        _setup_log("Administrator authentication required. Enter your sudo password if prompted.")
-        return _run(["sudo", *command], timeout=timeout)
 
     raise RuntimeError(
         "This operation requires administrator privileges. "
-        "Install pkexec (polkit) or sudo on Linux, or run Dana with an account that can elevate."
+        "Install sudo or pkexec (polkit) on Linux, or run Dana with an account that can elevate."
     )
+
+_SUDO_KEEPALIVE_STARTED = False
+_SUDO_KEEPALIVE_LOCK = __import__("threading").Lock()
+
+def _start_sudo_keepalive() -> None:
+    """Refresh sudo credentials periodically so later privileged steps do not re-prompt."""
+    global _SUDO_KEEPALIVE_STARTED
+    if not shutil.which("sudo"):
+        return
+    with _SUDO_KEEPALIVE_LOCK:
+        if _SUDO_KEEPALIVE_STARTED:
+            return
+        _SUDO_KEEPALIVE_STARTED = True
+
+    def _loop() -> None:
+        while True:
+            try:
+                _run(["sudo", "-n", "-v"], timeout=10)
+            except Exception:
+                pass
+            time.sleep(45)
+
+    import threading
+    threading.Thread(target=_loop, name="dana-sudo-keepalive", daemon=True).start()
+    _setup_log("Sudo session kept alive for this setup process (no password stored).", "success")
 
 def _open(url: str) -> None:
     try:
@@ -1136,6 +1184,7 @@ def _install_tailscale_static() -> dict[str, object]:
         if not command_exists("tailscale"):
             raise RuntimeError("Static Tailscale installation completed without a usable tailscale command.")
         _setup_log(f"Tailscale static binary installed successfully ({arch}).", "success")
+        clear_download()
         return {"ok": True, "installed": True, "message": f"Tailscale installed from static binary ({arch})."}
     finally:
         shutil.rmtree(extract_dir, ignore_errors=True)
@@ -1150,6 +1199,7 @@ def install_tailscale() -> dict[str, object]:
     binary = _tailscale_binary("tailscale")
     if binary or command_exists("tailscale"):
         _setup_log(f"Tailscale is already installed ({binary or 'PATH'}). Skipping download and install.", "success")
+        clear_download()
         return {"ok": True, "installed": True, "message": "Tailscale is already installed."}
     system = platform.system().lower()
     if system == "linux":
@@ -1163,6 +1213,7 @@ def install_tailscale() -> dict[str, object]:
             output = (result.stderr or result.stdout or "").strip()
             if result.returncode == 0 and command_exists("tailscale"):
                 _setup_log("Tailscale installer completed successfully.", "success")
+                clear_download()
                 return {"ok": True, "installed": True, "message": "Tailscale installation finished."}
             _setup_log(
                 "Official Tailscale installer failed; switching to the static binary fallback"

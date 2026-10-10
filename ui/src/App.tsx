@@ -527,19 +527,35 @@ function App() {
     }
   }
 
+  const downloadFinished =
+    !!download &&
+    !download.active &&
+    !!download.message &&
+    download.message.startsWith("Download complete");
   const dlVisible =
     !!download &&
     (download.active ||
-      !!download.message &&
+      (!!download.message &&
         (download.message.startsWith("Download cancelled") ||
           download.message.startsWith("Download failed") ||
-          download.message.startsWith("Download complete") ||
-          download.message.startsWith("Cancelling")));
+          download.message.startsWith("Cancelling"))));
   const dlPct = download?.total
     ? Math.min(100, (download.downloaded / download.total) * 100)
     : download?.active
       ? 30
       : 100;
+
+  // When a download finishes successfully, hide the modal and continue setup
+  // without requiring a manual Continue click (avoids the 100% stuck dialog).
+  useEffect(() => {
+    if (!port || !downloadFinished) return;
+    const t = window.setTimeout(() => {
+      setDownload(null);
+      setMessage("Download finished. Continuing setup…");
+      setup();
+    }, 600);
+    return () => clearTimeout(t);
+  }, [port, downloadFinished]);
 
   async function checkUpdates() {
     if (!port || updateBusy) return;
