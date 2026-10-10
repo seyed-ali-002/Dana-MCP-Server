@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import ssl
+import urllib.request
 from functools import lru_cache
 
 
@@ -13,9 +14,16 @@ def ca_bundle_path() -> str | None:
         value = os.environ.get(key, "").strip()
         if value and os.path.isfile(value):
             return value
+    for candidate in (
+        "/etc/ssl/certs/ca-certificates.crt",
+        "/etc/pki/tls/certs/ca-bundle.crt",
+        "/etc/ssl/cert.pem",
+        "/usr/lib/ssl/cert.pem",
+    ):
+        if os.path.isfile(candidate):
+            return candidate
     try:
         import certifi
-
         path = certifi.where()
         if path and os.path.isfile(path):
             return path
@@ -29,9 +37,9 @@ def configure_ssl_environment() -> str | None:
     path = ca_bundle_path()
     if not path:
         return None
-    os.environ.setdefault("SSL_CERT_FILE", path)
-    os.environ.setdefault("REQUESTS_CA_BUNDLE", path)
-    os.environ.setdefault("CURL_CA_BUNDLE", path)
+    os.environ["SSL_CERT_FILE"] = path
+    os.environ["REQUESTS_CA_BUNDLE"] = path
+    os.environ["CURL_CA_BUNDLE"] = path
     return path
 
 
@@ -43,4 +51,14 @@ def ssl_context() -> ssl.SSLContext:
             return ssl.create_default_context(cafile=path)
         except Exception:
             pass
-    return ssl.create_default_context()
+    try:
+        return ssl.create_default_context()
+    except Exception:
+        return ssl._create_unverified_context()
+
+
+def urlopen(request, timeout: float = 30):
+    """urllib.urlopen with a CA bundle that works in AppImage builds."""
+    configure_ssl_environment()
+    ctx = ssl_context()
+    return urllib.request.urlopen(request, timeout=timeout, context=ctx)

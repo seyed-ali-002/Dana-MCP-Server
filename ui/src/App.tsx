@@ -140,7 +140,7 @@ async function resolveSetupPort(): Promise<number> {
   return invoke<number>("start_setup_service");
 }
 
-async function openExternal(url: string) {
+async function openExternal(url: string, setupPort?: number | null) {
   if (!url) return;
   try {
     await openUrl(url);
@@ -153,6 +153,18 @@ async function openExternal(url: string) {
     if (opened) return;
   } catch {
     /* fall through */
+  }
+  if (setupPort) {
+    try {
+      await fetch(API(setupPort, "/api/setup/open-browser"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      return;
+    } catch {
+      /* fall through */
+    }
   }
   try {
     await navigator.clipboard.writeText(url);
@@ -363,7 +375,7 @@ function App() {
           auth_url: x.auth_url,
           message: x.message || "Complete the browser step.",
         });
-        await openExternal(x.auth_url);
+        await openExternal(x.auth_url, port);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -1391,7 +1403,7 @@ function App() {
               <button className="secondary" onClick={() => copy(authFlow.auth_url)}>
                 {copied === authFlow.auth_url ? "Copied" : "Copy link"}
               </button>
-              <button className="primary" onClick={() => openExternal(authFlow.auth_url)}>
+              <button className="primary" onClick={() => openExternal(authFlow.auth_url, port)}>
                 Open in browser
               </button>
             </div>

@@ -11,7 +11,7 @@ import tarfile
 import time
 import urllib.request
 
-from .ssl_util import configure_ssl_environment, ssl_context
+from .ssl_util import configure_ssl_environment, ssl_context, urlopen as ssl_urlopen
 
 configure_ssl_environment()
 import webbrowser
@@ -696,11 +696,53 @@ def _start_sudo_keepalive() -> None:
     threading.Thread(target=_loop, name="dana-sudo-keepalive", daemon=True).start()
     _setup_log("Sudo session kept alive for this setup process (no password stored).", "success")
 
-def _open(url: str) -> None:
+def open_browser_url(url: str) -> dict[str, object]:
+    """API helper: open a URL in the system browser and report success."""
+    ok = _open(url)
+    return {"ok": ok, "url": url, "message": "Browser opened." if ok else "Could not open browser; copy the link manually."}
+
+
+def _open(url: str) -> bool:
+    """Open a URL in the user's default browser (works in AppImage/desktop too)."""
+    if not url:
+        return False
+    system = platform.system().lower()
+    candidates: list[list[str]] = []
+    if system == "darwin":
+        candidates.append(["open", url])
+    elif system == "windows":
+        candidates.append(["cmd", "/c", "start", "", url])
+    else:
+        for opener in ("xdg-open", "gio", "gnome-open", "kde-open", "exo-open"):
+            if shutil.which(opener):
+                if opener == "gio":
+                    candidates.append(["gio", "open", url])
+                else:
+                    candidates.append([opener, url])
+    for command in candidates:
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                timeout=15,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if completed.returncode == 0:
+                _setup_log(f"Opened browser via {' '.join(command[:2])}.")
+                return True
+        except Exception:
+            continue
     try:
-        webbrowser.open(url)
+        if webbrowser.open(url, new=2):
+            _setup_log("Opened browser via webbrowser module.")
+            return True
     except Exception:
         pass
+    _setup_log(f"Could not auto-open browser for {url}. Use Copy link in the UI.", "warning")
+    return False
+
+
 
 def _find_auth_url(text: str) -> str | None:
     """Extract a Tailscale browser login or Funnel approval URL from CLI output."""
@@ -922,7 +964,7 @@ def test_connections() -> dict[str, object]:
                     "Host": host,
                 },
             )
-            with urllib.request.urlopen(request, timeout=12) as response:
+            with ssl_urlopen(request, timeout=12) as response:
                 raw = response.read(65536).decode("utf-8", "replace")
                 content_type = response.headers.get("content-type", "")
                 handshake_ok = response.status == 200 and (
@@ -1046,7 +1088,7 @@ def check_for_updates() -> dict[str, object]:
                 "User-Agent": f"Dana-Control-Center/{current}",
             },
         )
-        with urllib.request.urlopen(request, timeout=12) as response:
+        with ssl_urlopen(request, timeout=12) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except Exception as exc:
         return {
@@ -1095,7 +1137,7 @@ def verify_public_endpoint(host: str, timeout: float = 8.0) -> bool:
     url = f"https://{host}/mcp"
     request = urllib.request.Request(url, method="GET", headers={"User-Agent": "Dana-Setup/1"})
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with ssl_urlopen(request, timeout=timeout) as response:
             return response.status in {200, 401, 403, 405}
     except urllib.error.HTTPError as exc:
         return exc.code in {401, 403, 405}
@@ -1127,7 +1169,7 @@ def _static_tailscale_urls(arch: str) -> list[str]:
     for index_url in index_urls:
         try:
             request = urllib.request.Request(index_url, headers={"User-Agent": "Dana-Setup/1"})
-            with urllib.request.urlopen(request, timeout=15) as response:
+            with ssl_urlopen(request, timeout=15) as response:
                 html = response.read().decode("utf-8", "replace")
             matches = re.findall(r"tailscale_(\d+(?:\.\d+)+)_" + re.escape(arch) + r"\.tgz", html)
             if matches:
@@ -1241,7 +1283,7 @@ def install_tailscale() -> dict[str, object]:
     return {"ok": False, "action_required": "manual_install", "message": f"Unsupported OS: {system}", "url": TAILSCALE_DOWNLOAD}
 
 def _stable_package_urls() -> tuple[str | None, str | None]:
-    with urllib.request.urlopen(TAILSCALE_PACKAGES, timeout=15) as response:
+    with ssl_urlopen(TAILSCALE_PACKAGES, timeout=15) as response:
         html = response.read().decode("utf-8", "replace")
     win = re.search(r'href="([^"]*tailscale-setup-[^"]+\.exe)"', html)
     mac = re.search(r'href="([^"]*Tailscale-[^"]+-macos\.pkg)"', html)
@@ -1274,26 +1316,76 @@ def _install_macos() -> dict[str, object]:
     except Exception as exc:
         return {"ok": False, "message": str(exc), "url": TAILSCALE_DOWNLOAD}
 
+def _tailscale_auth_output(timeout: float = 20) -> tuple[str, int]:
+    """Run tailscale up/login and always recover stdout/stderr (even on timeout)."""
+    commands = [
+        _tailscale_cmd("login", f"--timeout={max(5, int(timeout))}s"),
+        _tailscale_cmd("up", f"--timeout={max(5, int(timeout))}s"),
+        _tailscale_cmd("up"),
+    ]
+    combined = ""
+    code = 1
+    for command in commands:
+        try:
+            try:
+                result = _run(command, timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                out = getattr(exc, "stdout", None) or ""
+                err = getattr(exc, "stderr", None) or ""
+                if isinstance(out, bytes):
+                    out = out.decode("utf-8", "replace")
+                if isinstance(err, bytes):
+                    err = err.decode("utf-8", "replace")
+                combined = str(out) + "\n" + str(err) + "\n" + combined
+                code = -1
+                if _find_auth_url(combined):
+                    break
+                continue
+            combined = str(result.stdout or "") + "\n" + str(result.stderr or "") + "\n" + combined
+            code = int(result.returncode)
+            if _find_auth_url(combined) or code == 0:
+                break
+            try:
+                result = _privileged_run(command, timeout=timeout)
+                combined = str(result.stdout or "") + "\n" + str(result.stderr or "") + "\n" + combined
+                code = int(result.returncode)
+                if _find_auth_url(combined) or code == 0:
+                    break
+            except Exception as exc:
+                combined = combined + "\n" + str(exc)
+        except Exception as exc:
+            combined = combined + "\n" + str(exc)
+    return combined, code
+
 def login_tailscale() -> dict[str, object]:
     _setup_log("Checking Tailscale authentication.")
     if not (_tailscale_binary("tailscale") or command_exists("tailscale")):
         _setup_log("Cannot authenticate because Tailscale is not installed.", "error")
         return {"ok": False, "action_required": "install_tailscale", "message": "Install Tailscale first."}
-    result = _privileged_run(_tailscale_cmd("up"), timeout=45)
-    output = (result.stdout or "") + "\n" + (result.stderr or "")
+    try:
+        status = _ts_run(["status", "--json"], timeout=8)
+        if status.returncode == 0:
+            payload = json.loads(status.stdout or "{}")
+            if str(payload.get("BackendState", "")).lower() == "running" and payload.get("Self"):
+                _set_auth_flow()
+                _setup_log("Tailscale authentication completed.", "success")
+                return {"ok": True, "message": "Tailscale is connected."}
+    except Exception:
+        pass
+    output, code = _tailscale_auth_output(timeout=18)
     auth_url = _find_auth_url(output)
     if auth_url:
         _set_auth_flow("login", auth_url, "Open the Tailscale login URL in your browser and complete authentication.", True)
         _setup_log("Tailscale requested browser authentication. Opening the login page.")
         _open(auth_url)
-        return {"ok": True, "pending": True, "message": "Copy the Tailscale login link shown in Dana and open it in your browser. Keep this window open — setup continues automatically after login.", "auth_url": auth_url}
-    if result.returncode == 0:
+        return {"ok": True, "pending": True, "message": "Complete Tailscale login in your browser. Keep this window open — setup continues automatically after login.", "auth_url": auth_url}
+    if code == 0:
         _set_auth_flow()
         _setup_log("Tailscale authentication completed.", "success")
         return {"ok": True, "message": "Tailscale is connected."}
-    details = output.strip() or f"tailscale up exited with code {result.returncode}"
-    _setup_log("Tailscale authentication failed: " + details, "error")
-    return {"ok": False, "message": details}
+    details = output.strip() or f"tailscale up exited with code {code}"
+    _setup_log("Tailscale authentication failed: " + details[:500], "error")
+    return {"ok": False, "message": details[:500]}
 
 def enable_funnel(port: int = 8765) -> dict[str, object]:
     _setup_log("Starting Tailscale Funnel setup.")

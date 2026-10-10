@@ -83,6 +83,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(setup.resume_download()); return
         if request_path == "/api/setup/download/cancel":
             self._send(setup.cancel_download()); return
+        if request_path == "/api/setup/open-browser":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.open_browser_url(str(payload.get("url", "")).strip()))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
         if request_path in {"/api/setup/security/revoke-token", "/api/setup/security/token", "/api/setup/config"}:
             try:
                 if request_path == "/api/setup/security/revoke-token":
