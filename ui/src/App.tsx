@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import logo from "../src-tauri/icons/icon.png";
@@ -189,6 +189,9 @@ function App() {
   const [connectionTest, setConnectionTest] = useState<ConnectionTest | null>(null);
   const [testing, setTesting] = useState(false);
   const [confirmPublic, setConfirmPublic] = useState(false);
+  // Once the user consents to publishing Funnel in this session, the guided
+  // flow can enable it without asking again on every automatic retry.
+  const [publicConsent, setPublicConsent] = useState(false);
   const [ack, setAck] = useState(false);
   const [copied, setCopied] = useState("");
   const [authFlow, setAuthFlow] = useState<AuthFlow | null>(null);
@@ -216,13 +219,16 @@ function App() {
   const [usage, setUsage] = useState<UsageState | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
+  // Bounds automatic continuation when a step is simply waiting for a
+  // background condition (for example Funnel publication) with no browser step.
+  const resumeBudget = useRef(0);
 
   const progress = useMemo(() => {
     if (!status) return 8;
-    if (!status.tailscale_installed) return 20;
-    if (status.tailscale_backend.toLowerCase() !== "running") return 40;
-    if (!status.dana_running) return 68;
-    if (!status.funnel_active) return 82;
+    if (!status.tailscale_installed) return 22;
+    if (status.tailscale_backend.toLowerCase() !== "running") return 42;
+    if (!status.funnel_active) return 66;
+    if (!status.dana_running) return 88;
     return 100;
   }, [status]);
   const ready = !!status?.dana_running;
@@ -356,26 +362,30 @@ function App() {
     setError("");
     let completed = false;
     let pending = false;
+    let authUrl = "";
+    let actionRequired = "";
     try {
       const r = await fetch(API(port, path), { method: "POST" });
       const x = await r.json();
       pending = !!x.pending;
-      if (x.action_required === "finish_installer") setPendingInstall(true);
+      authUrl = typeof x.auth_url === "string" ? x.auth_url : "";
+      actionRequired = typeof x.action_required === "string" ? x.action_required : "";
+      if (actionRequired === "finish_installer") setPendingInstall(true);
       if (typeof x.url === "string" && x.url) setManualUrl(x.url);
       if (!r.ok || (x.ok === false && !x.pending))
         throw Error(x.message || x.error || "Action failed");
       completed = x.ok === true;
       setMessage(x.message || "Completed.");
       setUpdateInfo(null);
-      if (x.auth_url) {
+      if (authUrl) {
         const kind = path.includes("login-tailscale") ? "login" : "funnel";
         setAuthFlow({
           pending: true,
           kind,
-          auth_url: x.auth_url,
+          auth_url: authUrl,
           message: x.message || "Complete the browser step.",
         });
-        await openExternal(x.auth_url, port);
+        await openExternal(authUrl, port);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -386,9 +396,25 @@ function App() {
       await refresh();
       pollDownload();
       if (completed && !pending) setPendingInstall(false);
-      // After installer actions, give PATH/status a moment to settle then continue.
-      if (autoContinue && completed && !pending) setTimeout(() => setup(), 400);
-      if (autoContinue && completed && pending && path.includes("install-tailscale")) {
+      if (autoContinue && completed && !pending) {
+        // Step finished outright — advance to the next one.
+        resumeBudget.current = 0;
+        setTimeout(() => setup(), 400);
+      } else if (
+        autoContinue &&
+        completed &&
+        pending &&
+        !authUrl &&
+        actionRequired !== "finish_installer"
+      ) {
+        // Waiting on a background condition (e.g. Funnel publication). Keep the
+        // flow moving without re-triggering installers or browser prompts.
+        if (resumeBudget.current < 5) {
+          resumeBudget.current += 1;
+          setTimeout(() => setup(), 2500);
+        }
+      }
+      if (autoContinue && completed && pending && actionRequired === "finish_installer") {
         // Windows/macOS open an external installer — keep polling for CLI presence.
         setPendingInstall(true);
       }
@@ -434,14 +460,19 @@ function App() {
     if (!port) return;
     const current = await refresh(port);
     if (!current) return;
+    // Guided order: install -> sign in -> publish Funnel -> start Dana.
     if (!current.tailscale_installed) return run("/api/setup/install-tailscale", true);
     if (current.tailscale_backend.toLowerCase() !== "running")
       return run("/api/setup/login-tailscale", true);
-    if (!current.dana_running) return run("/api/setup/start-dana", true);
     if (!current.funnel_active) {
-      setAck(false);
-      setConfirmPublic(true);
+      if (!publicConsent) {
+        setAck(false);
+        setConfirmPublic(true);
+        return;
+      }
+      return run("/api/setup/enable-funnel", true);
     }
+    if (!current.dana_running) return run("/api/setup/start-dana", true);
   }
 
   async function dl(a: string) {
@@ -886,17 +917,17 @@ function App() {
                   ],
                   [
                     "02",
-                    "Dana Runtime",
-                    status?.dana_running,
-                    "Start the local MCP service.",
-                    localAddr,
-                  ],
-                  [
-                    "03",
                     "Funnel",
                     status?.funnel_active,
                     "Publish the canonical HTTPS MCP endpoint.",
                     status?.funnel_hostname || "Not configured",
+                  ],
+                  [
+                    "03",
+                    "Dana Runtime",
+                    status?.dana_running,
+                    "Start the local MCP service.",
+                    localAddr,
                   ],
                 ] as const
               ).map(([n, name, ok, desc, meta]) => (
@@ -934,8 +965,8 @@ function App() {
                 >
                   Authentication
                 </span>
-                <span className={status?.dana_running ? "done" : ""}>Dana</span>
                 <span className={status?.funnel_active ? "done" : ""}>Funnel</span>
+                <span className={status?.dana_running ? "done" : ""}>Dana</span>
               </div>
             </section>
           </>
@@ -979,7 +1010,15 @@ function App() {
                 <div className="card-head">
                   <span>NETWORK</span>
                   <strong>Tailscale</strong>
-                  <b className="state success">{status?.tailscale_backend || "OFFLINE"}</b>
+                  <b
+                    className={
+                      status?.tailscale_backend.toLowerCase() === "running"
+                        ? "state success"
+                        : "state warning"
+                    }
+                  >
+                    {status?.tailscale_backend || "OFFLINE"}
+                  </b>
                 </div>
                 <p>{status?.tailscale_hostname || "Not connected"}</p>
                 <div className="card-actions">
@@ -992,7 +1031,12 @@ function App() {
                   </button>
                   <button
                     className="secondary"
-                    disabled={busy || !status?.dana_running}
+                    disabled={
+                      busy ||
+                      !status?.tailscale_installed ||
+                      status?.tailscale_backend.toLowerCase() !== "running" ||
+                      !!status?.funnel_active
+                    }
                     onClick={() => {
                       setAck(false);
                       setConfirmPublic(true);
@@ -1435,6 +1479,7 @@ function App() {
                 disabled={!ack || busy}
                 onClick={() => {
                   setConfirmPublic(false);
+                  setPublicConsent(true);
                   run("/api/setup/enable-funnel");
                 }}
               >

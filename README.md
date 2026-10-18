@@ -21,7 +21,14 @@ You keep control of the host. The core project is free and open source.
 2. Open **Dana** → **Setup**.
 3. Click **Install & Activate** (or **Activate Dana** if Tailscale is already installed).
 
-Dana will install/connect Tailscale when needed, ask the OS for admin rights if required (password is never stored), show login/Funnel links in the app, start the local MCP server, and enable Funnel after you confirm.
+Dana follows a fixed four-step flow and never repeats a finished step:
+
+1. **Install Tailscale** — downloaded and installed once (admin rights may be requested; the password is never stored).
+2. **Sign in to Tailscale** — the login page opens in your browser when Tailscale asks for it.
+3. **Enable Funnel** — confirm the public-exposure notice, then approve Funnel in the browser if Tailscale asks.
+4. **Start Dana** — the local MCP server starts and the public endpoint goes live.
+
+Dana detects an already-installed Tailscale, an already-connected account, and an already-published Funnel route, so re-running the flow only performs the steps that are still missing.
 
 Desktop packages are rebuilt automatically on every successful push to `main`.
 
@@ -35,7 +42,7 @@ The Control Center uses a clean desktop layout with **dark/light** mode (moon/su
 
 | Panel | Purpose |
 |---|---|
-| **Setup** | Install Tailscale, sign in, start Dana, enable Funnel |
+| **Setup** | Install Tailscale, sign in, enable Funnel, start Dana |
 | **Control** | Start/stop, copy MCP URLs, token, advanced settings |
 | **Logs** | Setup/errors · live tool activity |
 | **Usage** | Token totals and active tool time |

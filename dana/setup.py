@@ -914,14 +914,17 @@ def status() -> SetupStatus:
     public_url = f"https://{public_host}{token_path}" if public_host else ""
     action = ""
     message = ""
+    # Guided flow order: install Tailscale -> sign in -> publish Funnel ->
+    # start Dana. The public route is configured before the runtime so the
+    # endpoint is live the moment Dana starts listening.
     if not installed:
         action, message = "install_tailscale", "Tailscale is not installed."
     elif backend.lower() != "running":
         action, message = "login_tailscale", "Tailscale needs to be connected."
-    elif not _dana_running():
-        action, message = "start_dana", "Dana is not running."
     elif not active:
         action, message = "enable_funnel", "Tailscale Funnel is not active."
+    elif not _dana_running():
+        action, message = "start_dana", "Dana is not running."
     running = _dana_running()
     with _AUTH_FLOW_LOCK:
         if _AUTH_FLOW["pending"] and _AUTH_FLOW["kind"] == "login" and backend.lower() == "running":
@@ -1392,11 +1395,21 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
     if not (_tailscale_binary("tailscale") or command_exists("tailscale")):
         _setup_log("Cannot enable Funnel because Tailscale is not installed.", "error")
         return {"ok": False, "action_required": "install_tailscale", "message": "Install Tailscale first."}
-    if not _dana_running():
-        _setup_log("Dana is not listening yet; starting runtime before Funnel.", "warning")
-        started = start_dana()
-        if not started.get("ok"):
-            return started
+    already_active, already_host = _funnel_status()
+    if already_active and already_host:
+        # Idempotency: never re-run the privileged Funnel configuration when the
+        # canonical public route is already published for this machine.
+        token_path = f"/{settings.auth_token}/mcp" if settings.auth_token else "/mcp"
+        verified = verify_public_endpoint(already_host) if _dana_running() else False
+        _setup_log(f"Tailscale Funnel is already active on {already_host}; nothing to configure.", "success")
+        return {
+            "ok": True,
+            "already_active": True,
+            "hostname": already_host,
+            "url": f"https://{already_host}{token_path}",
+            "endpoint_verified": verified,
+            "message": "Tailscale Funnel is already active.",
+        }
     _setup_log("Administrator authentication may be required to start Funnel.")
     try:
         _ensure_tailscale_ready()
@@ -1435,7 +1448,9 @@ def enable_funnel(port: int = 8765) -> dict[str, object]:
         if attempt in {3, 7}:
             _setup_log(f"Waiting for Funnel to publish on {host or 'hostname'}…")
         time.sleep(0.5)
-    verified = verify_public_endpoint(host) if active else False
+    # The endpoint can only be verified once Dana is listening; when Funnel is
+    # published ahead of the runtime, verification happens after Dana starts.
+    verified = verify_public_endpoint(host) if (active and _dana_running()) else False
     if active:
         _setup_log(f"Funnel is active on {host}; endpoint verification: {'passed' if verified else 'pending'}.", "success")
         token_path = f"/{settings.auth_token}/mcp" if settings.auth_token else "/mcp"
@@ -1539,6 +1554,17 @@ def start_dana() -> dict[str, object]:
     os.environ["DANA_HOST"] = "127.0.0.1"
     os.environ["DANA_PORT"] = str(settings.port)
     settings.auth_token = token
+
+    # Funnel is configured before Dana starts in the guided flow, but
+    # write_env("local") deliberately clears DANA_PUBLIC_HOST, so restore the
+    # canonical public host so the runtime advertises the correct endpoint.
+    try:
+        funnel_active, funnel_host = _funnel_status()
+        if funnel_active and funnel_host:
+            set_local_public_host(funnel_host)
+            os.environ["DANA_PUBLIC_HOST"] = funnel_host
+    except Exception:
+        pass
 
     log = _runtime_log_path()
     frozen = bool(getattr(__import__("sys"), "frozen", False))
@@ -1705,13 +1731,13 @@ def bootstrap(progress: Callable[[str], None] | None = None) -> dict[str, object
     if current.tailscale_backend.lower() != "running":
         progress("Connecting Tailscale")
         return login_tailscale()
+    if not current.funnel_active:
+        progress("Enabling Tailscale Funnel")
+        return enable_funnel(settings.port)
     if not current.dana_running:
         progress("Starting Dana")
         write_env("local", workers=settings.workers)
         result = start_dana()
         if not result.get("ok"):
             return result
-    if not _funnel_active():
-        progress("Enabling Tailscale Funnel")
-        return enable_funnel(settings.port)
     return {"ok": True, "message": "Dana is ready.", "status": status().to_dict()}
