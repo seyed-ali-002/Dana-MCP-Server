@@ -19,7 +19,10 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-opener = "2"
+# Keep this in lockstep with the npm `@tauri-apps/plugin-opener` minor version:
+# `tauri build` refuses to run when the Rust crate and the npm package drift
+# across minor releases (see ui/package.json).
+tauri-plugin-opener = "~2.7.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
