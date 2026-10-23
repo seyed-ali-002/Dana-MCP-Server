@@ -54,6 +54,39 @@ def _runtime_dir() -> Path:
 PID_FILE = _runtime_dir() / "dana.pid"
 
 
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _acquire_runtime_lock() -> None:
+    """Ensure only one Dana MCP runtime serves the configured port."""
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", int(settings.port)), timeout=0.4):
+            raise SystemExit(
+                f"Dana is already running on port {settings.port}. "
+                "Use the existing instance (or stop it first)."
+            )
+    except OSError:
+        pass
+    if PID_FILE.exists():
+        try:
+            old = int(PID_FILE.read_text(encoding="utf-8").strip() or "0")
+        except ValueError:
+            old = 0
+        if old and old != os.getpid() and _pid_alive(old):
+            raise SystemExit(
+                f"Dana process {old} is already running. Stop it before starting another instance."
+            )
+
+
 def _write_pid() -> None:
     temp = PID_FILE.with_suffix(".tmp")
     temp.write_text(str(os.getpid()), encoding="utf-8")
@@ -94,6 +127,7 @@ def run() -> None:
         # session backend is explicitly configured.
         workers=1,
     )
+    _acquire_runtime_lock()
     _write_pid()
     funnel = DanaFunnelManager()
     try:

@@ -17,6 +17,10 @@ type Status = {
   auth_token: string;
   action_required: string;
   message: string;
+  connectivity?: "connected" | "degraded" | "offline" | "setup";
+  public_verified?: boolean;
+  hint?: string;
+  local_only?: boolean;
 };
 type SetupLog = { time: string; level: string; message: string };
 type DownloadState = {
@@ -510,15 +514,31 @@ function App() {
 
 
   // After sleep/network flaps Funnel can drop while Dana stays up.
-  // Automatically attempt a quiet repair once per session.
+  // Re-attempt quiet repair while connectivity is degraded (not only once).
   useEffect(() => {
-    if (!port || !status || busy || autoHealRef.current) return;
-    const tsOk = status.tailscale_backend?.toLowerCase() === "running";
-    if (tsOk && status.dana_running && !status.funnel_active) {
-      autoHealRef.current = true;
-      recoverConnectivity();
+    if (!port || !status || busy) return;
+    const degraded =
+      status.connectivity === "degraded" ||
+      (status.tailscale_backend?.toLowerCase() === "running" &&
+        status.dana_running &&
+        !status.funnel_active &&
+        !status.local_only);
+    if (!degraded) {
+      autoHealRef.current = false;
+      return;
     }
-  }, [port, status?.tailscale_backend, status?.dana_running, status?.funnel_active]);
+    const tick = () => {
+      if (busy) return;
+      recoverConnectivity();
+    };
+    // Immediate first heal, then every 25s while still degraded.
+    if (!autoHealRef.current) {
+      autoHealRef.current = true;
+      tick();
+    }
+    const t = window.setInterval(tick, 25000);
+    return () => clearInterval(t);
+  }, [port, status?.connectivity, status?.funnel_active, status?.dana_running, status?.local_only, busy]);
   async function dl(a: string) {
     if (!port) return;
     await fetch(API(port, "/api/setup/download/" + a), { method: "POST" });
@@ -723,8 +743,24 @@ function App() {
         </nav>
         <div className="sidebar-footer">
           <div className="tiny-status">
-            <span className={ready ? "pulse on" : "pulse"} />
-            {ready ? "Online" : port ? "Setup required" : "Connecting…"}
+            <span
+              className={
+                status?.connectivity === "connected"
+                  ? "pulse on"
+                  : status?.connectivity === "degraded"
+                    ? "pulse warn"
+                    : "pulse"
+              }
+            />
+            {status?.connectivity === "connected"
+              ? "Connected"
+              : status?.connectivity === "degraded"
+                ? "Degraded"
+                : status?.connectivity === "offline"
+                  ? "Offline"
+                  : port
+                    ? "Setup required"
+                    : "Connecting…"}
           </div>
           <div className="sidebar-version-row">
             <span className="version-badge">v{APP_VERSION}</span>
@@ -747,15 +783,40 @@ function App() {
             <h1>{view}</h1>
           </div>
           <div className="top-actions">
-            <div className="connection-pill">
-              <span className={ready ? "dot on" : "dot"} />
-              {ready
-                ? "Protected endpoint active"
-                : port
-                  ? "Configuration in progress"
-                  : "Starting service…"}
-            </div>
-                      <div className="theme-controls" role="group" aria-label="Theme">
+            <div
+            className={
+              "connection-pill" +
+              (status?.connectivity === "connected"
+                ? " ok"
+                : status?.connectivity === "degraded"
+                  ? " warn"
+                  : status?.connectivity === "offline"
+                    ? " bad"
+                    : "")
+            }
+          >
+            <span
+              className={
+                status?.connectivity === "connected"
+                  ? "dot on"
+                  : status?.connectivity === "degraded"
+                    ? "dot warn"
+                    : "dot"
+              }
+            />
+            {status?.connectivity === "connected"
+              ? status.local_only
+                ? "Local only · healthy"
+                : "Connected · public ready"
+              : status?.connectivity === "degraded"
+                ? "Degraded · repairing…"
+                : status?.connectivity === "offline"
+                  ? "Offline"
+                  : port
+                    ? "Configuration in progress"
+                    : "Starting service…"}
+          </div>
+          <div className="theme-controls" role="group" aria-label="Theme">
               <label className="accent-select-wrap" title="Accent color">
                 <span className={`accent-dot ${accent}`} aria-hidden="true" />
                 <select
@@ -827,7 +888,28 @@ function App() {
           </section>
         )}
 
-        {error && (
+                {status?.hint && (
+          <div className={`hint-banner ${status.connectivity || "setup"}`}>
+            <strong>
+              {status.connectivity === "connected"
+                ? "Status"
+                : status.connectivity === "degraded"
+                  ? "Needs attention"
+                  : status.connectivity === "offline"
+                    ? "Offline"
+                    : "Next step"}
+            </strong>
+            <span>{status.hint}</span>
+          </div>
+        )}
+
+        {port && (
+          <div className="unsigned-note">
+            Windows/macOS installers may show a SmartScreen or Gatekeeper warning until code signing is configured. See packaging/CODE_SIGNING.md — choose Open Anyway / Run anyway for official GitHub builds.
+          </div>
+        )}
+
+{error && (
           <section className="notice-card notice-error">
             <div className="notice-body">
               <span className="notice-badge">ERROR</span>

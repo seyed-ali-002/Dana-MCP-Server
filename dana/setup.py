@@ -612,6 +612,11 @@ class SetupStatus:
     auth_token: str = ""
     action_required: str = ""
     message: str = ""
+    # connected | degraded | offline | setup
+    connectivity: str = "setup"
+    public_verified: bool = False
+    hint: str = ""
+    local_only: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -933,7 +938,51 @@ def status() -> SetupStatus:
         elif _AUTH_FLOW["pending"] and _AUTH_FLOW["kind"] == "funnel" and active:
             _AUTH_FLOW.update(pending=False, auth_url="", message="")
             _setup_log("Tailscale Funnel approval detected; continuing setup.", "success")
-    return SetupStatus(installed, backend, hostname, active, funnel_host, running, public_url or local_url, local_url, public_url, token, action, message)
+
+    local_only = not bool(getattr(settings, "tailscale_funnel_enabled", True))
+    public_verified = False
+    hint = ""
+    if not installed:
+        connectivity = "setup"
+        hint = "Install Tailscale to continue first-time setup."
+    elif backend.lower() != "running":
+        connectivity = "offline"
+        hint = "Open Tailscale and sign in, then return here."
+    elif not running:
+        connectivity = "offline"
+        hint = "Start Dana so local MCP accepts connections."
+    elif local_only:
+        connectivity = "connected"
+        hint = "Local-only mode: public Funnel is disabled."
+        public_url = ""
+    elif not active:
+        connectivity = "degraded"
+        hint = (
+            "Funnel is down after a network change. Use Repair connection, "
+            "or enable Funnel in the Tailscale admin console if ACL blocks it: "
+            "https://login.tailscale.com/admin/acls"
+        )
+    else:
+        # Light public check — failures mean degraded, not offline.
+        try:
+            public_verified = verify_public_endpoint(funnel_host, timeout=3.0) if funnel_host else False
+        except Exception:
+            public_verified = False
+        if public_verified:
+            connectivity = "connected"
+            hint = "Local and public MCP endpoints look healthy."
+        else:
+            connectivity = "degraded"
+            hint = (
+                "Funnel is published but the public URL is not responding yet. "
+                "Wait a few seconds or click Repair connection."
+            )
+
+    return SetupStatus(
+        installed, backend, hostname, active, funnel_host, running,
+        public_url or local_url, local_url, public_url, token, action, message,
+        connectivity, public_verified, hint, local_only,
+    )
 
 def test_connections() -> dict[str, object]:
     import urllib.request
@@ -1389,6 +1438,120 @@ def login_tailscale() -> dict[str, object]:
     details = output.strip() or f"tailscale up exited with code {code}"
     _setup_log("Tailscale authentication failed: " + details[:500], "error")
     return {"ok": False, "message": details[:500]}
+
+
+
+
+
+def set_local_only(enabled: bool = True) -> dict[str, object]:
+    """Toggle public Funnel without uninstalling Tailscale."""
+    settings.tailscale_funnel_enabled = not bool(enabled)
+    try:
+        update_configuration({"tailscale_funnel_enabled": (not bool(enabled))})
+    except Exception as exc:
+        _setup_log(f"Could not persist local-only preference: {exc}", "warning")
+    if enabled:
+        msg = "Local-only mode enabled. Public connectors will not reach this machine."
+    else:
+        msg = "Public Funnel mode enabled. Use Enable Funnel or Repair if the route is down."
+    _setup_log(msg)
+    return {
+        "ok": True,
+        "local_only": bool(enabled),
+        "tailscale_funnel_enabled": not bool(enabled),
+        "message": msg,
+    }
+
+
+def set_autostart(enabled: bool = True) -> dict[str, object]:
+    """Install or remove OS login auto-start for the Dana desktop app when possible."""
+    system = platform.system().lower()
+    enabled = bool(enabled)
+    try:
+        if system == "linux":
+            apps = Path.home() / ".config" / "autostart"
+            apps.mkdir(parents=True, exist_ok=True)
+            desktop = apps / "dana.desktop"
+            if not enabled:
+                desktop.unlink(missing_ok=True)
+                return {"ok": True, "enabled": False, "message": "Autostart disabled."}
+            exe = shutil.which("dana") or "/usr/bin/dana"
+            for candidate in ("/usr/bin/Dana", "/usr/local/bin/Dana", shutil.which("Dana")):
+                if candidate and Path(str(candidate)).exists():
+                    exe = str(candidate)
+                    break
+            lines = [
+                "[Desktop Entry]",
+                "Type=Application",
+                "Name=Dana",
+                "Comment=Dana MCP Control Center",
+                f"Exec={exe}",
+                "X-GNOME-Autostart-enabled=true",
+                "Terminal=false",
+                "",
+            ]
+            desktop.write_text("\n".join(lines), encoding="utf-8")
+            return {"ok": True, "enabled": True, "path": str(desktop), "message": "Autostart enabled for this user."}
+        if system == "darwin":
+            agents = Path.home() / "Library" / "LaunchAgents"
+            agents.mkdir(parents=True, exist_ok=True)
+            plist = agents / "com.dana.mcp.plist"
+            if not enabled:
+                subprocess.run(["launchctl", "unload", str(plist)], capture_output=True, check=False)
+                plist.unlink(missing_ok=True)
+                return {"ok": True, "enabled": False, "message": "Autostart disabled."}
+            app = "/Applications/Dana.app/Contents/MacOS/Dana"
+            if not Path(app).exists():
+                return {"ok": False, "message": "Install Dana.app to /Applications first."}
+            lines = [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+                '<plist version="1.0"><dict>',
+                '<key>Label</key><string>com.dana.mcp</string>',
+                '<key>ProgramArguments</key><array>',
+                f'<string>{app}</string></array>',
+                '<key>RunAtLoad</key><true/>',
+                '</dict></plist>',
+                '',
+            ]
+            plist.write_text("\n".join(lines), encoding="utf-8")
+            subprocess.run(["launchctl", "load", str(plist)], capture_output=True, check=False)
+            return {"ok": True, "enabled": True, "path": str(plist), "message": "Autostart enabled."}
+        if system == "windows":
+            run_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
+            try:
+                import winreg  # type: ignore
+            except ImportError:
+                return {"ok": False, "message": "winreg unavailable."}
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, run_key, 0, winreg.KEY_SET_VALUE)
+            if not enabled:
+                try:
+                    winreg.DeleteValue(key, "Dana")
+                except FileNotFoundError:
+                    pass
+                winreg.CloseKey(key)
+                return {"ok": True, "enabled": False, "message": "Autostart disabled."}
+            exe = os.environ.get("LOCALAPPDATA", "") + r"\Programs\Dana\Dana.exe"
+            winreg.SetValueEx(key, "Dana", 0, winreg.REG_SZ, '"' + exe + '"')
+            winreg.CloseKey(key)
+            return {"ok": True, "enabled": True, "message": "Autostart enabled."}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+    return {"ok": False, "message": f"Autostart is not implemented for {system}."}
+
+
+def background_heal_tick() -> dict[str, object]:
+    """Quiet periodic heal used by the setup service watchdog."""
+    st_now = status()
+    if st_now.local_only:
+        if not st_now.dana_running:
+            return start_dana()
+        return {"ok": True, "skipped": True, "reason": "local_only"}
+    if st_now.connectivity == "connected":
+        return {"ok": True, "skipped": True, "reason": "healthy"}
+    if st_now.tailscale_backend.lower() != "running":
+        return {"ok": False, "skipped": True, "reason": "tailscale_offline"}
+    return recover_connectivity()
 
 
 def recover_connectivity() -> dict[str, object]:

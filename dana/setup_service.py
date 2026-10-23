@@ -25,6 +25,24 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 from dana import setup
 
+
+
+def _heal_loop(stop: threading.Event) -> None:
+    """Periodically restore Funnel/runtime after sleep or network flaps."""
+    # First pass after a short delay so startup is not blocked.
+    if stop.wait(12):
+        return
+    while not stop.is_set():
+        try:
+            setup.background_heal_tick()
+        except Exception as exc:
+            try:
+                setup._setup_log(f"Background heal tick failed: {exc}", "warning")
+            except Exception:
+                pass
+        if stop.wait(20):
+            break
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, payload: dict[str, object], code: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -96,6 +114,25 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send({"ok": False, "message": str(exc)}, 400)
             return
+        
+        if request_path == "/api/setup/local-only":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.set_local_only(bool(payload.get("enabled", True))))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/autostart":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.set_autostart(bool(payload.get("enabled", True))))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
         if request_path in {"/api/setup/security/revoke-token", "/api/setup/security/token", "/api/setup/config"}:
             try:
                 if request_path == "/api/setup/security/revoke-token":
@@ -150,4 +187,10 @@ if __name__ == "__main__":
             temporary.write_text(port, encoding="ascii")
             temporary.replace(target)
         print(f"DANA_SETUP_PORT={port}", flush=True)
+        heal_stop = threading.Event()
+    heal_thread = threading.Thread(target=_heal_loop, args=(heal_stop,), name="dana-heal", daemon=True)
+    heal_thread.start()
+    try:
         server.serve_forever()
+    finally:
+        heal_stop.set()
