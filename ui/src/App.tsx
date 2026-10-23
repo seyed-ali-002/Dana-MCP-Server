@@ -441,20 +441,26 @@ function App() {
     if (!port || !authFlow?.pending) return;
     const t = window.setInterval(async () => {
       try {
-        await refresh();
+        const current = await refresh(port, true);
         const r = await fetch(API(port, "/api/setup/auth-flow"));
         if (!r.ok) return;
         const x = await r.json();
-        if (!x.pending) {
+        // Browser step finished, or Funnel already published while user was approving.
+        if (!x.pending || (authFlow.kind === "funnel" && current?.funnel_active)) {
           setAuthFlow(null);
-          setTimeout(() => setup(), 150);
+          setMessage(
+            authFlow.kind === "funnel"
+              ? "Funnel approval detected. Continuing setup…"
+              : "Login detected. Continuing setup…"
+          );
+          setTimeout(() => setup(), 250);
         }
       } catch {
         /* ignore */
       }
-    }, 1000);
+    }, 1200);
     return () => clearInterval(t);
-  }, [port, authFlow?.pending]);
+  }, [port, authFlow?.pending, authFlow?.kind]);
 
   async function setup() {
     if (!port) return;
@@ -615,11 +621,11 @@ function App() {
     }
   }
 
-  const navItems: { id: "Setup" | "Control" | "Usage" | "Logs"; label: string; icon: string }[] = [
-    { id: "Setup", label: "Setup", icon: "setup" },
-    { id: "Control", label: "Control", icon: "control" },
-    { id: "Usage", label: "Usage", icon: "usage" },
+  const navItems: { id: "Setup" | "Control" | "Logs" | "Usage"; label: string; icon: string }[] = [
+    { id: "Setup", label: "Home", icon: "setup" },
+    { id: "Control", label: "Network", icon: "control" },
     { id: "Logs", label: "Logs", icon: "logs" },
+    { id: "Usage", label: "Usage", icon: "usage" },
   ];
 
   function NavIcon({ name }: { name: string }) {
@@ -977,34 +983,14 @@ function App() {
             <div className="grid">
               <section className="card glass">
                 <div className="card-head">
-                  <span>RUNTIME</span>
-                  <strong>Dana</strong>
-                  <b className={status?.dana_running ? "state success" : "state warning"}>
-                    {status?.dana_running ? "ONLINE" : "OFFLINE"}
+                  <span>PUBLIC</span>
+                  <strong>Funnel</strong>
+                  <b className={status?.funnel_active ? "state success" : "state warning"}>
+                    {status?.funnel_active ? "ACTIVE" : "INACTIVE"}
                   </b>
                 </div>
-                <p>
-                  {status?.dana_running
-                    ? "MCP service is accepting connections."
-                    : "Dana is not running."}
-                </p>
-                <div className="meta">{localAddr}</div>
-                <div className="card-actions">
-                  <button
-                    className="primary"
-                    disabled={busy || !!status?.dana_running}
-                    onClick={() => run("/api/setup/start-dana")}
-                  >
-                    Start
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={busy || !status?.dana_running}
-                    onClick={() => run("/api/setup/stop-dana")}
-                  >
-                    Stop
-                  </button>
-                </div>
+                <p>{status?.funnel_hostname || "Not configured"}</p>
+                <div className="meta">{status?.funnel_active ? "HTTPS :443 → local MCP" : "—"}</div>
               </section>
               <section className="card glass">
                 <div className="card-head">
@@ -1048,14 +1034,34 @@ function App() {
               </section>
               <section className="card glass">
                 <div className="card-head">
-                  <span>PUBLIC</span>
-                  <strong>Funnel</strong>
-                  <b className={status?.funnel_active ? "state success" : "state warning"}>
-                    {status?.funnel_active ? "ACTIVE" : "INACTIVE"}
+                  <span>RUNTIME</span>
+                  <strong>Dana</strong>
+                  <b className={status?.dana_running ? "state success" : "state warning"}>
+                    {status?.dana_running ? "ONLINE" : "OFFLINE"}
                   </b>
                 </div>
-                <p>{status?.funnel_hostname || "Not configured"}</p>
-                <div className="meta">{status?.funnel_active ? "HTTPS :443 → local MCP" : "—"}</div>
+                <p>
+                  {status?.dana_running
+                    ? "MCP service is accepting connections."
+                    : "Dana is not running."}
+                </p>
+                <div className="meta">{localAddr}</div>
+                <div className="card-actions">
+                  <button
+                    className="primary"
+                    disabled={busy || !!status?.dana_running}
+                    onClick={() => run("/api/setup/start-dana")}
+                  >
+                    Start
+                  </button>
+                  <button
+                    className="secondary"
+                    disabled={busy || !status?.dana_running}
+                    onClick={() => run("/api/setup/stop-dana")}
+                  >
+                    Stop
+                  </button>
+                </div>
               </section>
             </div>
 
@@ -1464,12 +1470,20 @@ function App() {
           <div className="modal glass">
             <div className="modal-icon">!</div>
             <div className="eyebrow">PUBLIC INTERNET EXPOSURE</div>
-            <h2>Enable Tailscale Funnel?</h2>
-            <p>This publishes Dana’s HTTPS endpoint to the public internet.</p>
-            <label className="confirm-line">
-              <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
-              <span>I understand that Funnel makes the endpoint publicly reachable.</span>
-            </label>
+          <h2>Enable Tailscale Funnel?</h2>
+          <p>
+            This publishes Dana’s HTTPS endpoint on the public internet via Tailscale.
+            You may be asked for your system password (sudo), then to approve Funnel in the browser.
+          </p>
+          <ul className="modal-steps">
+            <li>Approve the system password dialog if it appears</li>
+            <li>Open the Funnel approval link in your browser</li>
+            <li>Keep Dana open — setup continues automatically</li>
+          </ul>
+          <label className="confirm-line">
+            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+            <span>I understand that Funnel makes the endpoint publicly reachable.</span>
+          </label>
             <div className="modal-actions">
               <button className="secondary" onClick={() => setConfirmPublic(false)}>
                 Cancel

@@ -633,66 +633,71 @@ def _tailscale_hostname_from_status() -> str | None:
 
 
 def _elevate_command(command: list[str], *, timeout: float = 60.0) -> subprocess.CompletedProcess[str]:
-    """Request OS elevation without capturing the password."""
+    """Request OS elevation without storing the password."""
     system = platform.system().lower()
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
     if system == "darwin":
         import shlex
         shell = " ".join(shlex.quote(part) for part in command)
-        shell_as = shell.replace('\\', '\\\\').replace('"', '\\"')
-        script = 'do shell script "' + shell_as + '" with administrator privileges'
+        shell_as = shell.replace("\\", "\\\\").replace(chr(34), "\\" + chr(34))
+        script = "do shell script " + chr(34) + shell_as + chr(34) + " with administrator privileges"
         return subprocess.run(["osascript", "-e", script], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
     if system == "windows":
         return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
-    if shutil.which("pkexec"):
-        elevated = subprocess.run(["pkexec", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
-        if elevated.returncode == 0 or not shutil.which("sudo"):
-            return elevated
     if shutil.which("sudo"):
-        return subprocess.run(["sudo", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        noninteractive = subprocess.run(["sudo", "-n", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        if noninteractive.returncode == 0:
+            return noninteractive
+        interactive = subprocess.run(["sudo", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        if interactive.returncode == 0 or interactive.stdout or interactive.stderr:
+            return interactive
+    if shutil.which("pkexec"):
+        return subprocess.run(["pkexec", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
     return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+
 
 def _run_tailscale(command: list[str], *, timeout: float = 20.0) -> subprocess.CompletedProcess[str]:
     """Run Tailscale with a hard timeout and elevate Funnel administration when needed."""
     if command and command[0] == "tailscale":
         command = _tailscale_cmd(*command[1:])
+    is_funnel = any(part == "funnel" for part in command)
+    effective_timeout = max(timeout, 120.0) if is_funnel else timeout
     try:
-        result = subprocess.run(
-            command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout
-        )
-        details = (result.stderr or result.stdout or "").lower()
-        needs_elevation = result.returncode != 0 and any(
-            marker in details
-            for marker in (
-                "permission",
-                "access denied",
-                "access is denied",
-                "root",
-                "daemon",
-                "privilege",
-                "operation not permitted",
-                "must be run as",
-            )
-        )
-        is_funnel = any(part == "funnel" for part in command)
-        if needs_elevation or (result.returncode != 0 and is_funnel):
-            elevated = _elevate_command(command, timeout=max(timeout, 90.0))
-            if elevated.returncode == 0:
-                return elevated
-            if elevated.stderr or elevated.stdout:
-                return elevated
-        return result
+        result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=effective_timeout)
     except subprocess.TimeoutExpired as exc:
+        out = getattr(exc, "stdout", None) or ""
+        err = getattr(exc, "stderr", None) or ""
+        if isinstance(out, bytes):
+            out = out.decode("utf-8", "replace")
+        if isinstance(err, bytes):
+            err = err.decode("utf-8", "replace")
+        if str(out).strip() or str(err).strip():
+            return subprocess.CompletedProcess(command, 124, str(out), str(err))
         raise RuntimeError(
-            "Tailscale did not respond in time. Open Tailscale, make sure you are signed in and online, "
-            "then run `tailscale status` and retry."
+            "Tailscale did not respond in time. Open Tailscale, sign in, then retry."
         ) from exc
+    details = (result.stderr or result.stdout or "").lower()
+    needs_elevation = result.returncode != 0 and any(
+        marker in details
+        for marker in (
+            "permission", "access denied", "access is denied", "root", "daemon",
+            "privilege", "operation not permitted", "must be run as", "failed to connect",
+        )
+    )
+    if needs_elevation or (result.returncode != 0 and is_funnel):
+        elevated = _elevate_command(command, timeout=max(effective_timeout, 120.0))
+        if elevated.returncode == 0:
+            return elevated
+        if elevated.stderr or elevated.stdout:
+            return elevated
+    return result
+
 
 def _ensure_tailscale_ready() -> None:
     result = _run_tailscale(["tailscale", "status", "--json"], timeout=12)
     if result.returncode != 0:
-        details = (result.stderr or result.stdout).strip()
+        details = (result.stderr or result.stdout or "").strip()
         raise RuntimeError(
             "Tailscale is installed but not ready. Start the Tailscale application and sign in first"
             + (f": {details}" if details else ".")
@@ -714,41 +719,69 @@ def _tailscale_error(result: subprocess.CompletedProcess[str]) -> str:
 
 def _is_tailscale_listener_conflict(details: str) -> bool:
     text = details.lower()
-    return ("listener already exists" in text or "foreground listener already exists" in text or ("already exists for port" in text and "listener" in text))
+    return (
+        "listener already exists" in text
+        or "foreground listener already exists" in text
+        or ("already exists for port" in text and "listener" in text)
+    )
 
 
 def _configure_funnel_command(token: str, port: int, funnel_port: int) -> subprocess.CompletedProcess[str]:
-    # Dana exposes a canonical HTTPS origin. OAuth discovery requires sibling
-    # /.well-known endpoints to be reachable, so never hide MCP behind a token path.
     return _run_tailscale(["tailscale", "funnel", f"--https={funnel_port}", "--yes", "--bg", str(port)], timeout=25)
 
 
+def _extract_funnel_approval_url(text: str) -> str | None:
+    if not text:
+        return None
+    patterns = (
+        r"https://login\.tailscale\.com/a/[A-Za-z0-9_-]+",
+        r"https://login\.tailscale\.com/\S+",
+        r"https://admin\.tailscale\.com/\S*funnel\S*",
+        r"https://tailscale\.com/\S*activate\S*",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(0).rstrip(").,;'")
+    return None
+
+
 def configure_tailscale_local(token: str, port: int = 8765, funnel_port: int = 443) -> str:
-    """Configure Funnel and automatically recover from stale/conflicting listeners."""
+    """Configure Funnel and recover from stale listeners; surface browser approval URLs."""
     if not command_exists("tailscale"):
         raise RuntimeError("Tailscale is not installed or not in PATH. Install and sign in to Tailscale first.")
     step("Checking Tailscale connection")
     _ensure_tailscale_ready()
-    step("Requesting Tailscale Funnel (this should take only a few seconds)")
+    step("Requesting Tailscale Funnel (administrator password / browser approval may be required)")
     result = _configure_funnel_command(token, port, funnel_port)
+    combined = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
+    approval = _extract_funnel_approval_url(combined)
+    if approval:
+        raise RuntimeError("Tailscale Funnel requires browser approval. Open this URL to continue: " + approval)
     if result.returncode != 0 and _is_tailscale_listener_conflict(_tailscale_error(result)):
-        step("Existing Tailscale Funnel listener detected; resetting Dana's Funnel configuration")
+        step("Existing Tailscale Funnel listener detected; resetting")
         reset = _run_tailscale(["tailscale", "funnel", "reset"], timeout=15)
         if reset.returncode != 0:
             details = _tailscale_error(reset)
             raise RuntimeError("Tailscale Funnel has a conflicting listener and automatic reset failed" + (f": {details}" if details else "."))
-        step(f"Recreating Funnel automatically with `tailscale funnel {port}`")
         result = _run_tailscale(["tailscale", "funnel", f"--https={funnel_port}", "--yes", "--bg", str(port)], timeout=25)
+        combined = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
+        approval = _extract_funnel_approval_url(combined)
+        if approval:
+            raise RuntimeError("Tailscale Funnel requires browser approval. Open this URL to continue: " + approval)
     if result.returncode != 0:
         details = _tailscale_error(result)
-        raise RuntimeError("Could not configure Tailscale Funnel. Make sure Funnel is enabled for this Tailnet and the Tailscale client is up to date" + (f": {details}" if details else "."))
-    for attempt in range(6):
+        lower = details.lower()
+        if "funnel" in lower and any(x in lower for x in ("not enabled", "acl", "policy", "denied", "forbidden")):
+            raise RuntimeError("Funnel is not enabled for this tailnet. Enable Funnel in the Tailscale admin console, then retry" + (f": {details}" if details else "."))
+        raise RuntimeError("Could not configure Tailscale Funnel. Approve the system password prompt and any browser link, ensure Funnel is allowed on the tailnet" + (f": {details}" if details else "."))
+    for attempt in range(10):
         hostname = _tailscale_hostname_from_status()
         if hostname:
             return hostname
-        if attempt < 5:
+        if attempt < 9:
             time.sleep(0.75)
-    raise RuntimeError("Tailscale Funnel was configured, but its public hostname could not be determined. Check `tailscale funnel status` and confirm that Tailscale DNS is enabled.")
+    raise RuntimeError("Tailscale Funnel was configured, but its public hostname could not be determined. Check `tailscale funnel status`.")
 
 
 def set_local_public_host(host: str) -> None:

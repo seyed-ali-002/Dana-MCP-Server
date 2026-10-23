@@ -1455,3 +1455,12 @@ input[type="checkbox"] {
     padding: 16px 14px 24px;
   }
 }
+
+.modal-steps {
+  margin: 12px 0 16px;
+  padding: 0 0 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.modal-steps li { margin: 4px 0; }
