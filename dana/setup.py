@@ -1390,6 +1390,66 @@ def login_tailscale() -> dict[str, object]:
     _setup_log("Tailscale authentication failed: " + details[:500], "error")
     return {"ok": False, "message": details[:500]}
 
+
+def recover_connectivity() -> dict[str, object]:
+    """Heal local runtime + Funnel after network flaps or app restarts."""
+    _setup_log("Running connectivity recovery.")
+    notes: list[str] = []
+    if not _dana_running():
+        started = start_dana()
+        notes.append("dana:" + ("started" if started.get("ok") else "failed"))
+        if not started.get("ok"):
+            return {"ok": False, "message": started.get("message") or "Could not start Dana.", "notes": notes}
+    else:
+        notes.append("dana:already-running")
+
+    active, host = _funnel_status()
+    if active and host:
+        notes.append("funnel:active")
+        verified = verify_public_endpoint(host)
+        return {
+            "ok": True,
+            "funnel_active": True,
+            "hostname": host,
+            "endpoint_verified": verified,
+            "notes": notes,
+            "message": "Connectivity looks healthy." if verified else "Funnel is up; public endpoint is warming up.",
+        }
+
+    # Re-publish Funnel without requiring a full guided setup pass.
+    try:
+        host = configure_tailscale_local(settings.auth_token, port=settings.port, funnel_port=443)
+        notes.append("funnel:reconfigured")
+        set_local_public_host(host)
+    except RuntimeError as exc:
+        details = str(exc)
+        auth_url = _find_auth_url(details)
+        if auth_url:
+            _set_auth_flow("funnel", auth_url, "Approve Funnel in the browser to restore public access.", True)
+            _open(auth_url)
+            return {
+                "ok": True,
+                "pending": True,
+                "auth_url": auth_url,
+                "notes": notes,
+                "message": "Browser approval is required to restore Funnel.",
+            }
+        notes.append("funnel:failed")
+        return {"ok": False, "message": details, "notes": notes}
+
+    active, detected = _funnel_status()
+    host = detected or host
+    verified = verify_public_endpoint(host) if active else False
+    return {
+        "ok": bool(active),
+        "funnel_active": bool(active),
+        "hostname": host or "",
+        "endpoint_verified": verified,
+        "notes": notes,
+        "message": "Funnel restored." if active else "Funnel restore was requested; wait a few seconds and retry.",
+    }
+
+
 def enable_funnel(port: int = 8765) -> dict[str, object]:
     """Start Funnel with clear handling for sudo prompts and browser approval."""
     _setup_log("Starting Tailscale Funnel setup.")

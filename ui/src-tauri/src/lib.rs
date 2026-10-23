@@ -260,12 +260,24 @@ fn stop_setup_service() {
     if let Ok(mut port) = SETUP_PORT.lock() {
         *port = None;
     }
+    // Clean stale setup port/log files so a future launch does not attach to a dead agent.
+    if let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("dana-setup-port-") || name.starts_with("dana-setup-agent-") {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
 }
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // Second launch: focus the existing window instead of starting a new session.
+            show_main_window(app);
+        }))
         .invoke_handler(tauri::generate_handler![start_setup_service])
         .setup(|app| {
             let show_i = MenuItem::with_id(app, "show", "Show Dana", true, None::<&str>)?;

@@ -261,3 +261,8 @@ Special thanks to [Mohsen Samadinejad](https://github.com/samadinejad) for early
 ## License
 
 See the repository license file.
+
+## Installer warnings on Windows / macOS
+
+Official GitHub builds may show SmartScreen (Windows) or Gatekeeper (macOS) warnings until code-signing certificates are configured. The app is open source — see `packaging/CODE_SIGNING.md`. On macOS you can allow it under **Privacy & Security → Open Anyway**. On Windows choose **More info → Run anyway**.
+

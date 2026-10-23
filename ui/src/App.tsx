@@ -176,6 +176,7 @@ async function openExternal(url: string, setupPort?: number | null) {
 function App() {
   const [port, setPort] = useState<number | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
+  const autoHealRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState("Setup");
   const [error, setError] = useState("");
@@ -481,6 +482,43 @@ function App() {
     if (!current.dana_running) return run("/api/setup/start-dana", true);
   }
 
+  async function recoverConnectivity() {
+    if (!port || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const r = await fetch(API(port, "/api/setup/recover"), { method: "POST" });
+      const x = await r.json();
+      if (x.auth_url) {
+        setAuthFlow({
+          pending: true,
+          kind: "funnel",
+          auth_url: x.auth_url,
+          message: x.message || "Approve Funnel in the browser.",
+        });
+        await openExternal(x.auth_url, port);
+      }
+      if (!r.ok || x.ok === false) throw Error(x.message || "Recovery failed");
+      setMessage(x.message || "Connectivity repaired.");
+      await refresh();
+    } catch (e) {
+      setError(String(e).replace(/^Error:\s*/i, ""));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+
+  // After sleep/network flaps Funnel can drop while Dana stays up.
+  // Automatically attempt a quiet repair once per session.
+  useEffect(() => {
+    if (!port || !status || busy || autoHealRef.current) return;
+    const tsOk = status.tailscale_backend?.toLowerCase() === "running";
+    if (tsOk && status.dana_running && !status.funnel_active) {
+      autoHealRef.current = true;
+      recoverConnectivity();
+    }
+  }, [port, status?.tailscale_backend, status?.dana_running, status?.funnel_active]);
   async function dl(a: string) {
     if (!port) return;
     await fetch(API(port, "/api/setup/download/" + a), { method: "POST" });

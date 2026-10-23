@@ -10,12 +10,13 @@ from .config import settings
 
 
 class DanaFunnelManager:
-    """Own and rapidly restore Dana's token path without touching shared routes."""
+    """Own and rapidly restore Dana public Funnel route after network flaps."""
 
     def __init__(self) -> None:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._log = logging.getLogger("dana")
+        self._failures = 0
 
     @property
     def enabled(self) -> bool:
@@ -30,52 +31,111 @@ class DanaFunnelManager:
             and has_tailscale
         )
 
-    def _run(self, command: list[str]) -> bool:
-        # The watchdog must never block Dana startup on a password dialog. Use
-        # non-interactive sudo for background recovery; explicit setup actions
-        # use Dana's privileged runner and can request the user's password.
+    def _ts_cmd(self, *args: str) -> list[str]:
         try:
             from .installer import _tailscale_cmd
+            return _tailscale_cmd(*args)
+        except Exception:
+            return ["tailscale", *args]
+
+    def _run(self, command: list[str]) -> bool:
+        try:
             if command and command[0] == "tailscale":
-                command = _tailscale_cmd(*command[1:])
+                command = self._ts_cmd(*command[1:])
         except Exception:
             pass
-        if len(command) >= 2 and command[1] == "funnel" and hasattr(__import__("os"), "geteuid") and __import__("os").geteuid() != 0:
-            if shutil.which("sudo"):
-                command = ["sudo", "-n", *command]
+        attempts: list[list[str]] = [list(command)]
+        import os
+        if (
+            len(command) >= 2
+            and "funnel" in command
+            and hasattr(os, "geteuid")
+            and os.geteuid() != 0
+            and shutil.which("sudo")
+        ):
+            attempts.append(["sudo", "-n", *command])
+        last_err = ""
+        for cmd in attempts:
+            try:
+                result = subprocess.run(cmd, text=True, capture_output=True, check=False, timeout=15)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                last_err = str(exc)
+                continue
+            if result.returncode == 0:
+                return True
+            last_err = (result.stderr or result.stdout or "").strip()
+        if last_err:
+            self._log.warning("Dana Funnel route restore failed: %s", last_err[:300])
+        return False
+
+    def _funnel_active(self) -> bool:
         try:
-            result = subprocess.run(command, text=True, capture_output=True, check=False, timeout=15)
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            self._log.warning("Dana Funnel command failed: %s", exc)
+            result = subprocess.run(
+                self._ts_cmd("funnel", "status"),
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
             return False
-        if result.returncode:
-            self._log.warning("Dana Funnel route restore failed: %s", (result.stderr or result.stdout).strip())
+        text = ((result.stdout or "") + chr(10) + (result.stderr or "")).lower()
+        if result.returncode != 0:
             return False
-        return True
+        markers = (
+            "available on the internet",
+            "# funnel on:",
+            f":{settings.port}",
+            "https://",
+            ".ts.net",
+        )
+        return any(m in text for m in markers)
+
+    def _tailscale_online(self) -> bool:
+        try:
+            result = subprocess.run(
+                self._ts_cmd("status", "--json"),
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        if result.returncode != 0:
+            return False
+        try:
+            import json
+            payload = json.loads(result.stdout or "{}")
+        except Exception:
+            return "running" in (result.stdout or "").lower()
+        return str(payload.get("BackendState", "")).lower() == "running"
 
     def ensure(self, retries: int = 3) -> bool:
-        """Expose Dana's complete HTTPS origin through Funnel.
-
-        OAuth and MCP discovery use sibling /.well-known paths. A tokenized
-        Funnel path hides those resources and causes connector clients to fall
-        back to a user-defined OAuth client. Funnel the local Dana port itself
-        so /mcp and all discovery endpoints share one canonical origin.
-        """
         if not self.enabled:
             return False
+        if not self._tailscale_online():
+            self._log.warning("Tailscale is offline; delaying Funnel restore until backend is Running.")
+            return False
+        if self._funnel_active():
+            self._failures = 0
+            return True
         command = ["tailscale", "funnel", "--https=443", "--yes", "--bg", str(settings.port)]
         for attempt in range(retries):
             if self._run(command):
-                return True
+                time.sleep(0.4)
+                if self._funnel_active():
+                    self._failures = 0
+                    self._log.info("Dana Funnel route is active on port %s.", settings.port)
+                    return True
             if attempt + 1 < retries:
-                time.sleep(0.5)
+                time.sleep(0.6)
+        self._failures += 1
         return False
 
     def start(self) -> None:
         if not self.enabled:
             return
-        # Never make Dana's startup depend on Funnel availability. Funnel is a
-        # recoverable network capability and is restored asynchronously.
         self._stop.clear()
         self._thread = threading.Thread(target=self._watch, name="dana-funnel-watchdog", daemon=True)
         self._thread.start()
@@ -86,10 +146,12 @@ class DanaFunnelManager:
             self._thread.join(timeout=1.0)
 
     def _watch(self) -> None:
-        interval = max(1, settings.tailscale_funnel_check_seconds)
-        # Give the MCP server time to bind before attempting the first route.
-        if not self._stop.wait(min(2.0, interval)):
-            self.ensure(retries=2)
-        while not self._stop.wait(interval):
-            # Restore Dana after another application's shutdown clears handlers.
-            self.ensure(retries=1)
+        base_interval = max(1, int(settings.tailscale_funnel_check_seconds))
+        if not self._stop.wait(min(2.0, base_interval)):
+            self.ensure(retries=3)
+        while not self._stop.is_set():
+            interval = 1 if self._failures else base_interval
+            if self._stop.wait(interval):
+                break
+            self.ensure(retries=2 if self._failures else 1)
+
