@@ -649,11 +649,14 @@ def _elevate_command(command: list[str], *, timeout: float = 60.0) -> subprocess
         noninteractive = subprocess.run(["sudo", "-n", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
         if noninteractive.returncode == 0:
             return noninteractive
+    if shutil.which("pkexec"):
+        elevated = subprocess.run(["pkexec", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        if elevated.returncode == 0 or elevated.stdout or elevated.stderr:
+            return elevated
+    if shutil.which("sudo"):
         interactive = subprocess.run(["sudo", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
         if interactive.returncode == 0 or interactive.stdout or interactive.stderr:
             return interactive
-    if shutil.which("pkexec"):
-        return subprocess.run(["pkexec", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
     return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
 
 

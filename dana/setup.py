@@ -33,6 +33,7 @@ TAILSCALE_STATIC_OFFICIAL = "https://pkgs.tailscale.com/stable/"
 TAILSCALE_STATIC_GITHUB = "https://github.com/tailscale/tailscale/releases/download/"
 
 _AUTH_FLOW = {"pending": False, "kind": "", "auth_url": "", "message": ""}
+_USER_STOPPED = False
 _AUTH_FLOW_LOCK = __import__("threading").Lock()
 
 
@@ -617,6 +618,7 @@ class SetupStatus:
     public_verified: bool = False
     hint: str = ""
     local_only: bool = False
+    user_stopped: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -652,28 +654,85 @@ def _privileged_run(command: list[str], timeout: float = 60) -> subprocess.Compl
             _setup_log(f"macOS elevation failed: {details}", "error")
         return result
 
+    def _resolve_cmd(cmd: list[str]) -> list[str]:
+        out: list[str] = []
+        for i, part in enumerate(cmd):
+            if i == 0 and "/" not in part:
+                found = shutil.which(part)
+                out.append(found or part)
+            else:
+                out.append(part)
+        return out
+
+    resolved = _resolve_cmd(list(command))
+    have_tty = False
+    try:
+        import sys as _sys
+        have_tty = bool(getattr(_sys.stdin, "isatty", lambda: False)())
+    except Exception:
+        have_tty = False
+
     if shutil.which("sudo"):
-        noninteractive = _run(["sudo", "-n", *command], timeout=timeout)
+        noninteractive = _run(["sudo", "-n", *resolved], timeout=timeout)
         if noninteractive.returncode == 0:
             _start_sudo_keepalive()
             return noninteractive
-        _setup_log("Administrator authentication required. Enter your sudo password if prompted.")
-        result = _run(["sudo", *command], timeout=timeout)
-        if result.returncode == 0:
-            _start_sudo_keepalive()
-        return result
 
     if shutil.which("pkexec"):
         _setup_log("Administrator authentication required. Approve the system password dialog to continue.")
-        result = _run(["pkexec", *command], timeout=timeout)
+        result = _run(["pkexec", *resolved], timeout=timeout)
         if result.returncode == 0:
             return result
         details = (result.stderr or result.stdout or f"pkexec exited with code {result.returncode}").strip()
         _setup_log(f"pkexec elevation failed: {details}", "warning")
 
+    askpass = ""
+    for candidate in ("zenity", "kdialog", "yad", "ssh-askpass", "lxqt-openssh-askpass", "ksshaskpass"):
+        path = shutil.which(candidate)
+        if path:
+            askpass = path
+            break
+    if shutil.which("sudo") and askpass:
+        import tempfile
+        helper = Path(tempfile.gettempdir()) / "dana-sudo-askpass.sh"
+        if "zenity" in askpass:
+            script = "#!/bin/sh\nexec %s --password --title=Dana --text='Dana needs your password:' 2>/dev/null\n" % askpass
+        elif "kdialog" in askpass:
+            script = "#!/bin/sh\nexec %s --password 'Dana needs your password:' 2>/dev/null\n" % askpass
+        elif "yad" in askpass:
+            script = "#!/bin/sh\nexec %s --entry --hide-text --title=Dana --text='Password:' 2>/dev/null\n" % askpass
+        else:
+            script = "#!/bin/sh\nexec %s 2>/dev/null\n" % askpass
+        try:
+            helper.write_text(script, encoding="utf-8")
+            helper.chmod(0o700)
+            env = os.environ.copy()
+            env["SUDO_ASKPASS"] = str(helper)
+            _setup_log("Administrator authentication required (graphical password prompt).")
+            result = subprocess.run(
+                ["sudo", "-A", *resolved],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=timeout,
+                env=env,
+            )
+        except Exception as exc:
+            result = subprocess.CompletedProcess(resolved, 1, "", str(exc))
+        if result.returncode == 0:
+            _start_sudo_keepalive()
+            return result
+
+    if shutil.which("sudo") and have_tty:
+        _setup_log("Administrator authentication required. Enter your sudo password if prompted.")
+        result = _run(["sudo", *resolved], timeout=timeout)
+        if result.returncode == 0:
+            _start_sudo_keepalive()
+        return result
+
     raise RuntimeError(
-        "This operation requires administrator privileges. "
-        "Install sudo or pkexec (polkit) on Linux, or run Dana with an account that can elevate."
+        "This operation requires administrator privileges, but no password prompt is available. "
+        "Install polkit (pkexec) or a GUI askpass (zenity/kdialog), or run from a terminal with sudo."
     )
 
 _SUDO_KEEPALIVE_STARTED = False
@@ -947,7 +1006,7 @@ def status() -> SetupStatus:
         hint = "Install Tailscale to continue first-time setup."
     elif backend.lower() != "running":
         connectivity = "offline"
-        hint = "Open Tailscale and sign in, then return here."
+        hint = ("Tailscale is not connected. Sign in; if another VPN is on, disconnect it or exclude 100.64.0.0/10, then retry.")
     elif not running:
         connectivity = "offline"
         hint = "Start Dana so local MCP accepts connections."
@@ -981,7 +1040,7 @@ def status() -> SetupStatus:
     return SetupStatus(
         installed, backend, hostname, active, funnel_host, running,
         public_url or local_url, local_url, public_url, token, action, message,
-        connectivity, public_verified, hint, local_only,
+        connectivity, public_verified, hint, local_only, bool(_USER_STOPPED),
     )
 
 def test_connections() -> dict[str, object]:
@@ -1186,15 +1245,29 @@ def check_for_updates() -> dict[str, object]:
 
 def verify_public_endpoint(host: str, timeout: float = 8.0) -> bool:
     import urllib.error
+    import urllib.request as ureq
     url = f"https://{host}/mcp"
-    request = urllib.request.Request(url, method="GET", headers={"User-Agent": "Dana-Setup/1"})
+    request = ureq.Request(url, method="GET", headers={"User-Agent": "Dana-Setup/1"})
+    ctx = None
     try:
-        with ssl_urlopen(request, timeout=timeout) as response:
+        from .ssl_util import ssl_context as _sc
+        ctx = _sc()
+    except Exception:
+        ctx = None
+    try:
+        opener = ureq.build_opener(ureq.ProxyHandler({}))
+        if ctx is not None:
+            opener.add_handler(ureq.HTTPSHandler(context=ctx))
+        with opener.open(request, timeout=timeout) as response:
             return response.status in {200, 401, 403, 405}
     except urllib.error.HTTPError as exc:
         return exc.code in {401, 403, 405}
     except (OSError, urllib.error.URLError, TimeoutError):
-        return False
+        try:
+            with ssl_urlopen(request, timeout=timeout) as response:
+                return response.status in {200, 401, 403, 405}
+        except Exception:
+            return False
 
 
 def _tailscale_static_arch() -> str:
@@ -1542,6 +1615,8 @@ def set_autostart(enabled: bool = True) -> dict[str, object]:
 
 def background_heal_tick() -> dict[str, object]:
     """Quiet periodic heal used by the setup service watchdog."""
+    if _USER_STOPPED:
+        return {"ok": True, "skipped": True, "reason": "user_stopped"}
     st_now = status()
     if st_now.local_only:
         if not st_now.dana_running:
@@ -1550,7 +1625,14 @@ def background_heal_tick() -> dict[str, object]:
     if st_now.connectivity == "connected":
         return {"ok": True, "skipped": True, "reason": "healthy"}
     if st_now.tailscale_backend.lower() != "running":
-        return {"ok": False, "skipped": True, "reason": "tailscale_offline"}
+        return {
+            "ok": False,
+            "skipped": True,
+            "reason": "tailscale_offline",
+            "message": "Tailscale offline. If another VPN is active, disconnect it or exclude 100.64.0.0/10, then Repair.",
+        }
+    if not st_now.dana_running:
+        return start_dana()
     return recover_connectivity()
 
 
@@ -1558,6 +1640,8 @@ def recover_connectivity() -> dict[str, object]:
     """Heal local runtime + Funnel after network flaps or app restarts."""
     _setup_log("Running connectivity recovery.")
     notes: list[str] = []
+    if _USER_STOPPED and not _dana_running():
+        return {"ok": True, "skipped": True, "reason": "user_stopped", "message": "Dana was stopped manually. Press Start to run it again.", "notes": ["dana:user_stopped"]}
     if not _dana_running():
         started = start_dana()
         notes.append("dana:" + ("started" if started.get("ok") else "failed"))
@@ -1791,6 +1875,8 @@ def _run_embedded_dana() -> None:
         _setup_log(f"Embedded Dana runtime crashed: {exc}", "error")
 
 def start_dana() -> dict[str, object]:
+    global _USER_STOPPED
+    _USER_STOPPED = False
     global _DANA_PROCESS, _DANA_THREAD
     _setup_log("Starting Dana runtime.")
     if _dana_running():
@@ -1912,7 +1998,8 @@ def stop_dana() -> dict[str, object]:
     Funnel is intentionally left untouched. Stopping/restarting the application
     must not request sudo/pkexec or modify routes owned by the network layer.
     """
-    global _DANA_PROCESS, _DANA_THREAD, _DANA_UVICORN
+    global _DANA_PROCESS, _DANA_THREAD, _DANA_UVICORN, _USER_STOPPED
+    _USER_STOPPED = True
     import threading
 
     alive_thread = isinstance(_DANA_THREAD, threading.Thread) and _DANA_THREAD.is_alive()

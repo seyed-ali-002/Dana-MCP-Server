@@ -21,6 +21,7 @@ type Status = {
   public_verified?: boolean;
   hint?: string;
   local_only?: boolean;
+  user_stopped?: boolean;
 };
 type SetupLog = { time: string; level: string; message: string };
 type DownloadState = {
@@ -334,6 +335,15 @@ function App() {
     };
   }, []);
 
+  // Auto update check on launch
+  useEffect(() => {
+    if (!port) return;
+    const t = window.setTimeout(() => {
+      checkUpdates();
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [port]);
+
   useEffect(() => {
     if (!port) return;
     let active = true;
@@ -514,9 +524,12 @@ function App() {
 
 
   // After sleep/network flaps Funnel can drop while Dana stays up.
-  // Re-attempt quiet repair while connectivity is degraded (not only once).
+  // Never auto-heal when the user explicitly stopped Dana.
   useEffect(() => {
-    if (!port || !status || busy) return;
+    if (!port || !status || busy || status.user_stopped) {
+      if (status?.user_stopped) autoHealRef.current = false;
+      return;
+    }
     const degraded =
       status.connectivity === "degraded" ||
       (status.tailscale_backend?.toLowerCase() === "running" &&
@@ -531,14 +544,13 @@ function App() {
       if (busy) return;
       recoverConnectivity();
     };
-    // Immediate first heal, then every 25s while still degraded.
     if (!autoHealRef.current) {
       autoHealRef.current = true;
       tick();
     }
     const t = window.setInterval(tick, 25000);
     return () => clearInterval(t);
-  }, [port, status?.connectivity, status?.funnel_active, status?.dana_running, status?.local_only, busy]);
+  }, [port, status?.connectivity, status?.funnel_active, status?.dana_running, status?.local_only, status?.user_stopped, busy]);
   async function dl(a: string) {
     if (!port) return;
     await fetch(API(port, "/api/setup/download/" + a), { method: "POST" });
