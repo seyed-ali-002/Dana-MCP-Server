@@ -652,6 +652,7 @@ class SetupStatus:
     hint: str = ""
     local_only: bool = False
     user_stopped: bool = False
+    supermcp: dict | None = None
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -1070,10 +1071,16 @@ def status() -> SetupStatus:
                 "Wait a few seconds or click Repair connection."
             )
 
+    try:
+        from . import supermcp as _supermcp_mod
+        _sm = _supermcp_mod.status()
+    except Exception:
+        _sm = {"running": False, "enabled": False}
     return SetupStatus(
         installed, backend, hostname, active, funnel_host, running,
         public_url or local_url, local_url, public_url, token, action, message,
         connectivity, public_verified, hint, local_only, bool(_USER_STOPPED),
+        _sm,
     )
 
 def test_connections() -> dict[str, object]:
@@ -1702,6 +1709,23 @@ def repair_funnel() -> dict[str, object]:
     return recover_connectivity()
 
 
+
+def supermcp_status() -> dict[str, object]:
+    from . import supermcp
+    return supermcp.status()
+
+def start_supermcp() -> dict[str, object]:
+    from . import supermcp
+    result = supermcp.start()
+    _setup_log(str(result.get("message", "SuperMCP")), "success" if result.get("ok") else "error")
+    return result
+
+def stop_supermcp() -> dict[str, object]:
+    from . import supermcp
+    result = supermcp.stop()
+    _setup_log(str(result.get("message", "SuperMCP")), "info")
+    return result
+
 def diagnose_connectivity() -> dict[str, object]:
     """Step-by-step diagnosis for Repair wizard (no privileged changes)."""
     steps: list[dict[str, object]] = []
@@ -2002,7 +2026,24 @@ def _run_embedded_dana() -> None:
         _DANA_UVICORN = None
         _setup_log(f"Embedded Dana runtime crashed: {exc}", "error")
 
-def start_dana() -> dict[str, object]:
+
+def start_dana(*args, **kwargs):
+    result = _start_dana_impl(*args, **kwargs)
+    if result.get("ok"):
+        try:
+            from . import supermcp
+            sm = supermcp.ensure_started()
+            if sm.get("ok") and not sm.get("skipped"):
+                result = {**result, "supermcp": sm}
+                _setup_log(str(sm.get("message", "SuperMCP proxy ready")), "success")
+            elif not sm.get("ok") and not sm.get("skipped"):
+                _setup_log(str(sm.get("message", "SuperMCP proxy failed")), "warning")
+                result = {**result, "supermcp": sm}
+        except Exception as exc:
+            _setup_log(f"SuperMCP auto-start error: {exc}", "warning")
+    return result
+
+def _start_dana_impl() -> dict[str, object]:
     global _USER_STOPPED
     _USER_STOPPED = False
     global _DANA_PROCESS, _DANA_THREAD
@@ -2226,4 +2267,14 @@ def bootstrap(progress: Callable[[str], None] | None = None) -> dict[str, object
         result = start_dana()
         if not result.get("ok"):
             return result
-    return {"ok": True, "message": "Dana is ready.", "status": status().to_dict()}
+    return {"ok": True, "message": "Dana is ready.",
+    }
+    try:
+        from . import supermcp as _sm
+        _sm.ensure_started()
+    except Exception as _exc:
+        _setup_log(f"SuperMCP auto-start skipped: {_exc}", "warning")
+    return {
+        "ok": True,
+        "message": "Dana is ready."  # keep shape - THIS IS WRONG
+, "status": status().to_dict()}

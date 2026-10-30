@@ -22,6 +22,16 @@ type Status = {
   hint?: string;
   local_only?: boolean;
   user_stopped?: boolean;
+  supermcp?: {
+    enabled?: boolean;
+    running?: boolean;
+    port?: number;
+    sse_url?: string;
+    message_url?: string;
+    config_path?: string;
+    node_available?: boolean;
+    upstream?: string;
+  };
 };
 type SetupLog = { time: string; level: string; message: string };
 type DownloadState = {
@@ -1374,7 +1384,29 @@ function App() {
               </section>
             </div>
 
-            <section className="connections-panel glass">
+                    <section className="card glass">
+          <div className="card-head">
+            <span>BRIDGE</span>
+            <strong>Super Assistant</strong>
+            <b className={status?.supermcp?.running ? "state success" : "state warning"}>
+              {status?.supermcp?.running ? "ON" : "OFF"}
+            </b>
+          </div>
+          <p className="logs-description">
+            Local SSE proxy for Gemini / Perplexity / web AI without native MCP. Extension connects to{" "}
+            <code>{status?.supermcp?.sse_url || "http://127.0.0.1:3006/sse"}</code>
+          </p>
+          <div className="meta">{status?.supermcp?.node_available === false ? "Node.js required" : (status?.supermcp?.upstream || "—")}</div>
+          <div className="card-actions">
+            <button className="primary" disabled={busy || !!status?.supermcp?.running} onClick={() => run("/api/setup/supermcp/start")}>Start proxy</button>
+            <button className="secondary" disabled={busy || !status?.supermcp?.running} onClick={() => run("/api/setup/supermcp/stop")}>Stop proxy</button>
+            <button className="secondary" disabled={!status?.supermcp?.sse_url} onClick={() => copy(status?.supermcp?.sse_url || "")}>
+              {copied === (status?.supermcp?.sse_url || "") ? "Copied" : "Copy SSE URL"}
+            </button>
+          </div>
+        </section>
+
+<section className="connections-panel glass">
               <div className="logs-head">
                 <div>
                   <span className="eyebrow">MCP CONNECTIONS</span>
@@ -1649,7 +1681,15 @@ function App() {
         </section>
         <section id="help-super" className="connections-panel glass help-block">
           <span className="eyebrow">5</span><h2>MCP Super Assistant</h2>
-          <p className="logs-description">Supported via a local proxy: run Super Assistant proxy pointing at Dana&apos;s Streamable HTTP URL (or local MCP). Extension platforms (Gemini, Perplexity, …) talk to the proxy; the proxy talks to Dana. See mcpsuperassistant.ai docs.</p>
+          <ol className="help-steps">
+            <li>Install the <strong>MCP SuperAssistant</strong> browser extension (Chrome / Firefox).</li>
+            <li>In Dana, open <strong>Network</strong> → Super Assistant → <strong>Start proxy</strong> (auto-starts with Dana when Node is available).</li>
+            <li>In the extension, set the proxy URL to <code>http://127.0.0.1:3006/sse</code> (or the SSE URL shown in Network).</li>
+            <li>Open Gemini / Perplexity / ChatGPT web, enable MCP in the extension sidebar, confirm tools list Dana.</li>
+            <li>Config and logs live under your user profile (<code>~/.config/dana/supermcp</code>) to avoid permission errors on system paths.</li>
+            <li>If start fails with permission denied: install Node for your user, unset broken LD_LIBRARY_PATH (Dana does this for the child), and ensure the config dir is writable.</li>
+            <li>Disable with env <code>DANA_SUPERMCP_ENABLED=false</code>. Custom port: <code>DANA_SUPERMCP_PORT=3006</code>. Local checkout: <code>DANA_SUPERMCP_HOME</code>.</li>
+          </ol>
         </section>
         <section id="help-stop" className="connections-panel glass help-block">
           <span className="eyebrow">6</span><h2>Stop vs Repair</h2>

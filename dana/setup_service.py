@@ -86,6 +86,12 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send({"ok": False, "message": str(exc)}, 400)
             return
+        if urlparse(self.path).path == "/api/setup/supermcp":
+            try:
+                self._send(setup.supermcp_status())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
         if urlparse(self.path).path == "/api/setup/connection-test":
             try:
                 self._send(setup.test_connections())
@@ -106,6 +112,8 @@ class Handler(BaseHTTPRequestHandler):
             "/api/setup/diagnose": setup.diagnose_connectivity,
             "/api/setup/reset-defaults": setup.reset_setup_defaults,
             "/api/setup/repair-funnel": setup.repair_funnel,
+            "/api/setup/supermcp/start": setup.start_supermcp,
+            "/api/setup/supermcp/stop": setup.stop_supermcp,
         }.get(urlparse(self.path).path)
         request_path = urlparse(self.path).path
         if request_path == "/api/setup/download/pause":
