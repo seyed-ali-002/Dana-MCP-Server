@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Dana",
-  "version": "1.0.0",
-  "version": "1.0.0",
+    "version": "1.0.0",
+    "version": "1.0.0",
   "identifier": "com.dana.mcp",
   "build": {
     "beforeDevCommand": "npm run dev",
