@@ -233,7 +233,7 @@ def test_restart_runtime_does_not_reconfigure_existing_funnel(monkeypatch):
     sequence = iter([True, True])
     monkeypatch.setattr(setup, "_funnel_active", lambda: next(sequence))
     calls = {"stop": 0, "start": 0, "enable": 0}
-    monkeypatch.setattr(setup, "stop_dana", lambda: calls.__setitem__("stop", calls["stop"] + 1) or {"ok": True})
+    monkeypatch.setattr(setup, "stop_dana", lambda **_k: calls.__setitem__("stop", calls["stop"] + 1) or {"ok": True})
     monkeypatch.setattr(setup, "start_dana", lambda: calls.__setitem__("start", calls["start"] + 1) or {"ok": True})
     monkeypatch.setattr(setup, "enable_funnel", lambda *_args, **_kwargs: calls.__setitem__("enable", calls["enable"] + 1) or {"ok": True})
     result = setup._restart_runtime_preserving_funnel()

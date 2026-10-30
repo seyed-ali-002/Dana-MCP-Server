@@ -178,6 +178,77 @@ async function openExternal(url: string, setupPort?: number | null) {
   }
 }
 
+function ListEditor({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const items = (value || "")
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const [draftItem, setDraftItem] = useState("");
+  function commit(next: string[]) {
+    onChange(next.join("\n"));
+  }
+  return (
+    <div className="list-editor">
+      <div className="list-editor-add">
+        <input
+          value={draftItem}
+          placeholder={placeholder || "Add item"}
+          onChange={(e) => setDraftItem(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const v = draftItem.trim();
+              if (!v) return;
+              commit([...items, v]);
+              setDraftItem("");
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="icon-button add-item"
+          title="Add"
+          onClick={() => {
+            const v = draftItem.trim();
+            if (!v) return;
+            commit([...items, v]);
+            setDraftItem("");
+          }}
+        >
+          +
+        </button>
+      </div>
+      {items.length === 0 ? (
+        <div className="list-editor-empty">No entries</div>
+      ) : (
+        <ul className="list-editor-items">
+          {items.map((item, idx) => (
+            <li key={idx + item}>
+              <code>{item}</code>
+              <button
+                type="button"
+                className="icon-button remove-item"
+                title="Remove"
+                onClick={() => commit(items.filter((_, i) => i !== idx))}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [port, setPort] = useState<number | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
@@ -207,7 +278,6 @@ function App() {
   const [errorLogs, setErrorLogs] = useState<SetupLog[]>([]);
   const [pendingInstall, setPendingInstall] = useState(false);
   const [manualUrl, setManualUrl] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     try {
       const saved = localStorage.getItem("dana-theme");
@@ -253,11 +323,12 @@ function App() {
   async function refresh(p = port, quiet = false): Promise<Status | null> {
     if (!p) return null;
     try {
-      const r = await fetch(API(p, "/api/setup/status"));
+      if (!quiet) setError("");
+      const r = await fetch(API(p, "/api/setup/status"), { cache: "no-store" });
       const x = await r.json();
       if (!r.ok) throw Error(x.message || x.error);
       setStatus(x);
-      setMessage(x.message || "");
+      if (x.message) setMessage(x.message);
       const l = await fetch(API(p, "/api/setup/logs"));
       if (l.ok) {
         const y = await l.json();
@@ -289,6 +360,23 @@ function App() {
     } catch {
       /* ignore */
     }
+  }
+
+  async function hardRefresh() {
+    if (!port) return;
+    setError("");
+    setMessage("Refreshing…");
+    await refresh(port);
+    await loadConfig(port);
+    await pollDownload(port);
+    try {
+      const a = await fetch(API(port, "/api/setup/activity"), { cache: "no-store" });
+      if (a.ok) {
+        const y = await a.json();
+        setToolEvents(y.events || []);
+      }
+    } catch { /* ignore */ }
+    setMessage("Status updated");
   }
 
   async function loadConfig(p = port) {
@@ -359,7 +447,7 @@ function App() {
   }, [port]);
 
   useEffect(() => {
-    if (port && view === "Control") loadConfig(port);
+    if (port && (view === "Control" || view === "Config" || view === "Repair")) loadConfig(port);
   }, [port, view]);
 
   useEffect(() => {
@@ -691,11 +779,18 @@ function App() {
     }
   }
 
-  const navItems: { id: "Setup" | "Control" | "Logs" | "Usage"; label: string; icon: string }[] = [
+  const navItems: {
+    id: "Setup" | "Control" | "Config" | "Repair" | "Logs" | "Usage" | "Help";
+    label: string;
+    icon: string;
+  }[] = [
     { id: "Setup", label: "Home", icon: "setup" },
     { id: "Control", label: "Network", icon: "control" },
+    { id: "Config", label: "Config", icon: "config" },
+    { id: "Repair", label: "Repair", icon: "repair" },
     { id: "Logs", label: "Logs", icon: "logs" },
     { id: "Usage", label: "Usage", icon: "usage" },
+    { id: "Help", label: "Help", icon: "help" },
   ];
 
   function NavIcon({ name }: { name: string }) {
@@ -718,6 +813,27 @@ function App() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M4 19V5M4 19h16" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
           <path d="M8 15v-4M12 15V8M16 15v-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+        </svg>
+      );
+    if (name === "config")
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" />
+          <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4l1.4-1.4M17 7l1.4-1.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+        </svg>
+      );
+    if (name === "repair")
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M14.7 6.3a4.5 4.5 0 0 0-6.2 6.2L4 17l3 3 4.5-4.5a4.5 4.5 0 0 0 6.2-6.2L15 11l-2-2 1.7-2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+      );
+    if (name === "help")
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" />
+          <path d="M9.5 9a2.5 2.5 0 1 1 3.6 2.2c-.7.4-1.1.9-1.1 1.8V14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          <circle cx="12" cy="17" r="0.9" fill="currentColor" />
         </svg>
       );
     return (
@@ -860,7 +976,7 @@ function App() {
                   </svg>
                 )}
               </button>
-              <button type="button" className="icon-button" onClick={() => refresh()} title="Refresh" aria-label="Refresh">
+              <button type="button" className="icon-button" onClick={() => hardRefresh()} title="Refresh" aria-label="Refresh">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -1243,121 +1359,187 @@ function App() {
                 </div>
               )}
             </section>
+      </div>
+    )}
 
-            <section className="connections-panel glass">
-              <div className="logs-head">
-                <div>
-                  <span className="eyebrow">AUTHENTICATION</span>
-                  <h2>Token</h2>
-                </div>
-                <b className={config?.auth_token_configured ? "state success" : "state warning"}>
-                  {config?.auth_token_configured ? "READY" : "MISSING"}
-                </b>
-              </div>
-              <div className="security-token">
-                <span className="eyebrow">CURRENT TOKEN</span>
-                <code>{config?.auth_token || "Not configured"}</code>
-              </div>
-              <div className="token-editor">
-                <input
-                  type="password"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  placeholder="Custom token, 16–256 characters"
-                />
-                <button
-                  className="primary"
-                  disabled={securityBusy || token.length < 16}
-                  onClick={applyToken}
-                >
-                  Apply
-                </button>
-              </div>
-              <div className="modal-actions">
-                {!confirmRevoke ? (
-                  <button
-                    className="secondary danger-button"
-                    disabled={securityBusy}
-                    onClick={() => setConfirmRevoke(true)}
-                  >
-                    Revoke & replace
-                  </button>
-                ) : (
-                  <>
-                    <span className="logs-description">Existing URLs will stop working.</span>
-                    <button
-                      className="secondary"
-                      disabled={securityBusy}
-                      onClick={() => setConfirmRevoke(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="secondary danger-button"
-                      disabled={securityBusy}
-                      onClick={revoke}
-                    >
-                      Confirm
-                    </button>
-                  </>
-                )}
-              </div>
-            </section>
 
-            <section className="connections-panel glass">
-              <div className="logs-head">
-                <div>
-                  <span className="eyebrow">ENVIRONMENT</span>
-                  <h2>Configuration</h2>
-                </div>
-                <button className="primary" disabled={securityBusy} onClick={saveConfig}>
-                  Save
-                </button>
-              </div>
-              <button
-                className="secondary"
-                type="button"
-                onClick={() => setShowAdvanced((v) => !v)}
-              >
-                {showAdvanced ? "Hide advanced settings" : "Show advanced settings"}
-              </button>
-              {showAdvanced && (
-              <div className="config-grid">
-                {config?.keys
-                  .filter((k) => k !== "DANA_AUTH_TOKEN")
-                  .map((k) => (
-                    <label className="config-field" key={k}>
-                      <span>{k}</span>
-                      {k === "DANA_ALLOW_DANGEROUS_TOOLS" ||
-                      k === "DANA_TAILSCALE_FUNNEL_ENABLED" ? (
-                        <select
-                          value={draft[k] ?? config.defaults?.[k] ?? "false"}
-                          onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
-                        >
-                          <option value="true">true</option>
-                          <option value="false">false</option>
-                        </select>
-                      ) : k === "DANA_ALLOWED_PATHS" || k === "DANA_DENIED_PATHS" ? (
-                        <textarea
-                          value={draft[k] ?? ""}
-                          placeholder="One path per line"
-                          onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
-                        />
-                      ) : (
-                        <input
-                          value={draft[k] ?? config.defaults?.[k] ?? ""}
-                          onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
-                        />
-                      )}
-                    </label>
-                  ))}
-              </div>
-              )}
-            </section>
+    {port && view === "Config" && (
+      <div className="control-view config-view">
+        <section className="connections-panel glass">
+          <div className="logs-head">
+            <div>
+              <span className="eyebrow">AUTHENTICATION</span>
+              <h2>Token</h2>
+            </div>
+            <b className={config?.auth_token_configured ? "state success" : "state warning"}>
+              {config?.auth_token_configured ? "READY" : "MISSING"}
+            </b>
           </div>
-        )}
+          <p className="logs-description">
+            MCP clients use this token in the public URL. Changing it invalidates old connector URLs.
+          </p>
+          <div className="security-token">
+            <span className="eyebrow">CURRENT TOKEN</span>
+            <code>{config?.auth_token || "Not configured"}</code>
+          </div>
+          <div className="token-editor">
+            <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Custom token, 16–256 characters" />
+            <button className="primary" disabled={securityBusy || token.length < 16} onClick={applyToken}>Apply</button>
+          </div>
+          <div className="modal-actions">
+            {!confirmRevoke ? (
+              <button className="secondary danger-button" disabled={securityBusy} onClick={() => setConfirmRevoke(true)}>Revoke & replace</button>
+            ) : (
+              <>
+                <span className="logs-description">Existing URLs will stop working.</span>
+                <button className="secondary" disabled={securityBusy} onClick={() => setConfirmRevoke(false)}>Cancel</button>
+                <button className="secondary danger-button" disabled={securityBusy} onClick={revoke}>Confirm</button>
+              </>
+            )}
+          </div>
+        </section>
 
-        {port && view === "Usage" && (
+        <section className="connections-panel glass">
+          <div className="logs-head">
+            <div>
+              <span className="eyebrow">ENVIRONMENT</span>
+              <h2>Configuration</h2>
+            </div>
+            <button className="primary" disabled={securityBusy} onClick={saveConfig}>Save</button>
+          </div>
+          <p className="logs-description">
+            Valid changes restart Dana automatically when it is running. Path lists use one entry per row.
+          </p>
+          <div className="config-grid">
+            {(config?.keys || []).filter((k) => k !== "DANA_AUTH_TOKEN").map((k) => (
+              <label className="config-field" key={k}>
+                <span className="config-label">{k.replace(/^DANA_/, "").replace(/_/g, " ")}</span>
+                <span className="config-key">{k}</span>
+                {k === "DANA_ALLOW_DANGEROUS_TOOLS" || k === "DANA_TAILSCALE_FUNNEL_ENABLED" || k === "DANA_DEPLOYMENT_MODE" ? (
+                  <div className="select-wrap">
+                    <select
+                      className="styled-select"
+                      value={draft[k] ?? config?.defaults?.[k] ?? (k === "DANA_DEPLOYMENT_MODE" ? "local" : "false")}
+                      onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
+                    >
+                      {k === "DANA_DEPLOYMENT_MODE" ? (
+                        <><option value="local">local</option><option value="server">server</option></>
+                      ) : (
+                        <><option value="true">true</option><option value="false">false</option></>
+                      )}
+                    </select>
+                  </div>
+                ) : k === "DANA_ALLOWED_PATHS" || k === "DANA_DENIED_PATHS" || k === "DANA_ALLOWED_ORIGINS" || k === "MCP_OAUTH_REDIRECT_URIS" ? (
+                  <ListEditor value={draft[k] ?? ""} onChange={(v) => setDraft({ ...draft, [k]: v })} placeholder={k.includes("PATH") ? "/path/to/allow" : "https://example.com"} />
+                ) : (
+                  <input value={draft[k] ?? config?.defaults?.[k] ?? ""} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} placeholder={String(config?.defaults?.[k] || "")} />
+                )}
+              </label>
+            ))}
+          </div>
+        </section>
+      </div>
+    )}
+
+    {port && view === "Repair" && (
+      <div className="control-view repair-view">
+        <section className="card glass repair-hero">
+          <div className="card-head">
+            <span>REPAIR</span>
+            <strong>Connectivity toolkit</strong>
+            <b className={status?.connectivity === "connected" ? "state success" : "state warning"}>{(status?.connectivity || "unknown").toUpperCase()}</b>
+          </div>
+          <p>{status?.hint || "Use these actions when the public endpoint fails or Tailscale drops."}</p>
+        </section>
+        <div className="grid">
+          <section className="card glass">
+            <div className="card-head"><span>STEP 1</span><strong>Heal runtime</strong></div>
+            <p className="logs-description">Restart local MCP and re-publish Funnel if Tailscale is online.</p>
+            <div className="card-actions">
+              <button className="primary" disabled={busy} onClick={() => recoverConnectivity()}>Repair connection</button>
+              <button className="secondary" disabled={busy} onClick={() => run("/api/setup/start-dana")}>Start Dana</button>
+              <button className="secondary" disabled={busy} onClick={() => run("/api/setup/stop-dana")}>Stop Dana</button>
+            </div>
+          </section>
+          <section className="card glass">
+            <div className="card-head"><span>STEP 2</span><strong>Tailscale</strong></div>
+            <p className="logs-description">Re-login or enable Funnel when public URL is dead but local works.</p>
+            <div className="card-actions">
+              <button className="secondary" disabled={busy || !status?.tailscale_installed} onClick={() => run("/api/setup/login-tailscale")}>Login Tailscale</button>
+              <button className="secondary" disabled={busy} onClick={() => run("/api/setup/enable-funnel")}>Enable Funnel</button>
+              <button className="secondary" disabled={busy} onClick={() => run("/api/setup/repair-funnel")}>Republish Funnel</button>
+            </div>
+          </section>
+          <section className="card glass">
+            <div className="card-head"><span>STEP 3</span><strong>Reset soft state</strong></div>
+            <p className="logs-description">Clear public host overrides without deleting your auth token.</p>
+            <div className="card-actions">
+              <button className="secondary" disabled={busy} onClick={() => run("/api/setup/reset-defaults")}>Reset public overrides</button>
+              <button className="secondary" disabled={testing} onClick={testConnection}>{testing ? "Testing…" : "Test endpoints"}</button>
+              <button className="secondary" onClick={() => hardRefresh()}>Refresh status</button>
+            </div>
+          </section>
+        </div>
+        <section className="connections-panel glass">
+          <div className="logs-head"><div><span className="eyebrow">TERMINAL</span><h2>Manual commands</h2></div></div>
+          <p className="logs-description">Run on the Dana machine if the GUI cannot elevate or Funnel stays stuck.</p>
+          <div className="cmd-list">
+            {["tailscale status", "tailscale funnel status", "sudo tailscale serve reset", "sudo tailscale funnel --bg 8765", "curl -sS -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8765/mcp"].map((cmd) => (
+              <div className="cmd-row" key={cmd}>
+                <code>{cmd}</code>
+                <button className="secondary" type="button" onClick={() => copy(cmd)}>{copied === cmd ? "Copied" : "Copy"}</button>
+              </div>
+            ))}
+          </div>
+          {connectionTest && (
+            <div className={connectionTest.ok ? "connection-test success" : "connection-test error"}>
+              {connectionTest.checks.map((c) => (
+                <span key={c.name}>{c.name.toUpperCase()}: {c.ok ? "OK" : c.error || "HTTP " + (c.status || "error")}</span>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    )}
+
+    {port && view === "Help" && (
+      <div className="control-view help-view">
+        <section className="connections-panel glass help-block">
+          <span className="eyebrow">GUIDE</span><h2>Connect Dana</h2>
+          <ol className="help-steps">
+            <li>Open <strong>Home</strong> and complete Tailscale install → login → Funnel → Start Dana.</li>
+            <li>Copy the <strong>public MCP URL</strong> from Network (includes your token path).</li>
+            <li>In ChatGPT add a connector with that HTTPS URL.</li>
+            <li>Keep Tailscale connected; other VPNs can break Funnel.</li>
+          </ol>
+        </section>
+        <section className="connections-panel glass help-block">
+          <span className="eyebrow">GUIDE</span><h2>When public URL fails</h2>
+          <ol className="help-steps">
+            <li>Confirm Local test is OK on Network.</li>
+            <li>Open <strong>Repair</strong> → Repair connection, then Test endpoints.</li>
+            <li>Disable other VPNs and run the terminal commands if needed.</li>
+            <li>Verify Funnel is allowed in the Tailscale admin console.</li>
+          </ol>
+        </section>
+        <section className="connections-panel glass help-block">
+          <span className="eyebrow">GUIDE</span><h2>Configuration</h2>
+          <ul className="help-steps">
+            <li>Change token from the <strong>Config</strong> tab only.</li>
+            <li>Do not clear port or MCP path; invalid values are rejected.</li>
+            <li>Path lists use add/remove rows.</li>
+            <li>After Save, wait a few seconds and Refresh.</li>
+          </ul>
+        </section>
+        <section className="connections-panel glass help-block">
+          <span className="eyebrow">GUIDE</span><h2>Stop vs Repair</h2>
+          <p className="logs-description"><strong>Stop</strong> keeps Dana offline until you Start again. <strong>Repair</strong> heals Funnel/runtime only when Dana should stay online.</p>
+        </section>
+      </div>
+    )}
+
+
+    {port && view === "Usage" && (
         <div className="usage-view">
           <section className="card glass usage-hero">
             <div className="card-head">
@@ -1405,7 +1587,7 @@ function App() {
                   <span className="eyebrow">TOP TOOLS</span>
                   <h2>Most used</h2>
                 </div>
-                <button className="secondary" onClick={() => refresh()}>
+                <button className="secondary" onClick={() => hardRefresh()}>
                   Refresh
                 </button>
               </div>
@@ -1487,7 +1669,7 @@ function App() {
                   {!!errorLogs.length && (
                     <span className="error-badge">{errorLogs.length} warnings/errors</span>
                   )}
-                  <button className="secondary" onClick={() => refresh()}>
+                  <button className="secondary" onClick={() => hardRefresh()}>
                     Refresh
                   </button>
                 </div>
@@ -1519,7 +1701,7 @@ function App() {
                   <span className="eyebrow">TOOL ACTIVITY</span>
                   <h2>Dana tools</h2>
                 </div>
-                <button className="secondary" onClick={() => refresh()}>
+                <button className="secondary" onClick={() => hardRefresh()}>
                   Refresh
                 </button>
               </div>

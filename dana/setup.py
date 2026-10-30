@@ -502,22 +502,43 @@ def update_configuration(values: dict[str, object]) -> dict[str, object]:
     was_running = _dana_running()
     env = _read_env()
     changed: list[str] = []
+    critical_nonempty = {"DANA_HOST", "DANA_PORT", "DANA_MCP_PATH", "DANA_DEPLOYMENT_MODE", "DANA_LOG_LEVEL"}
+    list_keys = {"DANA_ALLOWED_PATHS", "DANA_DENIED_PATHS", "DANA_ALLOWED_ORIGINS", "MCP_OAUTH_REDIRECT_URIS"}
     for key, value in values.items():
         if key not in _CONFIG_KEYS:
             raise ValueError(f"Unsupported configuration key: {key}")
-        if key == "MCP_OAUTH_REDIRECT_URIS":
-            text = str(value).strip()
-        elif isinstance(value, bool):
+        if isinstance(value, bool):
             text = "true" if value else "false"
         else:
             text = str(value).strip()
-        if key in {"DANA_PORT", "DANA_WORKERS", "DANA_PUBLIC_PORT", "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS", "DANA_MAX_BODY_BYTES", "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS"}:
+        if key in list_keys:
+            parts = [part.strip() for part in re.split(r"[\n,]+", text) if part.strip()]
+            text = chr(10).join(parts)
+        if key in critical_nonempty and not text:
+            raise ValueError(f"{key} cannot be empty")
+        if key in {
+            "DANA_PORT",
+            "DANA_WORKERS",
+            "DANA_PUBLIC_PORT",
+            "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS",
+            "DANA_MAX_BODY_BYTES",
+            "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS",
+        }:
             if not text or not text.isdigit():
                 raise ValueError(f"{key} must be a non-empty numeric value")
+            num = int(text)
+            if key == "DANA_PORT" and not (1 <= num <= 65535):
+                raise ValueError("DANA_PORT must be between 1 and 65535")
+            if key == "DANA_WORKERS" and not (1 <= num <= 128):
+                raise ValueError("DANA_WORKERS must be between 1 and 128")
+            if key == "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS" and num < 1:
+                raise ValueError("DANA_TAILSCALE_FUNNEL_CHECK_SECONDS must be >= 1")
         if key in {"DANA_ALLOW_DANGEROUS_TOOLS", "DANA_TAILSCALE_FUNNEL_ENABLED"} and text.lower() not in {"true", "false"}:
             raise ValueError(f"{key} must be true or false")
         if key == "DANA_DEPLOYMENT_MODE" and text.lower() not in {"local", "server"}:
             raise ValueError("DANA_DEPLOYMENT_MODE must be local or server")
+        if key == "DANA_MCP_PATH" and text and not text.startswith("/"):
+            raise ValueError("DANA_MCP_PATH must start with /")
         if env.get(key, "") != text:
             env[key] = text
             changed.append(key)
@@ -526,9 +547,13 @@ def update_configuration(values: dict[str, object]) -> dict[str, object]:
         "DANA_HOST": ("host", str), "DANA_PORT": ("port", int), "DANA_LOG_LEVEL": ("log_level", str),
         "DANA_WORKERS": ("workers", int), "DANA_MCP_PATH": ("mcp_path", str), "DANA_PUBLIC_HOST": ("public_host", str),
         "DANA_PUBLIC_PORT": ("public_port", int), "DANA_PUBLIC_SCHEME": ("public_scheme", str),
-        "DANA_DEPLOYMENT_MODE": ("deployment_mode", str), "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS": ("oauth_access_token_ttl_seconds", int),
-        "DANA_MAX_BODY_BYTES": ("max_body_bytes", int), "DANA_ALLOW_DANGEROUS_TOOLS": ("allow_dangerous_tools", lambda x: x.lower() == "true"),
-        "DANA_ALLOWED_ORIGINS": ("allowed_origins", str), "DANA_ALLOWED_PATHS": ("allowed_paths", str), "DANA_DENIED_PATHS": ("denied_paths", str),
+        "DANA_DEPLOYMENT_MODE": ("deployment_mode", str),
+        "DANA_OAUTH_ACCESS_TOKEN_TTL_SECONDS": ("oauth_access_token_ttl_seconds", int),
+        "DANA_MAX_BODY_BYTES": ("max_body_bytes", int),
+        "DANA_ALLOW_DANGEROUS_TOOLS": ("allow_dangerous_tools", lambda x: x.lower() == "true"),
+        "DANA_ALLOWED_ORIGINS": ("allowed_origins", str),
+        "DANA_ALLOWED_PATHS": ("allowed_paths", str),
+        "DANA_DENIED_PATHS": ("denied_paths", str),
         "DANA_TAILSCALE_FUNNEL_ENABLED": ("tailscale_funnel_enabled", lambda x: x.lower() == "true"),
         "DANA_TAILSCALE_FUNNEL_CHECK_SECONDS": ("tailscale_funnel_check_seconds", int),
         "DANA_TAILSCALE_MIRROR": ("tailscale_mirror", str),
@@ -545,11 +570,19 @@ def update_configuration(values: dict[str, object]) -> dict[str, object]:
                 pass
     if "DANA_AUTH_TOKEN" in env:
         settings.auth_token = env["DANA_AUTH_TOKEN"]
-    _setup_log(f"Configuration updated: {', '.join(changed) if changed else 'no changes'}", "success" if changed else "info")
+    _setup_log(
+        f"Configuration updated: {', '.join(changed) if changed else 'no changes'}",
+        "success" if changed else "info",
+    )
     if changed and was_running:
         restart = _restart_runtime_preserving_funnel()
         if not restart.get("ok"):
-            return {"ok": False, "changed": changed, "message": str(restart.get("message", "Dana restart failed.")), "configuration": configuration()}
+            return {
+                "ok": False,
+                "changed": changed,
+                "message": str(restart.get("message", "Dana restart failed.")),
+                "configuration": configuration(),
+            }
     return {"ok": True, "changed": changed, "configuration": configuration()}
 
 
@@ -562,7 +595,7 @@ def _restart_runtime_preserving_funnel() -> dict[str, object]:
     Tailscale changes.
     """
     was_funnel = _funnel_active()
-    stop_result = stop_dana()
+    stop_result = stop_dana(user_initiated=False)
     if not stop_result.get("ok"):
         return stop_result
     result = start_dana()
@@ -1636,6 +1669,38 @@ def background_heal_tick() -> dict[str, object]:
     return recover_connectivity()
 
 
+
+def reset_setup_defaults() -> dict[str, object]:
+    """Clear non-token runtime overrides so Dana can re-run guided setup cleanly."""
+    env = _read_env()
+    removable = [
+        "DANA_PUBLIC_HOST", "DANA_PUBLIC_PORT", "DANA_PUBLIC_SCHEME",
+        "DANA_TAILSCALE_MIRROR", "DANA_TAILSCALE_PROXY",
+    ]
+    removed: list[str] = []
+    for key in removable:
+        if key in env:
+            del env[key]
+            removed.append(key)
+            os.environ.pop(key, None)
+    _write_env(env)
+    try:
+        set_local_public_host("")
+    except Exception:
+        pass
+    _setup_log("Reset public host overrides for a clean setup pass.")
+    return {
+        "ok": True,
+        "removed": removed,
+        "message": "Public host overrides cleared. Use Repair or Enable Funnel to republish.",
+        "configuration": configuration(),
+    }
+
+
+def repair_funnel() -> dict[str, object]:
+    """Re-publish Funnel without wiping Tailscale login."""
+    return recover_connectivity()
+
 def recover_connectivity() -> dict[str, object]:
     """Heal local runtime + Funnel after network flaps or app restarts."""
     _setup_log("Running connectivity recovery.")
@@ -1992,14 +2057,18 @@ def start_dana() -> dict[str, object]:
     _setup_log(detail, "error")
     return {"ok": False, "action_required": "start_dana", "message": detail}
 
-def stop_dana() -> dict[str, object]:
+def stop_dana(*, user_initiated: bool = True) -> dict[str, object]:
     """Stop only the Dana runtime.
 
     Funnel is intentionally left untouched. Stopping/restarting the application
     must not request sudo/pkexec or modify routes owned by the network layer.
+
+    user_initiated=True (default) blocks background auto-heal from restarting Dana.
+    Internal restarts (config save, token rotate) pass user_initiated=False.
     """
     global _DANA_PROCESS, _DANA_THREAD, _DANA_UVICORN, _USER_STOPPED
-    _USER_STOPPED = True
+    if user_initiated:
+        _USER_STOPPED = True
     import threading
 
     alive_thread = isinstance(_DANA_THREAD, threading.Thread) and _DANA_THREAD.is_alive()

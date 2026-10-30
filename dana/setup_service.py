@@ -97,6 +97,8 @@ class Handler(BaseHTTPRequestHandler):
             "/api/setup/stop-dana": setup.stop_dana,
             "/api/setup/bootstrap": setup.bootstrap,
             "/api/setup/recover": setup.recover_connectivity,
+            "/api/setup/reset-defaults": setup.reset_setup_defaults,
+            "/api/setup/repair-funnel": setup.repair_funnel,
         }.get(urlparse(self.path).path)
         request_path = urlparse(self.path).path
         if request_path == "/api/setup/download/pause":
