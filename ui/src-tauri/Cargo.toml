@@ -1,6 +1,6 @@
 [package]
 name = "ui"
-version = "1.0.0"
+version = "1.0.2"
 description = "Dana MCP Control Center"
 authors = ["Dana"]
 edition = "2021"
