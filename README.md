@@ -266,3 +266,15 @@ See the repository license file.
 
 Official GitHub builds may show SmartScreen (Windows) or Gatekeeper (macOS) warnings until code-signing certificates are configured. The app is open source — see `packaging/CODE_SIGNING.md`. On macOS you can allow it under **Privacy & Security → Open Anyway**. On Windows choose **More info → Run anyway**.
 
+### Optional extras (not in the desktop installer)
+
+The desktop packages ship a **lean** sidecar: MCP core, documents, desktop control, Tailscale setup.
+
+| Extra | Install | Provides |
+|-------|---------|----------|
+| `browser` | `pip install dana-mcp-server[browser]` then `playwright install chromium` | Browser automation tools |
+| `lint` | `pip install dana-mcp-server[lint]` | Ruff / mypy quality tools |
+| `security` | `pip install dana-mcp-server[security]` | `pip-audit` |
+| `full` | `pip install dana-mcp-server[full]` | browser + lint + security |
+| `dev` | `pip install -e ".[dev]"` | pytest and development tooling |
+

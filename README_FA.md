@@ -183,3 +183,16 @@ dana doctor --show-url
 ## تشکر
 
 تشکر ویژه از [محسن صمدی‌نژاد](https://github.com/samadinejad).
+
+### افزونه‌های اختیاری (داخل اینستالر دسکتاپ نیستند)
+
+بستهٔ دسکتاپ یک sidecar **سبک** دارد: هسته MCP، اسناد، کنترل دسکتاپ، راه‌اندازی Tailscale.
+
+| افزونه | نصب | کاربرد |
+|--------|-----|--------|
+| `browser` | `pip install dana-mcp-server[browser]` سپس `playwright install chromium` | اتوماسیون مرورگر |
+| `lint` | `pip install dana-mcp-server[lint]` | ابزارهای کیفیت کد (Ruff/mypy) |
+| `security` | `pip install dana-mcp-server[security]` | `pip-audit` |
+| `full` | `pip install dana-mcp-server[full]` | browser + lint + security |
+| `dev` | `pip install -e ".[dev]"` | pytest و ابزار توسعه |
+

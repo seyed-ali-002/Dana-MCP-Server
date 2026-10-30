@@ -12,7 +12,7 @@ rm -rf ui/src-tauri/resources
 mkdir -p ui/src-tauri/resources
 
 "$BUILD_PYTHON" -m pip install --upgrade pip
-"$BUILD_PYTHON" -m pip install -e ".[build]"
+"$BUILD_PYTHON" -m pip install -e ".[build]"  # core runtime + pyinstaller; no playwright/pytest
 "$BUILD_PYTHON" -m PyInstaller --clean --noconfirm packaging/dana-agent.spec
 
 if [ -f dist/dana-agent ]; then

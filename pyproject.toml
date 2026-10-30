@@ -8,6 +8,8 @@ version = "0.1.17"
 description = "Cross-platform Python MCP server exposed through Tailscale Funnel."
 readme = "README.md"
 requires-python = ">=3.11"
+# Runtime core for the desktop installer / MCP server.
+# Heavy optional stacks live under [project.optional-dependencies].
 dependencies = [
   "fastapi>=0.115,<1",
   "uvicorn[standard]>=0.30,<1",
@@ -21,8 +23,8 @@ dependencies = [
   "pypdf>=5,<7",
   "rich>=13,<15",
   "tiktoken>=0.9,<1",
+  # Desktop control tools (local_agent) — core Dana value, keep in installer
   "pyautogui>=0.9.54,<1",
-  "playwright>=1.45,<2",
 ]
 
 [project.optional-dependencies]
@@ -45,10 +47,15 @@ desktop = [
 security = [
   "pip-audit>=2.7,<3",
 ]
+lint = [
+  "ruff>=0.6,<1",
+  "mypy>=1.11,<2",
+]
 full = [
   "playwright>=1.45,<2",
-  "pyautogui>=0.9.54,<1",
   "pip-audit>=2.7,<3",
+  "ruff>=0.6,<1",
+  "mypy>=1.11,<2",
 ]
 
 [project.scripts]
