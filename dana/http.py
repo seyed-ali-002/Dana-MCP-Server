@@ -1,8 +1,10 @@
 import base64
+import os
 import contextlib
 import hashlib
 import secrets
 import time
+import re
 from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -116,31 +118,98 @@ def _cleanup_oauth_codes() -> None:
 
 
 def _is_trusted_connector_redirect_uri(redirect_uri: str) -> bool:
-    """Accept HTTPS OAuth callbacks from supported AI connector providers.
+    """Accept OAuth callbacks from supported AI connector / MCP client providers.
 
-    Dana is a multi-client MCP server. Providers can change callback paths, so
-    validation is origin-based and limited to trusted provider domains instead
-    of pinning one UI-specific redirect path.
+    Dana is a multi-client MCP server. Providers change callback paths often, so
+    validation is origin-based (trusted domains) plus optional user-configured
+    exact URIs from MCP_OAUTH_REDIRECT_URIS.
     """
     try:
         parsed = urlsplit(redirect_uri)
     except ValueError:
         return False
     host = (parsed.hostname or "").lower()
+    scheme = (parsed.scheme or "").lower()
+
+    # User-configured exact redirect URIs (Config → MCP_OAUTH_REDIRECT_URIS).
+    extra = os.getenv("MCP_OAUTH_REDIRECT_URIS", "") or getattr(settings, "allowed_origins", "") or ""
+    for raw in re.split(r"[\n,]+", extra):
+        candidate = raw.strip()
+        if candidate and candidate == redirect_uri:
+            return True
+
+    # Local proxies / Super Assistant style bridges (loopback only).
+    if scheme in {"http", "https"} and host in {"127.0.0.1", "localhost", "::1"}:
+        return True
+
+    if scheme != "https":
+        return False
+
     trusted_domains = (
+        # OpenAI / ChatGPT
         "chatgpt.com",
         "chat.openai.com",
         "openai.com",
+        # Anthropic / Claude
         "claude.ai",
         "anthropic.com",
+        # xAI / Grok
         "grok.com",
         "x.ai",
         "x.com",
+        # Google / Gemini / AI Studio
+        "google.com",
+        "googleusercontent.com",
+        "googleapis.com",
+        "gemini.google.com",
+        # Perplexity, Cursor, coding IDEs
+        "perplexity.ai",
+        "cursor.com",
+        "cursor.sh",
+        "anysphere.co",
+        "vscode.dev",
+        "github.com",
+        "github.dev",
+        "microsoft.com",
+        "visualstudio.com",
+        # Other common MCP hosts
+        "openrouter.ai",
+        "mistral.ai",
+        "deepseek.com",
+        "kimi.com",
+        "moonshot.cn",
+        "qwen.ai",
+        "alibaba.com",
+        "copilot.microsoft.com",
+        "bing.com",
+        "poe.com",
+        "quora.com",
+        "you.com",
+        "phind.com",
+        "together.ai",
+        "fireworks.ai",
+        "replicate.com",
+        "huggingface.co",
+        "hf.co",
+        "notion.so",
+        "notion.com",
+        "slack.com",
+        "discord.com",
+        "linear.app",
+        "raycast.com",
+        "zed.dev",
+        "windsurf.com",
+        "codeium.com",
+        "tabnine.com",
+        "continue.dev",
+        "sourcegraph.com",
+        "replit.com",
+        "stackblitz.com",
+        "codesandbox.io",
+        "cloudflare.com",
+        "workers.dev",
     )
-    return parsed.scheme == "https" and any(
-        host == domain or host.endswith(f".{domain}")
-        for domain in trusted_domains
-    )
+    return any(host == domain or host.endswith(f".{domain}") for domain in trusted_domains)
 
 
 class AcceptCompatibleASGI:

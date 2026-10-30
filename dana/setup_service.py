@@ -80,6 +80,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(setup.download_status()); return
         if urlparse(self.path).path == "/api/setup/config":
             self._send(setup.configuration()); return
+        if urlparse(self.path).path == "/api/setup/diagnose":
+            try:
+                self._send(setup.diagnose_connectivity())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
         if urlparse(self.path).path == "/api/setup/connection-test":
             try:
                 self._send(setup.test_connections())
@@ -97,6 +103,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/setup/stop-dana": setup.stop_dana,
             "/api/setup/bootstrap": setup.bootstrap,
             "/api/setup/recover": setup.recover_connectivity,
+            "/api/setup/diagnose": setup.diagnose_connectivity,
             "/api/setup/reset-defaults": setup.reset_setup_defaults,
             "/api/setup/repair-funnel": setup.repair_funnel,
         }.get(urlparse(self.path).path)

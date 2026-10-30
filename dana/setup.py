@@ -1701,6 +1701,69 @@ def repair_funnel() -> dict[str, object]:
     """Re-publish Funnel without wiping Tailscale login."""
     return recover_connectivity()
 
+
+def diagnose_connectivity() -> dict[str, object]:
+    """Step-by-step diagnosis for Repair wizard (no privileged changes)."""
+    steps: list[dict[str, object]] = []
+    st_now = status()
+
+    def add(name: str, ok: bool, detail: str, action: str = "") -> None:
+        steps.append({"name": name, "ok": ok, "detail": detail, "action": action})
+
+    add(
+        "Tailscale installed",
+        bool(st_now.tailscale_installed),
+        "Tailscale binary found." if st_now.tailscale_installed else "Tailscale is not installed.",
+        "" if st_now.tailscale_installed else "install_tailscale",
+    )
+    ts_ok = st_now.tailscale_backend.lower() == "running"
+    add(
+        "Tailscale online",
+        ts_ok,
+        f"Backend state: {st_now.tailscale_backend or 'unknown'}."
+        + (" If another VPN is active, disconnect it or exclude 100.64.0.0/10." if not ts_ok else ""),
+        "" if ts_ok else "login_tailscale",
+    )
+    add(
+        "Dana runtime",
+        bool(st_now.dana_running),
+        "Local MCP is listening." if st_now.dana_running else "Dana is not running.",
+        "" if st_now.dana_running else "start_dana",
+    )
+    add(
+        "Funnel published",
+        bool(st_now.funnel_active),
+        (st_now.funnel_hostname or "active") if st_now.funnel_active else "Funnel route is missing.",
+        "" if st_now.funnel_active else "enable_funnel",
+    )
+    pub_ok = bool(st_now.public_verified)
+    if st_now.local_only:
+        add("Public endpoint", True, "Local-only mode: public Funnel disabled by config.", "")
+    else:
+        add(
+            "Public endpoint",
+            pub_ok,
+            "HTTPS endpoint responds." if pub_ok else "Public URL not responding yet (DNS/VPN/ACL?).",
+            "" if pub_ok else "recover",
+        )
+    token_ok = bool(st_now.auth_token)
+    add(
+        "Auth token",
+        token_ok,
+        "Token configured for MCP path." if token_ok else "Auth token missing.",
+        "" if token_ok else "config",
+    )
+    ok = all(bool(s["ok"]) for s in steps)
+    return {
+        "ok": ok,
+        "steps": steps,
+        "connectivity": st_now.connectivity,
+        "hint": st_now.hint,
+        "local_mcp_url": st_now.local_mcp_url,
+        "public_mcp_url": st_now.public_mcp_url,
+        "message": "All checks passed." if ok else "One or more checks failed — follow the suggested actions.",
+    }
+
 def recover_connectivity() -> dict[str, object]:
     """Heal local runtime + Funnel after network flaps or app restarts."""
     _setup_log("Running connectivity recovery.")

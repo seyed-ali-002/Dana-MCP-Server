@@ -249,6 +249,34 @@ function ListEditor({
   );
 }
 
+function playSoftBeep() {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.value = 660;
+    g.gain.value = 0.04;
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    o.stop(ctx.currentTime + 0.4);
+    setTimeout(() => ctx.close(), 500);
+  } catch { /* ignore */ }
+}
+
+function notifyUser(title: string, body: string, withSound: boolean) {
+  try {
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      new Notification(title, { body, silent: !withSound });
+    }
+  } catch { /* ignore */ }
+  if (withSound) playSoftBeep();
+}
+
 function App() {
   const [port, setPort] = useState<number | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
@@ -299,14 +327,27 @@ function App() {
   // background condition (for example Funnel publication) with no browser step.
   const resumeBudget = useRef(0);
 
-  const progress = useMemo(() => {
-    if (!status) return 8;
-    if (!status.tailscale_installed) return 22;
-    if (status.tailscale_backend.toLowerCase() !== "running") return 42;
-    if (!status.funnel_active) return 66;
-    if (!status.dana_running) return 88;
-    return 100;
+  const setupSteps = useMemo(() => {
+    const ts = status?.tailscale_installed;
+    const auth = status?.tailscale_backend?.toLowerCase() === "running";
+    const funnel = !!status?.funnel_active || !!status?.local_only;
+    const dana = !!status?.dana_running;
+    return [
+      { id: "install", label: "Install Tailscale", done: !!ts },
+      { id: "auth", label: "Sign in", done: !!auth },
+      { id: "funnel", label: status?.local_only ? "Local mode" : "Enable Funnel", done: !!funnel },
+      { id: "runtime", label: "Start Dana", done: !!dana },
+    ];
   }, [status]);
+  const [notifyEnabled, setNotifyEnabled] = useState(() => {
+    try { return localStorage.getItem("dana-notify") !== "0"; } catch { return true; }
+  });
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    try { return localStorage.getItem("dana-sound") !== "0"; } catch { return true; }
+  });
+  const [diag, setDiag] = useState<null | { ok: boolean; steps: { name: string; ok: boolean; detail: string; action?: string }[]; message?: string }>(null);
+  const [configLocked, setConfigLocked] = useState(true);
+  const lastConnectivity = useRef<string>("");
   const ready = !!status?.dana_running;
   const localAddr = useMemo(() => {
     try {
@@ -639,6 +680,31 @@ function App() {
     const t = window.setInterval(tick, 25000);
     return () => clearInterval(t);
   }, [port, status?.connectivity, status?.funnel_active, status?.dana_running, status?.local_only, status?.user_stopped, busy]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("dana-notify", notifyEnabled ? "1" : "0");
+      localStorage.setItem("dana-sound", soundEnabled ? "1" : "0");
+    } catch { /* ignore */ }
+  }, [notifyEnabled, soundEnabled]);
+
+  useEffect(() => {
+    if (!status?.connectivity) return;
+    const prev = lastConnectivity.current;
+    lastConnectivity.current = status.connectivity;
+    if (!prev || prev === status.connectivity) return;
+    if (!notifyEnabled) return;
+    if (status.connectivity === "degraded" || status.connectivity === "offline") {
+      if (typeof Notification !== "undefined" && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => undefined);
+      }
+      notifyUser(
+        "Dana connectivity",
+        status.hint || `Status: ${status.connectivity}`,
+        soundEnabled,
+      );
+    }
+  }, [status?.connectivity, status?.hint, notifyEnabled, soundEnabled]);
   async function dl(a: string) {
     if (!port) return;
     await fetch(API(port, "/api/setup/download/" + a), { method: "POST" });
@@ -667,7 +733,11 @@ function App() {
       });
       const x = await r.json();
       if (!r.ok || x.ok === false) throw Error(x.message);
-      setMessage(x.changed?.length ? "Updated: " + x.changed.join(", ") : "No changes.");
+      const url = (await refresh())?.public_mcp_url || status?.public_mcp_url || status?.local_mcp_url || "";
+      setMessage(
+        (x.changed?.length ? "Updated: " + x.changed.join(", ") + ". " : "No changes. ") +
+          (url ? "Connector URL: " + url : "")
+      );
       await loadConfig();
       await refresh();
     } catch (e) {
@@ -1200,29 +1270,20 @@ function App() {
             </div>
 
             <section className="progress-card glass">
-              <div className="progress-top">
-                <div>
-                  <span className="eyebrow">SETUP PROGRESS</span>
-                  <strong>{progress}%</strong>
-                </div>
-                <span>{message || "Ready when you are."}</span>
-              </div>
-              <div className="track">
-                <div className="track-fill" style={{ width: progress + "%" }} />
-              </div>
-              <div className="steps">
-                <span className={status?.tailscale_installed ? "done" : ""}>Tailscale</span>
-                <span
-                  className={
-                    status?.tailscale_backend?.toLowerCase() === "running" ? "done" : ""
-                  }
-                >
-                  Authentication
-                </span>
-                <span className={status?.funnel_active ? "done" : ""}>Funnel</span>
-                <span className={status?.dana_running ? "done" : ""}>Dana</span>
-              </div>
-            </section>
+        <div className="progress-top">
+          <span>Setup steps</span>
+          <strong>{setupSteps.filter((s) => s.done).length}/{setupSteps.length}</strong>
+        </div>
+        <ol className="setup-steps">
+          {setupSteps.map((s, i) => (
+            <li key={s.id} className={s.done ? "done" : i === setupSteps.findIndex((x) => !x.done) ? "current" : ""}>
+              <span className="step-index">{i + 1}</span>
+              <span className="step-label">{s.label}</span>
+              <span className="step-state">{s.done ? "Done" : "Pending"}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
           </>
         )}
 
@@ -1405,7 +1466,12 @@ function App() {
               <span className="eyebrow">ENVIRONMENT</span>
               <h2>Configuration</h2>
             </div>
-            <button className="primary" disabled={securityBusy} onClick={saveConfig}>Save</button>
+            <div className="card-actions">
+              <button type="button" className="secondary" onClick={() => setConfigLocked((v) => !v)}>
+                {configLocked ? "Unlock critical fields" : "Lock critical fields"}
+              </button>
+              <button className="primary" disabled={securityBusy} onClick={saveConfig}>Save</button>
+            </div>
           </div>
           <p className="logs-description">
             Valid changes restart Dana automatically when it is running. Path lists use one entry per row.
@@ -1432,7 +1498,11 @@ function App() {
                 ) : k === "DANA_ALLOWED_PATHS" || k === "DANA_DENIED_PATHS" || k === "DANA_ALLOWED_ORIGINS" || k === "MCP_OAUTH_REDIRECT_URIS" ? (
                   <ListEditor value={draft[k] ?? ""} onChange={(v) => setDraft({ ...draft, [k]: v })} placeholder={k.includes("PATH") ? "/path/to/allow" : "https://example.com"} />
                 ) : (
-                  <input value={draft[k] ?? config?.defaults?.[k] ?? ""} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} placeholder={String(config?.defaults?.[k] || "")} />
+                  <input value={draft[k] ?? config?.defaults?.[k] ?? ""}
+                    onChange={(e) => setDraft({ ...draft, [k]: e.target.value })}
+                    placeholder={String(config?.defaults?.[k] || "")}
+                    readOnly={configLocked && (k === "DANA_PORT" || k === "DANA_HOST" || k === "DANA_MCP_PATH")}
+                    className={configLocked && (k === "DANA_PORT" || k === "DANA_HOST" || k === "DANA_MCP_PATH") ? "locked-input" : undefined} />
                 )}
               </label>
             ))}
@@ -1450,12 +1520,39 @@ function App() {
             <b className={status?.connectivity === "connected" ? "state success" : "state warning"}>{(status?.connectivity || "unknown").toUpperCase()}</b>
           </div>
           <p>{status?.hint || "Use these actions when the public endpoint fails or Tailscale drops."}</p>
+          {diag && (
+            <ul className="diag-list">
+              {diag.steps.map((s) => (
+                <li key={s.name} className={s.ok ? "ok" : "bad"}>
+                  <strong>{s.name}</strong>
+                  <span>{s.detail}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
         <div className="grid">
           <section className="card glass">
             <div className="card-head"><span>STEP 1</span><strong>Heal runtime</strong></div>
             <p className="logs-description">Restart local MCP and re-publish Funnel if Tailscale is online.</p>
             <div className="card-actions">
+              <button
+                className="secondary"
+                disabled={busy}
+                onClick={async () => {
+                  if (!port) return;
+                  try {
+                    const r = await fetch(API(port, "/api/setup/diagnose"));
+                    const x = await r.json();
+                    setDiag(x);
+                    setMessage(x.message || "Diagnosis complete");
+                  } catch (e) {
+                    setError(String(e));
+                  }
+                }}
+              >
+                Run diagnosis
+              </button>
               <button className="primary" disabled={busy} onClick={() => recoverConnectivity()}>Repair connection</button>
               <button className="secondary" disabled={busy} onClick={() => run("/api/setup/start-dana")}>Start Dana</button>
               <button className="secondary" disabled={busy} onClick={() => run("/api/setup/stop-dana")}>Stop Dana</button>
@@ -1502,44 +1599,66 @@ function App() {
       </div>
     )}
 
-    {port && view === "Help" && (
+        {port && view === "Help" && (
       <div className="control-view help-view">
-        <section className="connections-panel glass help-block">
-          <span className="eyebrow">GUIDE</span><h2>Connect Dana</h2>
+        <section className="connections-panel glass help-toc">
+          <span className="eyebrow">CONTENTS</span>
+          <h2>Guide</h2>
+          <nav className="toc-nav">
+            <a href="#help-connect" onClick={(e) => { e.preventDefault(); document.getElementById("help-connect")?.scrollIntoView({ behavior: "smooth" }); }}>1. Connect</a>
+            <a href="#help-clients" onClick={(e) => { e.preventDefault(); document.getElementById("help-clients")?.scrollIntoView({ behavior: "smooth" }); }}>2. Clients & OAuth</a>
+            <a href="#help-public" onClick={(e) => { e.preventDefault(); document.getElementById("help-public")?.scrollIntoView({ behavior: "smooth" }); }}>3. Public URL fails</a>
+            <a href="#help-config" onClick={(e) => { e.preventDefault(); document.getElementById("help-config")?.scrollIntoView({ behavior: "smooth" }); }}>4. Configuration</a>
+            <a href="#help-super" onClick={(e) => { e.preventDefault(); document.getElementById("help-super")?.scrollIntoView({ behavior: "smooth" }); }}>5. MCP Super Assistant</a>
+            <a href="#help-stop" onClick={(e) => { e.preventDefault(); document.getElementById("help-stop")?.scrollIntoView({ behavior: "smooth" }); }}>6. Stop vs Repair</a>
+          </nav>
+          <div className="notify-prefs">
+            <label><input type="checkbox" checked={notifyEnabled} onChange={(e) => setNotifyEnabled(e.target.checked)} /> Desktop notifications</label>
+            <label><input type="checkbox" checked={soundEnabled} onChange={(e) => setSoundEnabled(e.target.checked)} /> Soft alert sound</label>
+          </div>
+        </section>
+        <section id="help-connect" className="connections-panel glass help-block">
+          <span className="eyebrow">1</span><h2>Connect Dana</h2>
           <ol className="help-steps">
-            <li>Open <strong>Home</strong> and complete Tailscale install → login → Funnel → Start Dana.</li>
-            <li>Copy the <strong>public MCP URL</strong> from Network (includes your token path).</li>
-            <li>In ChatGPT add a connector with that HTTPS URL.</li>
-            <li>Keep Tailscale connected; other VPNs can break Funnel.</li>
+            <li>Complete Home steps: Tailscale → sign-in → Funnel → Start Dana.</li>
+            <li>Copy the public MCP URL from Network (includes token path).</li>
+            <li>Paste into ChatGPT / Claude / Gemini / Cursor as a remote MCP / connector URL.</li>
+            <li>Keep Tailscale connected on this PC.</li>
           </ol>
         </section>
-        <section className="connections-panel glass help-block">
-          <span className="eyebrow">GUIDE</span><h2>When public URL fails</h2>
+        <section id="help-clients" className="connections-panel glass help-block">
+          <span className="eyebrow">2</span><h2>Clients & OAuth</h2>
+          <p className="logs-description">Dana trusts OAuth redirects from ChatGPT, Claude, Grok, Gemini/Google AI Studio, Perplexity, Cursor, GitHub, OpenRouter, and localhost proxies. If a client still returns <code>invalid_redirect_uri</code>, add its exact callback URL under Config → MCP_OAUTH_REDIRECT_URIS.</p>
+        </section>
+        <section id="help-public" className="connections-panel glass help-block">
+          <span className="eyebrow">3</span><h2>When public URL fails</h2>
           <ol className="help-steps">
             <li>Confirm Local test is OK on Network.</li>
-            <li>Open <strong>Repair</strong> → Repair connection, then Test endpoints.</li>
-            <li>Disable other VPNs and run the terminal commands if needed.</li>
-            <li>Verify Funnel is allowed in the Tailscale admin console.</li>
+            <li>Open Repair → Run diagnosis → Repair connection.</li>
+            <li>Disable other VPNs; exclude Tailscale range 100.64.0.0/10 if needed.</li>
+            <li>Check Funnel permission in the Tailscale admin console.</li>
           </ol>
         </section>
-        <section className="connections-panel glass help-block">
-          <span className="eyebrow">GUIDE</span><h2>Configuration</h2>
+        <section id="help-config" className="connections-panel glass help-block">
+          <span className="eyebrow">4</span><h2>Configuration</h2>
           <ul className="help-steps">
-            <li>Change token from the <strong>Config</strong> tab only.</li>
-            <li>Do not clear port or MCP path; invalid values are rejected.</li>
+            <li>Critical fields (host/port/path) stay locked until you unlock them.</li>
+            <li>After Save, the connector URL is shown in the status message.</li>
             <li>Path lists use add/remove rows.</li>
-            <li>After Save, wait a few seconds and Refresh.</li>
           </ul>
         </section>
-        <section className="connections-panel glass help-block">
-          <span className="eyebrow">GUIDE</span><h2>Stop vs Repair</h2>
-          <p className="logs-description"><strong>Stop</strong> keeps Dana offline until you Start again. <strong>Repair</strong> heals Funnel/runtime only when Dana should stay online.</p>
+        <section id="help-super" className="connections-panel glass help-block">
+          <span className="eyebrow">5</span><h2>MCP Super Assistant</h2>
+          <p className="logs-description">Supported via a local proxy: run Super Assistant proxy pointing at Dana&apos;s Streamable HTTP URL (or local MCP). Extension platforms (Gemini, Perplexity, …) talk to the proxy; the proxy talks to Dana. See mcpsuperassistant.ai docs.</p>
+        </section>
+        <section id="help-stop" className="connections-panel glass help-block">
+          <span className="eyebrow">6</span><h2>Stop vs Repair</h2>
+          <p className="logs-description"><strong>Stop</strong> keeps Dana offline until you Start. <strong>Repair</strong> heals Funnel/runtime while Dana should stay online.</p>
         </section>
       </div>
     )}
 
-
-    {port && view === "Usage" && (
+{port && view === "Usage" && (
         <div className="usage-view">
           <section className="card glass usage-hero">
             <div className="card-head">
@@ -1554,6 +1673,40 @@ function App() {
               {usage?.started_at || "—"} · Last activity {usage?.last_at || "—"}.
             </p>
           </section>
+        <section className="connections-panel glass usage-charts">
+          <div className="logs-head"><div><span className="eyebrow">CHARTS</span><h2>Token mix & top tools</h2></div></div>
+          <div className="chart-row">
+            <div className="token-pie">
+              <svg viewBox="0 0 36 36" className="circular-chart">
+                <path className="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <path
+                  className="circle"
+                  strokeDasharray={`${usage && usage.total_tokens ? Math.round((usage.input_tokens / Math.max(usage.total_tokens, 1)) * 100) : 0}, 100`}
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <text x="18" y="20.35" className="percentage">{usage?.total_tokens || 0}</text>
+              </svg>
+              <div className="chart-legend">
+                <span>In {usage?.input_tokens || 0}</span>
+                <span>Out {usage?.output_tokens || 0}</span>
+              </div>
+            </div>
+            <div className="tool-bars">
+              {(usage?.top_tools || []).slice(0, 8).map((t) => {
+                const max = Math.max(1, ...(usage?.top_tools || []).map((x) => x.count));
+                return (
+                  <div className="tool-bar-row" key={t.name}>
+                    <span title={t.name}>{t.name}</span>
+                    <div className="bar-track"><div className="bar-fill" style={{ width: `${(t.count / max) * 100}%` }} /></div>
+                    <em>{t.count}</em>
+                  </div>
+                );
+              })}
+              {!usage?.top_tools?.length && <p className="logs-description">No tool usage yet.</p>}
+            </div>
+          </div>
+        </section>
+
           <div className="grid usage-grid">
             <section className="card glass">
               <span className="eyebrow">TOTAL TOKENS</span>
@@ -1678,21 +1831,40 @@ function App() {
                 Install, download, authentication, Funnel, warnings and failures.
               </p>
               <div className="log-list">
-                {logs.length ? (
-                  logs
-                    .slice()
-                    .reverse()
-                    .map((x, i) => (
-                      <div className={"log-row log-" + x.level} key={x.time + x.message + i}>
+            {logs.length ? (
+              logs
+                .slice()
+                .reverse()
+                .map((x, i) => {
+                  const key = x.time + x.level + i;
+                  const isErr = x.level === "error" || x.level === "warning";
+                  if (!isErr) {
+                    return (
+                      <div className={"log-row log-" + x.level} key={key}>
                         <span className="log-time">{x.time}</span>
                         <span className={"log-level " + x.level}>{x.level.toUpperCase()}</span>
                         <span className="log-message">{x.message}</span>
                       </div>
-                    ))
-                ) : (
-                  <div className="log-empty">No setup events yet.</div>
-                )}
-              </div>
+                    );
+                  }
+                  return (
+                    <details className={"log-collapse log-" + x.level} key={key}>
+                      <summary>
+                        <span className="log-time">{x.time}</span>
+                        <span className={"log-level " + x.level}>{x.level.toUpperCase()}</span>
+                        <span className="log-message">
+                          {(x.message || "").slice(0, 140)}
+                          {(x.message || "").length > 140 ? "…" : ""}
+                        </span>
+                      </summary>
+                      <pre className="log-full">{x.message}</pre>
+                    </details>
+                  );
+                })
+            ) : (
+              <div className="log-empty">No setup events yet.</div>
+            )}
+          </div>
             </section>
 
             <section className="logs-panel glass">

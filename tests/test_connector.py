@@ -149,6 +149,10 @@ def test_authorize_accepts_supported_connector_callback_origins():
     assert _is_trusted_connector_redirect_uri("https://grok.com/oauth/callback")
     assert _is_trusted_connector_redirect_uri("https://console.x.ai/oauth/callback")
     assert _is_trusted_connector_redirect_uri("https://x.com/oauth/callback")
+    assert _is_trusted_connector_redirect_uri("https://gemini.google.com/oauth/callback")
+    assert _is_trusted_connector_redirect_uri("https://aistudio.google.com/oauth")
+    assert _is_trusted_connector_redirect_uri("https://www.perplexity.ai/oauth/callback")
+    assert _is_trusted_connector_redirect_uri("http://127.0.0.1:3006/callback")
 
     # Reject insecure and look-alike origins.
     assert not _is_trusted_connector_redirect_uri("http://grok.com/oauth/callback")
