@@ -1878,17 +1878,8 @@ function App() {
                 .map((x, i) => {
                   const key = x.time + x.level + i;
                   const isErr = x.level === "error" || x.level === "warning";
-                  if (!isErr) {
-                    return (
-                      <div className={"log-row log-" + x.level} key={key}>
-                        <span className="log-time">{x.time}</span>
-                        <span className={"log-level " + x.level}>{x.level.toUpperCase()}</span>
-                        <span className="log-message">{x.message}</span>
-                      </div>
-                    );
-                  }
                   return (
-                    <details className={"log-collapse log-" + x.level} key={key}>
+                    <details className={"log-collapse log-" + x.level + (isErr ? " important" : "")} key={key}>
                       <summary>
                         <span className="log-time">{x.time}</span>
                         <span className={"log-level " + x.level}>{x.level.toUpperCase()}</span>
@@ -1897,6 +1888,10 @@ function App() {
                           {(x.message || "").length > 140 ? "…" : ""}
                         </span>
                       </summary>
+                      <div className="log-detail-grid">
+                        <div><span className="eyebrow">Time</span><code>{x.time}</code></div>
+                        <div><span className="eyebrow">Level</span><code>{x.level}</code></div>
+                      </div>
                       <pre className="log-full">{x.message}</pre>
                     </details>
                   );
