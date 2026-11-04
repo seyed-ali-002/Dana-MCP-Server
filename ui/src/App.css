@@ -1177,13 +1177,32 @@ input[type="checkbox"] {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  min-height: 0;
+  max-height: calc(100vh - 150px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.logs-stack::-webkit-scrollbar {
+  width: 8px;
+}
+.logs-stack::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+.logs-panel {
+  min-height: 0;
+  flex: 0 0 auto;
 }
 .log-list {
   display: flex;
   flex-direction: column;
   min-height: 120px;
-  max-height: min(38vh, 360px);
-  overflow: auto;
+  max-height: min(62vh, 620px);
+  overflow-y: auto;
+  overflow-x: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-2);
@@ -1191,6 +1210,13 @@ input[type="checkbox"] {
   font-size: 12px;
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+}
+.log-list::-webkit-scrollbar {
+  width: 8px;
+}
+.log-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
 }
 .log-list::-webkit-scrollbar {
   width: 8px;
@@ -1753,9 +1779,16 @@ select.styled-select {
   white-space: nowrap;
   color: var(--text);
 }
+.log-collapse summary {
+  min-width: 0;
+}
+.log-collapse summary > * {
+  min-width: 0;
+}
 .log-detail-body {
   border-top: 1px solid var(--border);
   background: var(--surface);
+  min-width: 0;
 }
 .log-detail-label {
   padding: 6px 12px 0;
@@ -1771,11 +1804,10 @@ select.styled-select {
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   word-break: break-word;
   color: var(--text);
   background: transparent;
-  max-height: 320px;
-  overflow: auto;
   font-family: var(--mono);
 }
 .log-collapse.error,
