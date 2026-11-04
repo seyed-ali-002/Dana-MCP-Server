@@ -323,6 +323,7 @@ function App() {
   const [healInterval, setHealInterval] = useState<number | null>(null);
   const [skillPreview, setSkillPreview] = useState<{ id: string; name?: string; content?: string; message?: string } | null>(null);
   const [packBusy, setPackBusy] = useState(false);
+  const [skillFilter, setSkillFilter] = useState("");
   const [packStatus, setPackStatus] = useState<{ id: string; installed?: boolean; files?: number }[]>([]);
   const [zeroStatus, setZeroStatus] = useState<{ installed?: boolean; path?: string; message?: string } | null>(null);
   const [zeroBusy, setZeroBusy] = useState(false);
@@ -2029,8 +2030,25 @@ function App() {
               {packBusy ? "Working…" : "Sync all packs"}
             </button>
           </div>
+          <input
+            className="skill-filter"
+            value={skillFilter}
+            onChange={(e) => setSkillFilter(e.target.value)}
+            placeholder="Filter skills by name or tag…"
+            style={{ marginBottom: 12, width: "100%", maxWidth: 420 }}
+          />
           <div className="skills-grid">
-            {skills.map((s) => (
+            {skills
+              .filter((s) => {
+                const q = skillFilter.trim().toLowerCase();
+                if (!q) return true;
+                return (
+                  s.name.toLowerCase().includes(q) ||
+                  s.id.toLowerCase().includes(q) ||
+                  (s.description || "").toLowerCase().includes(q)
+                );
+              })
+              .map((s) => (
               <div className={"skill-card" + (s.enabled === false ? " skill-off" : "")} key={s.id}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
                   <h3 style={{ margin: 0 }}>{s.name}</h3>

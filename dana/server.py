@@ -235,8 +235,30 @@ if _tailscale_host:
 if settings.allowed_origins:
     _allowed_origins.extend(x.strip() for x in settings.allowed_origins.split(",") if x.strip())
 
+
+def _dana_server_instructions(max_chars: int = 6000) -> str:
+    """Static host blurb + enabled skill packs (kept short for client context)."""
+    base = (
+        "Dana is a self-hosted MCP server on the user's machine. "
+        "Prefer targeted tools over broad shell when possible. "
+        "Call dana_skill_guidance or skill_context when specialized skill packs are enabled. "
+        "Large tool outputs may be compacted (context-mode); use dana_result_page for cursors."
+    )
+    try:
+        from dana.skills_registry import active_skill_context
+        skills = active_skill_context(max_chars=max(400, min(max_chars, 20000)))
+    except Exception:
+        skills = ""
+    if not skills.strip():
+        return base
+    merged = base + "\n\n# Enabled skill guidance\n" + skills.strip()
+    if len(merged) > max_chars + 400:
+        merged = merged[: max_chars + 400].rstrip() + "…"
+    return merged
+
 mcp = FastMCP(
     "Dana",
+    instructions=_dana_server_instructions(),
     host="127.0.0.1",
     port=8765,
     transport_security=TransportSecuritySettings(

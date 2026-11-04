@@ -43,9 +43,13 @@ The Control Center uses a clean desktop layout with **dark/light** mode (moon/su
 | Panel | Purpose |
 |---|---|
 | **Setup** | Install Tailscale, sign in, enable Funnel, start Dana |
-| **Control** | Start/stop, copy MCP URLs, token, advanced settings |
-| **Logs** | Setup/errors · live tool activity |
-| **Usage** | Token totals and active tool time |
+| **Control** | Start/stop, copy MCP URLs, token, tray, updates |
+| **Config** | Host, paths, OAuth redirects, advanced env |
+| **Skills** | Enable packs, import upstream skills, Zero Use Computer |
+| **Repair** | Diagnose Funnel/public endpoint, recover connectivity |
+| **Logs** | Setup/errors · live tool activity (collapsible details) |
+| **Usage** | Token totals, charts, active tool time |
+| **Help** | Connect, OAuth, Super Assistant, skills, whip |
 
 ### MCP URLs
 
@@ -72,6 +76,23 @@ Treat tokenized URLs as secrets. Use **Test connection** in Control to verify.
 If download fails (for example HTTP 403), open the manual Tailscale download page, install, then **Continue after install**.
 
 ---
+
+
+### Skills & agent packs
+
+The **Skills** panel loads markdown skill packs (bundled + `~/.config/dana/skills`). You can:
+
+- Toggle skills on/off
+- Import packs: `agency-agents`, `superpowers`, `i-have-adhd`, `ponytail` (requires `git`)
+- **Sync all packs** to refresh installed upstream packs
+- Preview skill text before enabling
+- Install **Zero Use Computer** (optional desktop agent binary)
+
+Agents can call `dana_skill_guidance` / `skill_context`. Dana also injects a short form of enabled skills into MCP server instructions at startup.
+
+### Whip
+
+Use the wand control to "whip" Dana: each boost shortens the background connectivity heal interval (about 20s down to 5s) and triggers an immediate recover.
 
 ## 2. Terminal / CLI
 
