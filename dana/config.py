@@ -58,6 +58,19 @@ class Settings(BaseSettings):
             raise RuntimeError("DANA_DEPLOYMENT_MODE must be 'local' or 'server'.")
         return mode
 
+
+    def effective_public_host(self) -> str:
+        """Return a usable public hostname; never placeholders or loopback.
+
+        Resolution order:
+        1. Valid DANA_PUBLIC_HOST / settings.public_host
+        2. Live Tailscale Funnel hostname
+        3. Tailscale DNSName from `tailscale status`
+        Empty string if nothing valid is available.
+        """
+        from .public_host import resolve_public_host
+        return resolve_public_host(self.public_host)
+
     def require_auth_token(self) -> str:
         if not self.auth_token:
             raise RuntimeError(

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from threading import RLock
 
+
 def _default_policy_path() -> Path:
     """Always use a user-writable policy file.
 
@@ -117,7 +118,6 @@ def load_policy() -> dict:
         }
         out["allowed_paths"] = _clean_path_list(out.get("allowed_paths"))
         out["deny_paths"] = _clean_path_list(out.get("deny_paths") or out.get("denied_paths"))
-        # Env overrides when the variable is present (even if empty → unrestricted).
         if "DANA_ALLOWED_PATHS" in os.environ:
             out["allowed_paths"] = _env_paths("DANA_ALLOWED_PATHS")
         if "DANA_DENIED_PATHS" in os.environ:
@@ -158,8 +158,11 @@ def resolve_user_path(path: str | Path) -> Path:
     home_c = (Path.home() / raw).resolve(strict=False)
 
     for c in under_allowed + [cwd_c, home_c]:
-        if c.exists() and is_allowed(c):
-            return c
+        try:
+            if c.exists() and is_allowed(c):
+                return c
+        except OSError:
+            continue
     for c in under_allowed:
         if is_allowed(c):
             return c

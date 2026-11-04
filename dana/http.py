@@ -11,6 +11,7 @@ from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from .config import settings
+from .public_host import ensure_settings_public_host, is_valid_public_host, resolve_public_host
 from .security.http import RequestGuard, audit, unauthorized
 from .server import mcp
 
@@ -52,7 +53,9 @@ _OAUTH_CODE_TTL_SECONDS = 120
 
 
 def _issuer(request: Request) -> str:
-    host = settings.public_host or request.url.netloc
+    host = ensure_settings_public_host() or (
+        settings.public_host if is_valid_public_host(settings.public_host) else ""
+    ) or request.url.netloc
     scheme = "https" if settings.public_host else request.url.scheme
     return f"{scheme}://{host}"
 
@@ -399,7 +402,9 @@ async def root(request: Request):
     # query contract here so connector re-authentication remains Dana-owned.
     if request.query_params.get("response_type") == "code" and request.query_params.get("client_id"):
         return await authorize(request)
-    host = settings.public_host or request.url.netloc
+    host = ensure_settings_public_host() or (
+        settings.public_host if is_valid_public_host(settings.public_host) else ""
+    ) or request.url.netloc
     scheme = "https" if settings.public_host else request.url.scheme
     token = settings.require_auth_token()
     endpoint = (
@@ -576,7 +581,9 @@ async def connector(request: Request):
             return JSONResponse({"error": "Too Many Requests"}, status_code=429)
         audit("auth_failed", client_key, "connector")
         return unauthorized()
-    host = settings.public_host or request.url.netloc
+    host = ensure_settings_public_host() or (
+        settings.public_host if is_valid_public_host(settings.public_host) else ""
+    ) or request.url.netloc
     scheme = "https" if settings.public_host else request.url.scheme
     url = (
         f"{scheme}://{host}/{token}{settings.mcp_path}"

@@ -788,6 +788,14 @@ def configure_tailscale_local(token: str, port: int = 8765, funnel_port: int = 4
 
 
 def set_local_public_host(host: str) -> None:
+    # Reject empty / placeholder hosts so .env never reverts to example.ts.net.
+    try:
+        from .public_host import is_valid_public_host
+        if not is_valid_public_host(host):
+            return
+    except Exception:
+        if not host or "example.ts.net" in str(host).lower():
+            return
     env_path = ROOT / ".env"
     lines: list[str] = []
     found = False

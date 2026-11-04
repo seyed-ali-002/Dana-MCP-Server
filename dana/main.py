@@ -8,6 +8,7 @@ from pathlib import Path
 import uvicorn
 
 from .config import settings
+from .public_host import ensure_settings_public_host, is_valid_public_host
 from .file_logging import configure_file_logging, install_terminal_mirror
 from .terminal_ui import server_dashboard
 from .tailscale import DanaFunnelManager
@@ -18,9 +19,10 @@ def _mode() -> str:
 
 
 def _public_url() -> str | None:
-    if not settings.public_host:
+    host = ensure_settings_public_host() or (settings.public_host if is_valid_public_host(settings.public_host) else "")
+    if not host:
         return None
-    authority = settings.public_host
+    authority = host
     if settings.public_port and settings.public_port not in (80, 443):
         authority = f"{authority}:{settings.public_port}"
     if _mode() == "server":
@@ -66,14 +68,33 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _acquire_runtime_lock() -> None:
-    """Ensure only one Dana MCP runtime serves the configured port."""
+    """Ensure only one Dana MCP runtime serves the configured port.
+
+    If another healthy instance already answers on the port, exit cleanly
+    (code 0) so desktop launchers / tray reopen do not spawn a second server.
+    """
     import socket
+    import urllib.request
+    port = int(settings.port)
     try:
-        with socket.create_connection(("127.0.0.1", int(settings.port)), timeout=0.4):
+        with socket.create_connection(("127.0.0.1", port), timeout=0.4):
+            healthy = False
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=0.8) as resp:
+                    healthy = 200 <= int(getattr(resp, "status", 0) or 0) < 500
+            except Exception:
+                try:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=0.8) as resp:
+                        healthy = 200 <= int(getattr(resp, "status", 0) or 0) < 500
+                except Exception:
+                    healthy = False
+            if healthy:
+                raise SystemExit(0)
             raise SystemExit(
-                f"Dana is already running on port {settings.port}. "
-                "Use the existing instance (or stop it first)."
+                f"Port {port} is occupied by a non-Dana process. Stop it, then start Dana again."
             )
+    except SystemExit:
+        raise
     except OSError:
         pass
     if PID_FILE.exists():

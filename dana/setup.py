@@ -1005,7 +1005,11 @@ def status() -> SetupStatus:
         except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
             pass
     active, funnel_host = _funnel_status() if installed else (False, "")
-    public_host = funnel_host if active else ""
+    try:
+        from .public_host import resolve_public_host
+        public_host = resolve_public_host(funnel_host if active else "")
+    except Exception:
+        public_host = funnel_host if active else ""
     token = settings.auth_token or ""
     token_path = f"/{token}/mcp" if token else "/mcp"
     local_url = f"http://127.0.0.1:{settings.port}{token_path}"
@@ -2048,10 +2052,30 @@ def _run_embedded_dana() -> None:
         import logging
         import uvicorn
         from .config import settings as runtime_settings
+        from .public_host import ensure_settings_public_host
         from .file_logging import configure_file_logging
         from .tailscale import DanaFunnelManager
 
         configure_file_logging()
+        ensure_settings_public_host()
+        for key, attr in (
+            ("DANA_AUTH_TOKEN", "auth_token"),
+            ("DANA_PUBLIC_HOST", "public_host"),
+            ("DANA_HOST", "host"),
+            ("DANA_PORT", "port"),
+            ("DANA_DEPLOYMENT_MODE", "deployment_mode"),
+        ):
+            val = os.environ.get(key)
+            if val is None or val == "":
+                continue
+            if attr == "port":
+                try:
+                    setattr(runtime_settings, attr, int(val))
+                except ValueError:
+                    pass
+            else:
+                setattr(runtime_settings, attr, val)
+        ensure_settings_public_host()
         # Do not mirror stdout in the desktop agent: Windows legacy code pages
         # crash on status glyphs, and the GUI already shows logs via the API.
         for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "mcp", "mcp.server"):
@@ -2081,6 +2105,101 @@ def _run_embedded_dana() -> None:
     except Exception as exc:  # pragma: no cover - surfaced via readiness failure
         _DANA_UVICORN = None
         _setup_log(f"Embedded Dana runtime crashed: {exc}", "error")
+
+
+
+def _reclaim_stale_runtime_port() -> None:
+    """Free the local MCP port when a dead/zombie Dana process holds it.
+
+    Cross-platform: Linux (ss+/proc), macOS (lsof), Windows (netstat+taskkill).
+    Only targets known Dana-related command lines so unrelated services survive.
+    """
+    import signal
+    port = int(settings.port or 8765)
+    if _dana_running(timeout=0.6):
+        return
+    pids: list[int] = []
+    try:
+        if os.name == "nt":
+            out = subprocess.run(
+                ["netstat", "-ano"],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=8,
+                creationflags=0x08000000,
+            ).stdout or ""
+            for line in out.splitlines():
+                if f":{port}" not in line or "LISTENING" not in line.upper():
+                    continue
+                parts = line.split()
+                if parts and parts[-1].isdigit():
+                    pids.append(int(parts[-1]))
+        elif shutil.which("ss"):
+            out = subprocess.run(
+                ["ss", "-tlnp"],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=5,
+            ).stdout or ""
+            for line in out.splitlines():
+                if f":{port}" not in line:
+                    continue
+                for m in re.finditer(r"pid=(\d+)", line):
+                    pids.append(int(m.group(1)))
+        elif shutil.which("lsof"):
+            out = subprocess.run(
+                ["lsof", f"-iTCP:{port}", "-sTCP:LISTEN", "-n", "-P", "-t"],
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=5,
+            ).stdout or ""
+            for part in out.split():
+                if part.strip().isdigit():
+                    pids.append(int(part.strip()))
+    except Exception:
+        return
+
+    me = os.getpid()
+    killed = 0
+    for pid in sorted(set(pids)):
+        if pid in (0, me):
+            continue
+        cmdline = ""
+        try:
+            if os.name == "nt":
+                q = subprocess.run(
+                    ["wmic", "process", "where", f"ProcessId={pid}", "get", "CommandLine", "/value"],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=5,
+                    creationflags=0x08000000,
+                )
+                cmdline = (q.stdout or "").lower()
+            else:
+                try:
+                    cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "ignore").lower()
+                except OSError:
+                    q = subprocess.run(["ps", "-p", str(pid), "-o", "command="], text=True, capture_output=True, check=False, timeout=3)
+                    cmdline = (q.stdout or "").lower()
+        except OSError:
+            continue
+        if not any(tok in cmdline for tok in ("dana", "uvicorn", "dana-agent", "dana_mcp", "dana-mcp")):
+            continue
+        _setup_log(f"Reclaiming stale runtime pid {pid} holding port {port}.", "warning")
+        try:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(pid), "/F"], check=False, capture_output=True, timeout=8, creationflags=0x08000000)
+            else:
+                os.kill(pid, signal.SIGTERM)
+            killed += 1
+        except OSError:
+            continue
+    if killed:
+        time.sleep(0.9)
 
 
 def start_dana(*args, **kwargs):
@@ -2141,8 +2260,29 @@ def _start_dana_impl() -> dict[str, object]:
         if funnel_active and funnel_host:
             set_local_public_host(funnel_host)
             os.environ["DANA_PUBLIC_HOST"] = funnel_host
-    except Exception:
-        pass
+            settings.public_host = funnel_host
+        else:
+            persisted = (os.environ.get("DANA_PUBLIC_HOST") or "").strip()
+            if not persisted:
+                try:
+                    from pathlib import Path as _P
+                    envp = (_P(os.environ["APPDATA"]) if os.name == "nt" and os.environ.get("APPDATA") else _P.home() / ".config") / "dana" / ".env"
+                    for line in envp.read_text(encoding="utf-8").splitlines():
+                        if line.startswith("DANA_PUBLIC_HOST="):
+                            persisted = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            break
+                except OSError:
+                    persisted = ""
+            if persisted:
+                os.environ["DANA_PUBLIC_HOST"] = persisted
+                settings.public_host = persisted
+    except Exception as exc:
+        _setup_log(f"Could not restore public host before start: {exc}", "warning")
+
+    try:
+        _reclaim_stale_runtime_port()
+    except Exception as exc:
+        _setup_log(f"Port reclaim skipped: {exc}", "warning")
 
     log = _runtime_log_path()
     frozen = bool(getattr(__import__("sys"), "frozen", False))
@@ -2162,11 +2302,23 @@ def _start_dana_impl() -> dict[str, object]:
         else:
             _setup_log("Embedded Dana runtime thread is already active; waiting for the local MCP port.")
         # Cold import + bind can exceed 30s on Windows packaged builds.
-        if _wait_for_dana(timeout=20.0):
+        if _wait_for_dana(timeout=25.0):
             _setup_log("Dana runtime is ready on the local MCP port.", "success")
             return {"ok": True, "message": "Dana is running."}
+        try:
+            _reclaim_stale_runtime_port()
+        except Exception:
+            pass
+        if not (isinstance(_DANA_THREAD, threading.Thread) and _DANA_THREAD.is_alive()):
+            _setup_log("Retrying embedded Dana runtime after failed readiness.", "warning")
+            thread = threading.Thread(target=_run_embedded_dana, name="dana-mcp-runtime", daemon=True)
+            _DANA_THREAD = thread
+            thread.start()
+        if _wait_for_dana(timeout=15.0):
+            _setup_log("Dana runtime is ready on the local MCP port (retry).", "success")
+            return {"ok": True, "message": "Dana is running."}
         tail = _tail_log(log)
-        detail = "Dana did not become ready on the local MCP port within 20 seconds."
+        detail = "Dana did not become ready on the local MCP port within 40 seconds."
         if tail:
             detail = f"{detail} Recent log:\n{tail[-1200:]}"
         _setup_log(detail, "error")
