@@ -18,12 +18,20 @@ def register_filesystem_tools(mcp: FastMCP) -> None:
         except PermissionError:
             raise
         try:
+            if not target.exists():
+                raise FileNotFoundError(
+                    f"Path does not exist: {target}. "
+                    f"Use an absolute path or a path under the project / home."
+                )
             if not target.is_dir():
                 raise ValueError(f"Not a directory: {target}")
+        except FileNotFoundError:
+            raise
         except OSError as exc:
             raise PermissionError(
                 f"OS denied access to directory {target!s}: {exc}. "
-                f"Check filesystem permissions or Dana allowed_paths."
+                f"Check filesystem permissions or Dana allowed_paths "
+                f"(empty allowed_paths means unrestricted except deny_paths)."
             ) from exc
 
         entries: list[dict[str, str | bool | int | float]] = []
