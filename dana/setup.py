@@ -2350,3 +2350,13 @@ def add_skill_path(path: str) -> dict[str, object]:
 def import_skill_file(path: str) -> dict[str, object]:
     from . import skills_registry
     return skills_registry.import_skill_file(path)
+
+def zero_computer_status() -> dict[str, object]:
+    from .tools.zero_computer import zero_status
+    return zero_status()
+
+def install_zero_computer() -> dict[str, object]:
+    from .tools.zero_computer import install_zero_computer as _install
+    result = _install()
+    _setup_log(str(result.get("message", "Zero install")), "success" if result.get("ok") else "error")
+    return result

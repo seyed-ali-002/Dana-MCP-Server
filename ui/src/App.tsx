@@ -320,6 +320,8 @@ function App() {
   const [whipArmed, setWhipArmed] = useState(false);
   const [whipTrail, setWhipTrail] = useState<{ x: number; y: number; id: number }[]>([]);
   const [whipMsg, setWhipMsg] = useState("");
+  const [zeroStatus, setZeroStatus] = useState<{ installed?: boolean; path?: string; message?: string } | null>(null);
+  const [zeroBusy, setZeroBusy] = useState(false);
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [errorLogs, setErrorLogs] = useState<SetupLog[]>([]);
   const [pendingInstall, setPendingInstall] = useState(false);
@@ -520,6 +522,10 @@ function App() {
 
   useEffect(() => {
     if (!port || view !== "Skills") return;
+    fetch(API(port, "/api/setup/zero/status"), { cache: "no-store" })
+      .then((res) => res.json())
+      .then((r) => setZeroStatus(r))
+      .catch(() => setZeroStatus(null));
     fetch(API(port, "/api/setup/skills"), { cache: "no-store" })
       .then((res) => res.json())
       .then((r: { skills?: { id: string; name: string; description: string; path: string }[] }) =>
@@ -1010,7 +1016,7 @@ function App() {
         </div>
       </aside>
 
-      <main className="content">
+      <main className="content content-aligned">
         <header className="topbar">
           <div>
             <div className="eyebrow">LOCAL CONTROL PLANE</div>
@@ -1884,6 +1890,33 @@ function App() {
             Bundled packs inspired by Ponytail, ADHD-friendly output, Superpowers, Agency specialists, and Context mode.
             Add your own markdown or register a folder path.
           </p>
+          <div className="card" style={{ marginBottom: 16, padding: 14 }}>
+            <div className="eyebrow">DESKTOP AGENT</div>
+            <h3 style={{ margin: "4px 0 8px", fontSize: 16 }}>Zero Use Computer</h3>
+            <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 10 }}>
+              {zeroStatus?.message || "Optional accessibility-based desktop agent (upstream binary)."}
+              {zeroStatus?.path ? ` · ${zeroStatus.path}` : ""}
+            </p>
+            <button
+              className="secondary"
+              disabled={!port || zeroBusy}
+              onClick={async () => {
+                if (!port) return;
+                setZeroBusy(true);
+                try {
+                  const r = await fetch(API(port, "/api/setup/zero/install"), { method: "POST" });
+                  const j = await r.json();
+                  setMessage(String(j.message || (j.ok ? "Installed" : "Install failed")));
+                  const s = await fetch(API(port, "/api/setup/zero/status"), { cache: "no-store" });
+                  setZeroStatus(await s.json());
+                } finally {
+                  setZeroBusy(false);
+                }
+              }}
+            >
+              {zeroBusy ? "Installing…" : zeroStatus?.installed ? "Re-check / reinstall" : "Install Zero Use Computer"}
+            </button>
+          </div>
           <div className="skills-grid">
             {skills.map((s) => (
               <div className="skill-card" key={s.id}>
@@ -2255,6 +2288,7 @@ function App() {
         onPointerUp={async () => {
           if (!whipArmed || !port) return;
           setWhipLevel((n) => Math.min(5, n + 1));
+          playSoftBeep();
           setWhipMsg("Whipped! Accelerating connectivity heal…");
           try {
             await fetch(API(port, "/api/setup/recover"), { method: "POST" });

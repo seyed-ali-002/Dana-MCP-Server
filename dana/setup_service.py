@@ -114,6 +114,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/setup/repair-funnel": setup.repair_funnel,
             "/api/setup/supermcp/start": setup.start_supermcp,
             "/api/setup/supermcp/stop": setup.stop_supermcp,
+            "/api/setup/zero/install": setup.install_zero_computer,
         }.get(urlparse(self.path).path)
         request_path = urlparse(self.path).path
         if request_path == "/api/setup/download/pause":

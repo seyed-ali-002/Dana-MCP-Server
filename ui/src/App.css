@@ -1704,3 +1704,41 @@ select.styled-select {
 }
 .log-detail-grid .eyebrow { display: block; margin-bottom: 2px; }
 .log-collapse.important summary { font-weight: 600; }
+
+.content-aligned {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 22px 28px;
+  max-width: 1100px;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.topbar > div:first-child {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.top-actions {
+  margin-left: auto;
+}
+.whip-trail {
+  transition: opacity 0.35s ease, transform 0.2s ease;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.whip-fab {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.whip-fab:hover {
+  transform: scale(1.06);
+}
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+}

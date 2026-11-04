@@ -267,6 +267,39 @@ _ORCHESTRATION_TOOLS = {
 }
 
 
+
+def _maybe_context_compact(result: Any) -> Any:
+    """Context-mode style compaction: keep chat lean without dropping structure.
+
+    Large lists are paginated (cursor) and huge leaf strings are truncated.
+    Disabled with DANA_CONTEXT_MODE=0. Does not alter CallToolResult wrappers.
+    """
+    flag = os.getenv("DANA_CONTEXT_MODE", "1").strip().lower()
+    if flag in {"0", "false", "no", "off"}:
+        return result
+    if result is None or not isinstance(result, (dict, list, str)):
+        return result
+    try:
+        from dana.tools.context_engine import MAX_RESULT_CHARS, optimize_result
+    except Exception:
+        return result
+    try:
+        raw = _token_text(result)
+        if len(raw) <= MAX_RESULT_CHARS:
+            return result
+        optimized = optimize_result(result, MAX_RESULT_CHARS)
+        if isinstance(optimized, (dict, list)):
+            return {
+                "_dana_context_mode": True,
+                "note": "Large tool output compacted to protect context. Use dana_result_page for cursors.",
+                "original_chars": len(raw),
+                "compacted_chars": len(_token_text(optimized)),
+                "result": optimized,
+            }
+        return optimized
+    except Exception:
+        return result
+
 async def _logged_call_tool(
     name: str,
     arguments: dict[str, Any],
@@ -309,6 +342,7 @@ async def _logged_call_tool(
             worker_number, worker_name = 1, "Gateway"
         else:
             worker_number, worker_name, result = await WORKER_POOL.run(operation)
+        result = _maybe_context_compact(result)
         usage = _reported_usage(result)
         if usage is not None:
             input_tokens, output_tokens = usage
