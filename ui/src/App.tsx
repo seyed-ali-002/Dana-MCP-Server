@@ -1935,20 +1935,15 @@ function App() {
                     Math.round(e.duration_ms) +
                     "ms" +
                     (e.worker ? " · " + e.worker : "");
-                  const detail =
-                    "tool: " + e.tool +
-                    "
-status: " + (e.success ? "OK" : "FAIL") +
-                    "
-worker: " + (e.worker || "—") +
-                    "
-duration_ms: " + String(Math.round(e.duration_ms || 0)) +
-                    "
-input_tokens: " + String(e.input || 0) +
-                    "
-output_tokens: " + String(e.output || 0) +
-                    "
-time: " + (e.time || "—");
+                  const detailLines = [
+                    "tool: " + e.tool,
+                    "status: " + (e.success ? "OK" : "FAIL"),
+                    "worker: " + (e.worker || "—"),
+                    "duration_ms: " + String(Math.round(e.duration_ms || 0)),
+                    "input_tokens: " + String(e.input || 0),
+                    "output_tokens: " + String(e.output || 0),
+                    "time: " + (e.time || "—"),
+                  ];
                   return (
                     <details
                       className={"log-collapse log-" + level + (e.success ? "" : " important")}
@@ -1972,7 +1967,7 @@ time: " + (e.time || "—");
                           <div><span className="eyebrow">Time</span><code>{e.time}</code></div>
                         </div>
                         <div className="log-detail-label">Full detail</div>
-                        <pre className="log-full">{detail}</pre>
+                        <pre className="log-full">{detailLines.join("\n")}</pre>
                       </div>
                     </details>
                   );
@@ -2328,8 +2323,7 @@ time: " + (e.time || "—");
                             <div><span className="eyebrow">Time</span><code>{ev.time || "—"}</code></div>
                           </div>
                           <div className="log-detail-label">Full detail</div>
-                          <pre className="log-full">{detailLines.join("
-")}</pre>
+                          <pre className="log-full">{detailLines.join("\n")}</pre>
                         </div>
                       </details>
                     );

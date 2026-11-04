@@ -2280,6 +2280,17 @@ def _start_dana_impl() -> dict[str, object]:
         _setup_log(f"Could not restore public host before start: {exc}", "warning")
 
     try:
+        from .public_host import ensure_settings_public_host, is_valid_public_host, resolve_public_host
+        host = ensure_settings_public_host()
+        if host:
+            _setup_log(f"Public host resolved to {host}.")
+        elif settings.public_host and not is_valid_public_host(settings.public_host):
+            settings.public_host = ""
+            _setup_log("Cleared invalid/placeholder public host.", "warning")
+    except Exception as exc:
+        _setup_log(f"Public host resolve skipped: {exc}", "warning")
+
+    try:
         _reclaim_stale_runtime_port()
     except Exception as exc:
         _setup_log(f"Port reclaim skipped: {exc}", "warning")

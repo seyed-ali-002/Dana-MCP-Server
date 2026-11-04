@@ -287,7 +287,7 @@ class OAuthProtectedMCPASGI:
         authorization = next((value.decode("latin1") for name, value in scope.get("headers", ()) if name.lower() == b"authorization"), "")
         expected = f"Bearer {settings.require_auth_token()}"
         if not _guard.token_matches(authorization, expected):
-            host = settings.public_host or next((value.decode("latin1") for name, value in scope.get("headers", ()) if name.lower() == b"host"), "")
+            host = ensure_settings_public_host() or (settings.public_host if is_valid_public_host(settings.public_host) else "") or next((value.decode("latin1") for name, value in scope.get("headers", ()) if name.lower() == b"host"), "")
             scheme = "https" if settings.public_host else scope.get("scheme", "http")
             metadata = f'{scheme}://{host}/.well-known/oauth-protected-resource/mcp'
             response = JSONResponse(
@@ -344,7 +344,7 @@ class LocalTokenMCPASGI:
                 return
 
             if not _request_is_authorized(scope):
-                host = settings.public_host or next((
+                host = ensure_settings_public_host() or (settings.public_host if is_valid_public_host(settings.public_host) else "") or next((
                     value.decode("latin1")
                     for name, value in scope.get("headers", ())
                     if name.lower() == b"host"
