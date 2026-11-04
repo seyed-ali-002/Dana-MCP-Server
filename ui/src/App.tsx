@@ -269,23 +269,71 @@ function playSoftBeep() {
     const g = ctx.createGain();
     o.type = "sine";
     o.frequency.value = 660;
-    g.gain.value = 0.04;
+    g.gain.value = 0.05;
     o.connect(g);
     g.connect(ctx.destination);
     o.start();
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
-    o.stop(ctx.currentTime + 0.4);
-    setTimeout(() => ctx.close(), 500);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.28);
+    o.stop(ctx.currentTime + 0.32);
+    setTimeout(() => ctx.close().catch(() => undefined), 400);
+  } catch { /* ignore */ }
+}
+
+/** Fun whip-crack: short noise burst + descending tone (OpenWhip-style feel). */
+function playWhipCrack() {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const dur = 0.18;
+    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 2.2);
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const ng = ctx.createGain();
+    ng.gain.value = 0.22;
+    noise.connect(ng);
+    ng.connect(ctx.destination);
+    noise.start();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "triangle";
+    o.frequency.setValueAtTime(420, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(90, ctx.currentTime + 0.16);
+    g.gain.setValueAtTime(0.12, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.2);
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + 0.22);
+    setTimeout(() => ctx.close().catch(() => undefined), 400);
   } catch { /* ignore */ }
 }
 
 function notifyUser(title: string, body: string, withSound: boolean) {
+  let desktopOk = false;
   try {
-    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-      new Notification(title, { body, silent: !withSound });
+    if (typeof Notification !== "undefined") {
+      if (Notification.permission === "granted") {
+        new Notification(title, { body, silent: !withSound });
+        desktopOk = true;
+      } else if (Notification.permission === "default") {
+        Notification.requestPermission().then((p) => {
+          if (p === "granted") {
+            try { new Notification(title, { body, silent: !withSound }); } catch { /* ignore */ }
+          }
+        }).catch(() => undefined);
+      }
     }
   } catch { /* ignore */ }
   if (withSound) playSoftBeep();
+  // Always surface an in-app toast so the user sees feedback even without OS permission.
+  try {
+    window.dispatchEvent(new CustomEvent("dana-toast", { detail: { title, body, desktopOk } }));
+  } catch { /* ignore */ }
 }
 
 
@@ -379,6 +427,7 @@ function App() {
   const [whipArmed, setWhipArmed] = useState(false);
   const [whipTrail, setWhipTrail] = useState<{ x: number; y: number; id: number }[]>([]);
   const [whipMsg, setWhipMsg] = useState("");
+  const [toastMsg, setToastMsg] = useState<{ title: string; body: string } | null>(null);
   const [healInterval, setHealInterval] = useState<number | null>(null);
   const [skillPreview, setSkillPreview] = useState<{ id: string; name?: string; content?: string; message?: string } | null>(null);
   const [packBusy, setPackBusy] = useState(false);
@@ -595,6 +644,23 @@ function App() {
     document.documentElement.setAttribute("data-theme", theme);
     document.documentElement.setAttribute("data-accent", accent);
   }, [theme, accent]);
+
+  useEffect(() => {
+    const onToast = (ev: Event) => {
+      const d = (ev as CustomEvent).detail as { title?: string; body?: string } | undefined;
+      if (!d) return;
+      setToastMsg({ title: d.title || "Dana", body: d.body || "" });
+    };
+    window.addEventListener("dana-toast", onToast as EventListener);
+    return () => window.removeEventListener("dana-toast", onToast as EventListener);
+  }, []);
+
+  useEffect(() => {
+    if (!toastMsg) return;
+    const tmr = window.setTimeout(() => setToastMsg(null), 4200);
+    return () => clearTimeout(tmr);
+  }, [toastMsg]);
+
 
 
   useEffect(() => {
@@ -1159,20 +1225,18 @@ function App() {
                     : "Starting service…"}
           </div>
           <div className="theme-controls" role="group" aria-label="Theme">
-              <label className="accent-select-wrap" title="Accent color">
-                <span className={`accent-dot ${accent}`} aria-hidden="true" />
-                <select
-                  className="accent-select"
-                  value={accent}
-                  onChange={(e) => setAccent(e.target.value as "blue" | "green" | "red")}
-                  aria-label="Accent color"
-                >
-                  <option value="blue">Blue</option>
-                  <option value="green">Green</option>
-                  <option value="red">Red</option>
-                </select>
-              </label>
               <button
+              type="button"
+              className="icon-button accent-cycle"
+              title={`Accent: ${accent}`}
+              aria-label={`Accent color ${accent}. Click to change.`}
+              onClick={() =>
+                setAccent((a) => (a === "blue" ? "green" : a === "green" ? "red" : "blue"))
+              }
+            >
+              <span className={`accent-dot ${accent}`} aria-hidden="true" />
+            </button>
+            <button
                 type="button"
                 className="icon-button theme-toggle"
                 onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
@@ -2040,17 +2104,26 @@ function App() {
       )}
 
       {port && view === "Skills" && (
-        <section className="card glass" style={{ padding: 18 }}>
-          <div className="eyebrow">SKILL PACKS</div>
-          <h2 style={{ marginTop: 4 }}>Skills & agent packs</h2>
-          <p style={{ color: "var(--muted)", marginBottom: 14 }}>
-            Bundled packs inspired by Ponytail, ADHD-friendly output, Superpowers, Agency specialists, and Context mode.
-            Add your own markdown or register a folder path.
-          </p>
-          <div className="card" style={{ marginBottom: 16, padding: 14 }}>
-            <div className="eyebrow">DESKTOP AGENT</div>
-            <h3 style={{ margin: "4px 0 8px", fontSize: 16 }}>Zero Use Computer</h3>
-            <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 10 }}>
+        <section className="skills-page">
+          <header className="skills-page-head">
+            <div>
+              <span className="eyebrow">SKILL PACKS</span>
+              <h2>Skills & agent packs</h2>
+              <p className="skills-lead">
+                Bundled packs inspired by Ponytail, ADHD-friendly output, Superpowers, Agency specialists, and Context mode.
+                Add your own markdown or register a folder path.
+              </p>
+            </div>
+          </header>
+          <div className={"zero-card glass" + (zeroStatus?.installed ? " installed" : "")}>
+            <div className="zero-card-top">
+              <div>
+                <span className="eyebrow">DESKTOP AGENT</span>
+                <h3>Zero Use Computer</h3>
+              </div>
+              {zeroStatus?.installed ? <span className="zero-badge">Installed</span> : <span className="zero-badge muted">Not installed</span>}
+            </div>
+            <p className="skills-lead">
               {zeroStatus?.message || "Optional accessibility-based desktop agent (upstream binary)."}
               {zeroStatus?.path ? ` · ${zeroStatus.path}` : ""}
             </p>
@@ -2074,7 +2147,7 @@ function App() {
               {zeroBusy ? "Installing…" : zeroStatus?.installed ? "Re-check / reinstall" : "Install Zero Use Computer"}
             </button>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+          <div className="skills-pack-actions">
             {["agency-agents", "superpowers", "i-have-adhd", "ponytail"].map((pack) => (
               <button
                 key={pack}
@@ -2139,7 +2212,6 @@ function App() {
             value={skillFilter}
             onChange={(e) => setSkillFilter(e.target.value)}
             placeholder="Filter skills by name or tag…"
-            style={{ marginBottom: 12, width: "100%", maxWidth: 420 }}
           />
           <div className="skills-grid">
             {skills
@@ -2581,14 +2653,41 @@ function App() {
       )}
       <button
         type="button"
-        className="whip-fab"
-        title="Arm Dana Whip"
+        className={"whip-fab" + (whipArmed ? " armed" : "") + (whipLevel > 0 ? " boosted" : "")}
+        title={whipArmed ? "Whip armed — drag to crack" : "Arm Dana Whip (fun)"}
+        aria-label="Dana Whip"
         onClick={() => {
           setWhipArmed((v) => !v);
           setWhipMsg(whipArmed ? "" : "Whip armed — drag across the window");
+          if (!whipArmed) playSoftBeep();
         }}
       >
-        🪄
+        <svg className="whip-icon" width="28" height="28" viewBox="0 0 64 64" aria-hidden="true">
+          <path
+            d="M14 50c8-6 12-14 14-22 2-8 6-14 14-18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3.2"
+            strokeLinecap="round"
+          />
+          <path
+            d="M42 10c6 2 10 6 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3.2"
+            strokeLinecap="round"
+          />
+          <circle cx="14" cy="50" r="4" fill="currentColor" />
+          <path
+            d="M48 22c4 1 8 4 10 8"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            opacity="0.7"
+          />
+        </svg>
+        {whipLevel > 0 ? <span className="whip-level-badge">{whipLevel}</span> : null}
       </button>
       {skillPreview && (
         <div className="skill-preview-backdrop" onClick={() => setSkillPreview(null)}>
@@ -2602,6 +2701,15 @@ function App() {
             ) : (
               <pre className="skill-preview-body">{skillPreview.content || "(empty)"}</pre>
             )}
+          </div>
+        </div>
+      )}
+      {toastMsg && (
+        <div className="toast-stack" role="status">
+          <div className="toast-card">
+            <strong>{toastMsg.title}</strong>
+            <span>{toastMsg.body}</span>
+            <button type="button" className="toast-close" onClick={() => setToastMsg(null)} aria-label="Dismiss">×</button>
           </div>
         </div>
       )}
@@ -2623,8 +2731,8 @@ function App() {
           if (!whipArmed || !port) return;
           const next = Math.min(5, whipLevel + 1);
           setWhipLevel(next);
-          playSoftBeep();
-          setWhipMsg(`Whipped! Heal interval boosted (level ${next})`);
+          playWhipCrack();
+        setWhipMsg(`Whipped! Heal interval boosted (level ${next})`);
           try {
             const wr = await fetch(API(port, "/api/setup/whip"), {
               method: "POST",
