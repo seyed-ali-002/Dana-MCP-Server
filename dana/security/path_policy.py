@@ -5,7 +5,24 @@ import os
 from pathlib import Path
 from threading import RLock
 
-CONFIG = Path(os.getenv("DANA_ACCESS_POLICY_FILE", "config/access_policy.json")).expanduser()
+def _default_policy_path() -> Path:
+    """Always use a user-writable policy file.
+
+    Packaged builds run with cwd under /usr/lib/Dana (or similar). A relative
+    config/access_policy.json path there is not writable and raises
+    PermissionError on first tool call. Prefer ~/.config/dana (or %APPDATA%).
+    """
+    override = os.getenv("DANA_ACCESS_POLICY_FILE", "").strip()
+    if override:
+        return Path(override).expanduser()
+    if os.name == "nt" and os.environ.get("APPDATA"):
+        base = Path(os.environ["APPDATA"]) / "dana"
+    else:
+        base = Path.home() / ".config" / "dana"
+    return base / "access_policy.json"
+
+
+CONFIG = _default_policy_path()
 _LOCK = RLock()
 DEFAULT = {
     "version": 1,
@@ -46,13 +63,52 @@ def _env_paths(key: str) -> list[str]:
     return _clean_path_list(raw.replace("\r", "").replace(",", "\n").split("\n"))
 
 
+def _legacy_policy_candidates() -> list[Path]:
+    """Older installs used relative config/access_policy.json under cwd or project."""
+    cands: list[Path] = []
+    for raw in (
+        Path("config/access_policy.json"),
+        Path.cwd() / "config" / "access_policy.json",
+        Path(__file__).resolve().parents[2] / "config" / "access_policy.json",
+    ):
+        try:
+            cands.append(raw.expanduser().resolve(strict=False))
+        except OSError:
+            continue
+    seen: set[str] = set()
+    out: list[Path] = []
+    for p in cands:
+        key = str(p)
+        if key not in seen:
+            seen.add(key)
+            out.append(p)
+    return out
+
+
 def load_policy() -> dict:
     with _LOCK:
         if not CONFIG.exists():
-            CONFIG.parent.mkdir(parents=True, exist_ok=True)
-            CONFIG.write_text(json.dumps(DEFAULT, indent=2))
+            migrated = None
+            for legacy in _legacy_policy_candidates():
+                try:
+                    if legacy.is_file() and legacy != CONFIG.resolve(strict=False):
+                        migrated = json.loads(legacy.read_text(encoding="utf-8"))
+                        break
+                except (OSError, json.JSONDecodeError):
+                    continue
+            try:
+                CONFIG.parent.mkdir(parents=True, exist_ok=True)
+                payload = migrated if isinstance(migrated, dict) else DEFAULT
+                out = dict(DEFAULT)
+                out.update(payload or {})
+                CONFIG.write_text(json.dumps(out, indent=2), encoding="utf-8")
+                return dict(out)
+            except OSError:
+                return dict(DEFAULT)
+        try:
+            data = json.loads(CONFIG.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
             return dict(DEFAULT)
-        data = json.loads(CONFIG.read_text())
         out = dict(DEFAULT)
         out.update(data or {})
         out["shell"] = {
@@ -90,42 +146,21 @@ def is_allowed(path: str | Path) -> bool:
 
 
 def resolve_user_path(path: str | Path) -> Path:
-    """Resolve relative tool paths against allowed roots, then project/cwd/home.
-
-    When allowed_paths is non-empty, prefer roots from that list so relative
-    names like "config" resolve inside the project even if process cwd differs.
-    When allowed_paths is empty, access is unrestricted (deny_paths still apply).
-    """
+    """Resolve relative tool paths against allowed roots, then cwd/home."""
     raw = Path(str(path)).expanduser()
     if raw.is_absolute():
         return raw.resolve(strict=False)
 
     policy = load_policy()
     allowed_roots = [_norm(x) for x in policy.get("allowed_paths", [])]
-    extra_roots: list[Path] = []
-    for key in ("DANA_PROJECT_ROOT", "DANA_ROOT", "DANA_HOME"):
-        env = os.getenv(key, "").strip()
-        if env:
-            extra_roots.append(_norm(env))
-    try:
-        # dana/security/path_policy.py -> package root (Dana/)
-        pkg_root = Path(__file__).resolve().parents[2]
-        extra_roots.append(pkg_root)
-    except Exception:
-        pass
     under_allowed = [(root / raw).resolve(strict=False) for root in allowed_roots]
-    under_extra = [(root / raw).resolve(strict=False) for root in extra_roots]
     cwd_c = (Path.cwd() / raw).resolve(strict=False)
     home_c = (Path.home() / raw).resolve(strict=False)
 
-    candidates = under_allowed + under_extra + [cwd_c, home_c]
-    for c in candidates:
-        try:
-            if c.exists() and is_allowed(c):
-                return c
-        except OSError:
-            continue
-    for c in under_allowed + under_extra:
+    for c in under_allowed + [cwd_c, home_c]:
+        if c.exists() and is_allowed(c):
+            return c
+    for c in under_allowed:
         if is_allowed(c):
             return c
     if is_allowed(cwd_c):
@@ -134,8 +169,6 @@ def resolve_user_path(path: str | Path) -> Path:
         return home_c
     if under_allowed:
         return under_allowed[0]
-    if under_extra:
-        return under_extra[0]
     return cwd_c
 
 
