@@ -1267,6 +1267,13 @@ input[type="checkbox"] {
 .tool-log-list .log-row {
   grid-template-columns: 74px 54px minmax(0, 1fr);
 }
+.tool-log-list .log-collapse {
+  min-height: 36px;
+}
+.tool-log-list {
+  gap: 6px;
+  padding: 8px;
+}
 
 /* --- Modals -------------------------------------------------------------- */
 .modal-backdrop {
@@ -1688,21 +1695,26 @@ select.styled-select {
   background: var(--surface-2);
   overflow: hidden;
   transition: border-color 0.15s ease, background 0.15s ease;
+  color: var(--text);
 }
 .log-collapse[open] {
   border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
   background: color-mix(in srgb, var(--surface-2) 88%, var(--accent));
 }
 .log-collapse summary {
-  display: grid;
-  grid-template-columns: 18px 70px 64px minmax(0, 1fr);
-  gap: 8px;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
   align-items: center;
-  padding: 9px 10px;
+  gap: 8px;
+  min-height: 36px;
+  padding: 8px 10px;
   cursor: pointer;
   list-style: none;
   font-size: 12px;
+  line-height: 1.4;
   user-select: none;
+  color: var(--text);
 }
 .log-collapse summary::-webkit-details-marker,
 .log-collapse summary::marker {
@@ -1726,10 +1738,20 @@ select.styled-select {
   transform: rotate(180deg);
   color: var(--accent);
 }
+.log-collapse summary .log-time {
+  flex: 0 0 64px;
+  color: var(--faint);
+}
+.log-collapse summary .log-level {
+  flex: 0 0 auto;
+}
 .log-collapse summary .log-message {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text);
 }
 .log-detail-body {
   border-top: 1px solid var(--border);

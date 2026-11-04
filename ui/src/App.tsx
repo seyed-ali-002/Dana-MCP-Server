@@ -289,6 +289,53 @@ function notifyUser(title: string, body: string, withSound: boolean) {
 }
 
 
+
+function normalizeToolEvent(raw: any, index: number): ToolEvent {
+  if (raw == null) {
+    return {
+      time: "--:--:--",
+      tool: "unknown",
+      worker: "",
+      number: index + 1,
+      duration_ms: 0,
+      input: 0,
+      output: 0,
+      success: false,
+      source: "",
+      line: "",
+    };
+  }
+  if (typeof raw === "string") {
+    const text = raw.trim();
+    return {
+      time: text.slice(0, 8) || "--:--:--",
+      tool: text.slice(8).trim() || text || "log",
+      worker: "",
+      number: index + 1,
+      duration_ms: 0,
+      input: 0,
+      output: 0,
+      success: !text.includes("✗"),
+      source: "terminal",
+      line: text,
+    };
+  }
+  const tool = String(raw.tool || raw.name || "unknown");
+  const success = raw.success !== false && raw.success !== "false" && raw.ok !== false;
+  return {
+    time: String(raw.time || "--:--:--"),
+    tool,
+    worker: String(raw.worker || ""),
+    number: Number(raw.number || index + 1) || 0,
+    duration_ms: Number(raw.duration_ms || raw.duration || 0) || 0,
+    input: Number(raw.input || 0) || 0,
+    output: Number(raw.output || 0) || 0,
+    success,
+    source: String(raw.source || ""),
+    line: String(raw.line || ""),
+  };
+}
+
 function LogChevron() {
   return (
     <span className="log-chevron" aria-hidden="true">
@@ -416,7 +463,13 @@ function App() {
       const a = await fetch(API(p, "/api/setup/activity"));
       if (a.ok) {
         const y = await a.json();
-        setToolEvents(y.events || []);
+        setToolEvents(
+            Array.isArray(y.events) && y.events.length
+              ? y.events.map(normalizeToolEvent)
+              : Array.isArray(y.log_tail)
+                ? y.log_tail.map(normalizeToolEvent)
+                : []
+          );
       }
       const u = await fetch(API(p, "/api/setup/usage"));
       if (u.ok) {
@@ -451,7 +504,13 @@ function App() {
       const a = await fetch(API(port, "/api/setup/activity"), { cache: "no-store" });
       if (a.ok) {
         const y = await a.json();
-        setToolEvents(y.events || []);
+        setToolEvents(
+            Array.isArray(y.events) && y.events.length
+              ? y.events.map(normalizeToolEvent)
+              : Array.isArray(y.log_tail)
+                ? y.log_tail.map(normalizeToolEvent)
+                : []
+          );
       }
     } catch { /* ignore */ }
     setMessage("Status updated");
