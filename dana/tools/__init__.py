@@ -27,6 +27,8 @@ from .local_agent import register_local_agent_tools
 
 from .token_analytics import register_token_analytics_tools
 from .web_quality_debug_docs import register_web_quality_debug_docs_tools
+from .skills import register_skills_tools
+from .zero_computer import register_zero_computer_tools
 
 
 def register_tools(mcp: FastMCP) -> None:
@@ -37,6 +39,8 @@ def register_tools(mcp: FastMCP) -> None:
     register_agent_tools(mcp)
     register_output_style_tools(mcp)
     register_web_quality_debug_docs_tools(mcp)
+    register_skills_tools(mcp)
+    register_zero_computer_tools(mcp)
     register_document_tools(mcp)
     register_design_engine_tools(mcp)
     register_sashimi_ui_tools(mcp)

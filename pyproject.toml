@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dana-mcp-server"
-version = "1.0.2"
+version = "1.1.0"
 description = "Cross-platform Python MCP server exposed through Tailscale Funnel."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -62,6 +62,9 @@ full = [
 dana-mcp = "dana.main:run"
 dana = "dana.cli:main"
 dana-gui = "dana.gui:main"
+
+[tool.setuptools.package-data]
+dana = ["skill_packs/*"]
 
 [tool.setuptools.packages.find]
 include = ["dana*"]

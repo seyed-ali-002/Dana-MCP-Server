@@ -2334,3 +2334,19 @@ def bootstrap(progress: Callable[[str], None] | None = None) -> dict[str, object
         "ok": True,
         "message": "Dana is ready."  # keep shape - THIS IS WRONG
 , "status": status().to_dict()}
+
+def list_skills() -> dict[str, object]:
+    from . import skills_registry
+    return skills_registry.list_skills()
+
+def install_skill(name: str, content: str) -> dict[str, object]:
+    from . import skills_registry
+    return skills_registry.install_skill_text(name, content)
+
+def add_skill_path(path: str) -> dict[str, object]:
+    from . import skills_registry
+    return skills_registry.add_skill_path(path)
+
+def import_skill_file(path: str) -> dict[str, object]:
+    from . import skills_registry
+    return skills_registry.import_skill_file(path)

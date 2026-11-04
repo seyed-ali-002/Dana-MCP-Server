@@ -312,6 +312,14 @@ function App() {
   const [authFlow, setAuthFlow] = useState<AuthFlow | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [bootFailed, setBootFailed] = useState(false);
+  const [skills, setSkills] = useState<{ id: string; name: string; description: string; path: string }[]>([]);
+  const [skillName, setSkillName] = useState("");
+  const [skillBody, setSkillBody] = useState("");
+  const [skillPath, setSkillPath] = useState("");
+  const [whipLevel, setWhipLevel] = useState(0);
+  const [whipArmed, setWhipArmed] = useState(false);
+  const [whipTrail, setWhipTrail] = useState<{ x: number; y: number; id: number }[]>([]);
+  const [whipMsg, setWhipMsg] = useState("");
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [errorLogs, setErrorLogs] = useState<SetupLog[]>([]);
   const [pendingInstall, setPendingInstall] = useState(false);
@@ -509,6 +517,16 @@ function App() {
     document.documentElement.setAttribute("data-theme", theme);
     document.documentElement.setAttribute("data-accent", accent);
   }, [theme, accent]);
+
+  useEffect(() => {
+    if (!port || view !== "Skills") return;
+    fetch(API(port, "/api/setup/skills"), { cache: "no-store" })
+      .then((res) => res.json())
+      .then((r: { skills?: { id: string; name: string; description: string; path: string }[] }) =>
+        setSkills(r.skills || []),
+      )
+      .catch(() => setSkills([]));
+  }, [port, view]);
 
   async function run(path: string, autoContinue = false) {
     if (!port || busy) return;
@@ -860,13 +878,14 @@ function App() {
   }
 
   const navItems: {
-    id: "Setup" | "Control" | "Config" | "Repair" | "Logs" | "Usage" | "Help";
+    id: "Setup" | "Control" | "Config" | "Skills" | "Repair" | "Logs" | "Usage" | "Help";
     label: string;
     icon: string;
   }[] = [
     { id: "Setup", label: "Home", icon: "setup" },
     { id: "Control", label: "Network", icon: "control" },
     { id: "Config", label: "Config", icon: "config" },
+    { id: "Skills", label: "Skills", icon: "skills" },
     { id: "Repair", label: "Repair", icon: "repair" },
     { id: "Logs", label: "Logs", icon: "logs" },
     { id: "Usage", label: "Usage", icon: "usage" },
@@ -906,6 +925,13 @@ function App() {
       return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M14.7 6.3a4.5 4.5 0 0 0-6.2 6.2L4 17l3 3 4.5-4.5a4.5 4.5 0 0 0 6.2-6.2L15 11l-2-2 1.7-2.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+        </svg>
+      );
+    if (name === "skills")
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M7 4h10v4H7zM6 10h12v10H6z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+          <path d="M9 14h6M9 17h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
         </svg>
       );
     if (name === "help")
@@ -1850,6 +1876,83 @@ function App() {
         </div>
       )}
 
+      {port && view === "Skills" && (
+        <section className="card glass" style={{ padding: 18 }}>
+          <div className="eyebrow">SKILL PACKS</div>
+          <h2 style={{ marginTop: 4 }}>Skills & agent packs</h2>
+          <p style={{ color: "var(--muted)", marginBottom: 14 }}>
+            Bundled packs inspired by Ponytail, ADHD-friendly output, Superpowers, Agency specialists, and Context mode.
+            Add your own markdown or register a folder path.
+          </p>
+          <div className="skills-grid">
+            {skills.map((s) => (
+              <div className="skill-card" key={s.id}>
+                <h3>{s.name}</h3>
+                <p>{s.description || s.path}</p>
+              </div>
+            ))}
+            {!skills.length && <div className="log-empty">No skills loaded yet.</div>}
+          </div>
+          <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
+            <label>
+              Skill name
+              <input value={skillName} onChange={(e) => setSkillName(e.target.value)} placeholder="my-skill" />
+            </label>
+            <label>
+              Markdown body
+              <textarea rows={6} value={skillBody} onChange={(e) => setSkillBody(e.target.value)} placeholder="# Instructions…" />
+            </label>
+            <button
+              className="primary"
+              disabled={!skillName.trim() || !skillBody.trim() || !port}
+              onClick={async () => {
+                if (!port) return;
+                await fetch(API(port, "/api/setup/skills/install"), {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ name: skillName, content: skillBody }),
+                });
+                const res = await fetch(API(port, "/api/setup/skills"), { cache: "no-store" });
+                const r = await res.json();
+                setSkills(r.skills || []);
+                setSkillName("");
+                setSkillBody("");
+                setMessage("Skill installed.");
+              }}
+            >
+              Install skill
+            </button>
+            <label>
+              File or folder path
+              <input value={skillPath} onChange={(e) => setSkillPath(e.target.value)} placeholder="/path/to/skill.md" />
+            </label>
+            <button
+              className="secondary"
+              disabled={!skillPath.trim() || !port}
+              onClick={async () => {
+                if (!port) return;
+                const path = skillPath.trim();
+                const endpoint =
+                  path.endsWith(".md") || path.endsWith(".txt")
+                    ? "/api/setup/skills/import"
+                    : "/api/setup/skills/add-path";
+                await fetch(API(port, endpoint), {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ path }),
+                });
+                const res = await fetch(API(port, "/api/setup/skills"), { cache: "no-store" });
+                const r = await res.json();
+                setSkills(r.skills || []);
+                setMessage("Skill path registered.");
+              }}
+            >
+              Import / add path
+            </button>
+          </div>
+        </section>
+      )}
+
       {port && view === "Logs" && (
           <div className="logs-stack">
             <section className="logs-panel glass">
@@ -2130,8 +2233,43 @@ function App() {
           </div>
         </div>
       )}
+      <button
+        type="button"
+        className="whip-fab"
+        title="Arm Dana Whip"
+        onClick={() => {
+          setWhipArmed((v) => !v);
+          setWhipMsg(whipArmed ? "" : "Whip armed — drag across the window");
+        }}
+      >
+        🪄
+      </button>
+      {whipMsg ? <div className="whip-banner">{whipMsg} · boost x{Math.max(1, whipLevel)}</div> : null}
+      <div
+        className={"whip-overlay" + (whipArmed ? " active" : "")}
+        onPointerMove={(e) => {
+          if (!whipArmed) return;
+          const id = Date.now();
+          setWhipTrail((prev) => [...prev.slice(-18), { x: e.clientX, y: e.clientY, id }]);
+        }}
+        onPointerUp={async () => {
+          if (!whipArmed || !port) return;
+          setWhipLevel((n) => Math.min(5, n + 1));
+          setWhipMsg("Whipped! Accelerating connectivity heal…");
+          try {
+            await fetch(API(port, "/api/setup/recover"), { method: "POST" });
+          } catch {
+            /* ignore */
+          }
+          setTimeout(() => setWhipTrail([]), 400);
+        }}
+      >
+        {whipTrail.map((p) => (
+          <span key={p.id} className="whip-trail" style={{ left: p.x, top: p.y }} />
+        ))}
+      </div>
     </div>
   );
 }
 
-export default App;
+export default App

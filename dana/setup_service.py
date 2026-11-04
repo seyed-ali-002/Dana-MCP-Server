@@ -168,6 +168,34 @@ class Handler(BaseHTTPRequestHandler):
                 self._send({"ok": False, "message": str(exc)}, 400)
                 return
 
+        if request_path == "/api/setup/skills/install":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.install_skill(str(payload.get("name") or "skill"), str(payload.get("content") or "")))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/skills/add-path":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.add_skill_path(str(payload.get("path") or "")))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/skills/import":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.import_skill_file(str(payload.get("path") or "")))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+
         if not action:
             self._send({"error": "not_found"}, 404); return
         try:

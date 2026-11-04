@@ -429,18 +429,29 @@ def register_local_agent_tools(mcp:FastMCP)->None:
         raise ValueError("action must be list or read")
 
     @mcp.tool()
-    def desktop_control(action:str,target:str="",text:str="",key:str="",x:int=0,y:int=0,button:str="left",clicks:int=1,scroll:int=0)->dict[str,Any]:
-        """Control the local Linux desktop: mouse, keyboard, windows and screenshots.
+    def desktop_control(action:str,target:str="",text:str="",key:str="",x:int=0,y:int=0,button:str="left",clicks:int=1,scroll:int=0,x2:int=0,y2:int=0,duration:float=0.15)->dict[str,Any]:
+        """Cross-platform mouse/keyboard desktop control (Windows, macOS, Linux).
 
-        Actions: windows, activate, close, minimize, maximize, move, move_relative, click, scroll,
-        type, key, hotkey, position, screenshot. Automatically selects xdotool on X11
-        and ydotool/uinput on Wayland where supported.
+        Actions: windows, activate, close, minimize, maximize, move, move_relative, click,
+        double_click, right_click, drag, scroll, type, key, hotkey, position, screenshot, diagnostics.
+        Linux prefers xdotool (X11) or ydotool (Wayland); all platforms fall back to pyautogui.
         """
-        if platform.system()!="Linux": raise RuntimeError("desktop_control currently targets Linux.")
+        system = platform.system()
         read_only={"windows","position","screenshot","diagnostics"}
         if action=="diagnostics":
-            return _desktop_diagnostics()
+            base = _desktop_diagnostics() if system == "Linux" else {"ok": True, "system": system}
+            base["system"] = system
+            try:
+                import pyautogui
+                base["pyautogui"] = True
+                base["screen_size"] = list(pyautogui.size())
+            except Exception as exc:
+                base["pyautogui"] = False
+                base["pyautogui_error"] = str(exc)
+            return base
         if action=="windows":
+            if system != "Linux":
+                raise RuntimeError("Window listing via wmctrl is Linux-only; use screenshot + click coordinates on this OS.")
             if not shutil.which("wmctrl"): raise RuntimeError("wmctrl is not installed. Install the system package 'wmctrl'.")
             return _run(["wmctrl","-lG"])
         if action=="activate":
@@ -456,13 +467,48 @@ def register_local_agent_tools(mcp:FastMCP)->None:
         if action=="screenshot":
             out=_path(target,"desktop screenshot") if target else _store("screenshots/dana-screenshot.png")
             out.parent.mkdir(parents=True,exist_ok=True)
-            if shutil.which("gnome-screenshot"): return _run(["gnome-screenshot","-f",str(out)]) | {"path":str(out)}
-            if shutil.which("import"): return _run(["import","-window","root",str(out)]) | {"path":str(out)}
+            if system == "Linux":
+                if shutil.which("gnome-screenshot"): return _run(["gnome-screenshot","-f",str(out)]) | {"path":str(out)}
+                if shutil.which("import"): return _run(["import","-window","root",str(out)]) | {"path":str(out)}
             try:
                 import pyautogui
-                pyautogui.screenshot(str(out)); return {"ok":True,"path":str(out),"backend":"pyautogui"}
+                pyautogui.screenshot(str(out)); return {"ok":True,"path":str(out),"backend":"pyautogui","system":system}
             except ImportError as exc:
-                raise RuntimeError("Install gnome-screenshot, ImageMagick (import), or Dana's optional desktop dependency.") from exc
+                raise RuntimeError("Install pyautogui (pip install dana-mcp-server) or a system screenshot tool.") from exc
+        # Non-Linux: use pyautogui for pointer/keyboard actions (no xdotool).
+        if system != "Linux" and action in {
+            "move","move_relative","click","double_click","right_click","drag","scroll","type","key","hotkey","position"
+        }:
+            try:
+                import pyautogui
+            except ImportError as exc:
+                raise RuntimeError("Install pyautogui for desktop control on this platform.") from exc
+            pyautogui.FAILSAFE = True
+            if action=="move": pyautogui.moveTo(max(0,x),max(0,y),duration=0.05); return {"ok":True,"x":x,"y":y,"backend":"pyautogui","system":system}
+            if action=="move_relative": pyautogui.moveRel(x,y,duration=0.05); return {"ok":True,"dx":x,"dy":y,"backend":"pyautogui","system":system}
+            if action=="click":
+                if button not in {"left","middle","right"}: raise ValueError("button must be left, middle or right")
+                pyautogui.click(x=max(0,x),y=max(0,y),clicks=max(1,min(clicks,20)),button=button); return {"ok":True,"backend":"pyautogui","system":system}
+            if action=="double_click":
+                pyautogui.doubleClick(x=max(0,x), y=max(0,y)); return {"ok":True,"backend":"pyautogui","system":system}
+            if action=="right_click":
+                pyautogui.click(x=max(0,x), y=max(0,y), button="right"); return {"ok":True,"backend":"pyautogui","system":system}
+            if action=="drag":
+                pyautogui.moveTo(max(0,x), max(0,y), duration=0.05)
+                pyautogui.dragTo(max(0,x2), max(0,y2), duration=max(0.05, min(float(duration or 0.15), 5.0)), button=button if button in {"left","middle","right"} else "left")
+                return {"ok":True,"backend":"pyautogui","system":system,"from":[x,y],"to":[x2,y2]}
+            if action=="scroll":
+                if scroll==0: raise ValueError("scroll must be non-zero")
+                pyautogui.scroll(max(-50,min(scroll,50))); return {"ok":True,"backend":"pyautogui","system":system}
+            if action=="type": pyautogui.write(text,interval=0.001); return {"ok":True,"backend":"pyautogui","system":system}
+            if action=="key": pyautogui.press(key); return {"ok":True,"backend":"pyautogui","system":system}
+            if action=="hotkey":
+                parts=[p.strip().lower() for p in key.replace("+"," ").split() if p.strip()]
+                if len(parts)<2: raise ValueError("hotkey requires at least two keys, e.g. ctrl+c")
+                pyautogui.hotkey(*parts); return {"ok":True,"backend":"pyautogui","system":system}
+            if action=="position":
+                pos = pyautogui.position()
+                return {"ok":True,"x":int(pos.x),"y":int(pos.y),"backend":"pyautogui","system":system}
         if action=="position":
             if shutil.which("xdotool") and os.getenv("XDG_SESSION_TYPE","").strip().lower() != "wayland":
                 return _run(["xdotool","getmouselocation","--shell"],5)
@@ -505,7 +551,18 @@ def register_local_agent_tools(mcp:FastMCP)->None:
             parts=[p.strip().lower() for p in key.replace("+"," ").split() if p.strip()]
             if len(parts)<2: raise ValueError("hotkey requires at least two keys, e.g. ctrl+c")
             pyautogui.hotkey(*parts); return {"ok":True,"backend":"pyautogui"}
-        raise ValueError("action must be windows, activate, close, minimize, maximize, move, move_relative, click, scroll, type, key, hotkey, position or screenshot")
+        if action=="double_click":
+            pyautogui.doubleClick(x=max(0,x), y=max(0,y)); return {"ok":True,"backend":"pyautogui","action":"double_click"}
+        if action=="right_click":
+            pyautogui.click(x=max(0,x), y=max(0,y), button="right"); return {"ok":True,"backend":"pyautogui","action":"right_click"}
+        if action=="drag":
+            pyautogui.moveTo(max(0,x), max(0,y), duration=0.05)
+            pyautogui.dragTo(max(0,x2), max(0,y2), duration=max(0.05, min(float(duration or 0.15), 5.0)), button=button if button in {"left","middle","right"} else "left")
+            return {"ok":True,"backend":"pyautogui","action":"drag","from":[x,y],"to":[x2,y2]}
+        if action=="position":
+            pos = pyautogui.position()
+            return {"ok":True,"x":int(pos.x),"y":int(pos.y),"backend":"pyautogui","system":system}
+        raise ValueError("action must be windows, activate, close, minimize, maximize, move, move_relative, click, double_click, right_click, drag, scroll, type, key, hotkey, position or screenshot")
 
     @mcp.tool()
     def media(action:str,source:str,output:str="",width:int=0,height:int=0,fps:int=1)->dict[str,Any]:
