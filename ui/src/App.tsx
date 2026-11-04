@@ -323,6 +323,7 @@ function App() {
   const [healInterval, setHealInterval] = useState<number | null>(null);
   const [skillPreview, setSkillPreview] = useState<{ id: string; name?: string; content?: string; message?: string } | null>(null);
   const [packBusy, setPackBusy] = useState(false);
+  const [packStatus, setPackStatus] = useState<{ id: string; installed?: boolean; files?: number }[]>([]);
   const [zeroStatus, setZeroStatus] = useState<{ installed?: boolean; path?: string; message?: string } | null>(null);
   const [zeroBusy, setZeroBusy] = useState(false);
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
@@ -557,6 +558,10 @@ function App() {
         setSkills(r.skills || []),
       )
       .catch(() => setSkills([]));
+    fetch(API(port, "/api/setup/skills/packs"), { cache: "no-store" })
+      .then((res) => res.json())
+      .then((r) => setPackStatus(r.packs || []))
+      .catch(() => setPackStatus([]));
   }, [port, view]);
 
   async function run(path: string, autoContinue = false) {
@@ -1700,6 +1705,8 @@ function App() {
             <a href="#help-config" onClick={(e) => { e.preventDefault(); document.getElementById("help-config")?.scrollIntoView({ behavior: "smooth" }); }}>4. Configuration</a>
             <a href="#help-super" onClick={(e) => { e.preventDefault(); document.getElementById("help-super")?.scrollIntoView({ behavior: "smooth" }); }}>5. MCP Super Assistant</a>
             <a href="#help-stop" onClick={(e) => { e.preventDefault(); document.getElementById("help-stop")?.scrollIntoView({ behavior: "smooth" }); }}>6. Stop vs Repair</a>
+            <a href="#help-skills" onClick={(e) => { e.preventDefault(); document.getElementById("help-skills")?.scrollIntoView({ behavior: "smooth" }); }}>7. Skills & packs</a>
+            <a href="#help-whip" onClick={(e) => { e.preventDefault(); document.getElementById("help-whip")?.scrollIntoView({ behavior: "smooth" }); }}>8. Whip & heal</a>
           </nav>
           <div className="notify-prefs">
             <label><input type="checkbox" checked={notifyEnabled} onChange={(e) => setNotifyEnabled(e.target.checked)} /> Desktop notifications</label>
@@ -1752,6 +1759,26 @@ function App() {
           <span className="eyebrow">6</span><h2>Stop vs Repair</h2>
           <p className="logs-description"><strong>Stop</strong> keeps Dana offline until you Start. <strong>Repair</strong> heals Funnel/runtime while Dana should stay online.</p>
         </section>
+ <section id="help-skills" className="connections-panel glass help-block">
+ <span className="eyebrow">7</span><h2>Skills & packs</h2>
+ <ol className="help-steps">
+ <li>Open the <strong>Skills</strong> tab to enable/disable packs and custom markdown skills.</li>
+ <li>Use <strong>Import</strong> for agency-agents, superpowers, i-have-adhd, or ponytail (needs <code>git</code>).</li>
+ <li><strong>Sync all packs</strong> re-downloads installed upstream packs.</li>
+ <li><strong>Preview</strong> shows the full skill text before you rely on it.</li>
+ <li>Agents can call <code>dana_skill_guidance</code> / <code>skill_context</code> to load enabled instructions.</li>
+ <li>Optional desktop agent: Install Zero Use Computer from the same tab.</li>
+ </ol>
+ </section>
+ <section id="help-whip" className="connections-panel glass help-block">
+ <span className="eyebrow">8</span><h2>Whip & heal</h2>
+ <ol className="help-steps">
+ <li>Tap the wand button, then drag across the window to "whip" Dana.</li>
+ <li>Each whip raises boost level (max 5) and shortens the background heal interval (20s → 5s).</li>
+ <li>The banner shows level and <em>every Xs</em> live interval.</li>
+ <li>Whip also triggers an immediate connectivity recover.</li>
+ </ol>
+ </section>
       </div>
     )}
 
@@ -1961,13 +1988,18 @@ function App() {
                     const j = await r.json();
                     setMessage(String(j.message || (j.ok ? "Imported" : "Import failed")));
                     const res = await fetch(API(port, "/api/setup/skills"), { cache: "no-store" });
-                    setSkills((await res.json()).skills || []);
+                    const list = await res.json();
+                    setSkills(list.skills || []);
+                    const ps = await fetch(API(port, "/api/setup/skills/packs"), { cache: "no-store" });
+                    setPackStatus((await ps.json()).packs || []);
                   } finally {
                     setPackBusy(false);
                   }
                 }}
               >
-                Import {pack}
+                {packStatus.find((p) => p.id === pack)?.installed
+                  ? `Update ${pack} (${packStatus.find((p) => p.id === pack)?.files || 0})`
+                  : `Import ${pack}`}
               </button>
             ))}
             <button
@@ -1987,6 +2019,8 @@ function App() {
                   setMessage(String(j.message || (j.ok ? "Synced" : "Sync finished with errors")));
                   const res = await fetch(API(port, "/api/setup/skills"), { cache: "no-store" });
                   setSkills((await res.json()).skills || []);
+                  const ps = await fetch(API(port, "/api/setup/skills/packs"), { cache: "no-store" });
+                  setPackStatus((await ps.json()).packs || []);
                 } finally {
                   setPackBusy(false);
                 }

@@ -268,6 +268,23 @@ _ORCHESTRATION_TOOLS = {
 
 
 
+
+def refresh_skill_instructions(max_chars: int = 8000) -> dict:
+    """Load enabled skill packs into a compact guidance string for hosts that read server instructions."""
+    try:
+        from dana.skills_registry import active_skill_context, list_skills
+        text = active_skill_context(max_chars=max(500, min(max_chars, 40000)))
+        listed = list_skills()
+        enabled = sum(1 for s in listed.get("skills", []) if s.get("enabled"))
+        return {
+            "ok": True,
+            "enabled_skills": enabled,
+            "chars": len(text),
+            "guidance": text,
+        }
+    except Exception as exc:
+        return {"ok": False, "message": str(exc), "guidance": ""}
+
 def _maybe_context_compact(result: Any) -> Any:
     """Context-mode style compaction: keep chat lean without dropping structure.
 
@@ -299,6 +316,12 @@ def _maybe_context_compact(result: Any) -> Any:
         return optimized
     except Exception:
         return result
+
+
+@mcp.tool()
+def dana_skill_guidance(max_chars: int = 8000) -> dict:
+    """Return concatenated instructions from enabled Dana skill packs (for the agent to follow)."""
+    return refresh_skill_instructions(max_chars)
 
 async def _logged_call_tool(
     name: str,
