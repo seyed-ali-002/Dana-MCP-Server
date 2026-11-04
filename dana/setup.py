@@ -2360,3 +2360,28 @@ def install_zero_computer() -> dict[str, object]:
     result = _install()
     _setup_log(str(result.get("message", "Zero install")), "success" if result.get("ok") else "error")
     return result
+
+def set_skill_enabled(skill_id: str, enabled: bool = True) -> dict[str, object]:
+    from . import skills_registry
+    return skills_registry.set_skill_enabled(skill_id, enabled)
+
+def import_skill_pack(pack: str) -> dict[str, object]:
+    from . import skills_registry
+    result = skills_registry.import_skill_pack(pack)
+    _setup_log(str(result.get("message", "skill pack")), "success" if result.get("ok") else "error")
+    return result
+
+# Whip boost: higher level => shorter background heal interval (seconds).
+_WHIP_LEVEL = 0
+
+def set_whip_level(level: int = 0) -> dict[str, object]:
+    global _WHIP_LEVEL
+    _WHIP_LEVEL = max(0, min(int(level), 5))
+    return {"ok": True, "whip_level": _WHIP_LEVEL, "heal_interval_sec": heal_interval_seconds()}
+
+def whip_status() -> dict[str, object]:
+    return {"ok": True, "whip_level": int(_WHIP_LEVEL), "heal_interval_sec": heal_interval_seconds()}
+
+def heal_interval_seconds() -> int:
+    # base 20s; each whip level shaves ~3s down to a floor of 5s
+    return max(5, 20 - int(_WHIP_LEVEL) * 3)

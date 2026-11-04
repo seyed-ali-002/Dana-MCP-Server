@@ -1742,3 +1742,18 @@ select.styled-select {
   gap: 4px;
   padding: 8px;
 }
+
+.skill-card.skill-off {
+  opacity: 0.55;
+}
+.skill-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.skill-toggle input {
+  accent-color: var(--accent);
+}

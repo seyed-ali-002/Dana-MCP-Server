@@ -28,8 +28,10 @@ from dana import setup
 
 
 def _heal_loop(stop: threading.Event) -> None:
-    """Periodically restore Funnel/runtime after sleep or network flaps."""
-    # First pass after a short delay so startup is not blocked.
+    """Periodically restore Funnel/runtime after sleep or network flaps.
+
+    Interval shrinks when the UI Whip level is raised (see setup.heal_interval_seconds).
+    """
     if stop.wait(12):
         return
     while not stop.is_set():
@@ -40,7 +42,11 @@ def _heal_loop(stop: threading.Event) -> None:
                 setup._setup_log(f"Background heal tick failed: {exc}", "warning")
             except Exception:
                 pass
-        if stop.wait(20):
+        try:
+            interval = int(setup.heal_interval_seconds())
+        except Exception:
+            interval = 20
+        if stop.wait(max(5, interval)):
             break
 
 class Handler(BaseHTTPRequestHandler):
@@ -184,6 +190,33 @@ class Handler(BaseHTTPRequestHandler):
                 raw = self.rfile.read(length) if length else b"{}"
                 payload = json.loads(raw.decode("utf-8") or "{}")
                 self._send(setup.add_skill_path(str(payload.get("path") or "")))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/skills/enable":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.set_skill_enabled(str(payload.get("id") or payload.get("skill_id") or ""), bool(payload.get("enabled", True))))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/skills/import-pack":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.import_skill_pack(str(payload.get("pack") or "")))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/whip":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.set_whip_level(int(payload.get("level", 0))))
             except Exception as exc:
                 self._send({"ok": False, "message": str(exc)}, 400)
             return

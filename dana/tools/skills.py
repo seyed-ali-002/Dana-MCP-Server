@@ -19,6 +19,11 @@ def register_skills_tools(mcp: FastMCP) -> None:
         return skills.get_skill(skill_id)
 
     @mcp.tool()
+    def set_skill_enabled(skill_id: str, enabled: bool = True) -> dict[str, Any]:
+        """Enable or disable a skill for agent context."""
+        return skills.set_skill_enabled(skill_id, bool(enabled))
+
+    @mcp.tool()
     def install_skill(name: str, content: str) -> dict[str, Any]:
         """Install a skill from pasted markdown/text into ~/.config/dana/skills."""
         return skills.install_skill_text(name, content)
@@ -32,6 +37,11 @@ def register_skills_tools(mcp: FastMCP) -> None:
     def add_skill_path(path: str) -> dict[str, Any]:
         """Register an extra directory or file path for skill discovery."""
         return skills.add_skill_path(path)
+
+    @mcp.tool()
+    def import_skill_pack(pack: str) -> dict[str, Any]:
+        """Import markdown skills from a known upstream pack (agency-agents, superpowers, …)."""
+        return skills.import_skill_pack(pack)
 
     @mcp.tool()
     def remove_skill(skill_id: str) -> dict[str, Any]:

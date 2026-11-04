@@ -312,7 +312,7 @@ function App() {
   const [authFlow, setAuthFlow] = useState<AuthFlow | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
   const [bootFailed, setBootFailed] = useState(false);
-  const [skills, setSkills] = useState<{ id: string; name: string; description: string; path: string }[]>([]);
+  const [skills, setSkills] = useState<{ id: string; name: string; description: string; path: string; enabled?: boolean }[]>([]);
   const [skillName, setSkillName] = useState("");
   const [skillBody, setSkillBody] = useState("");
   const [skillPath, setSkillPath] = useState("");
@@ -1917,10 +1917,55 @@ function App() {
               {zeroBusy ? "Installing…" : zeroStatus?.installed ? "Re-check / reinstall" : "Install Zero Use Computer"}
             </button>
           </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+            {["agency-agents", "superpowers", "i-have-adhd", "ponytail"].map((pack) => (
+              <button
+                key={pack}
+                className="secondary"
+                disabled={!port}
+                onClick={async () => {
+                  if (!port) return;
+                  setMessage(`Importing ${pack}…`);
+                  const r = await fetch(API(port, "/api/setup/skills/import-pack"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ pack }),
+                  });
+                  const j = await r.json();
+                  setMessage(String(j.message || (j.ok ? "Imported" : "Import failed")));
+                  const res = await fetch(API(port, "/api/setup/skills"), { cache: "no-store" });
+                  const list = await res.json();
+                  setSkills(list.skills || []);
+                }}
+              >
+                Import {pack}
+              </button>
+            ))}
+          </div>
           <div className="skills-grid">
             {skills.map((s) => (
-              <div className="skill-card" key={s.id}>
-                <h3>{s.name}</h3>
+              <div className={"skill-card" + (s.enabled === false ? " skill-off" : "")} key={s.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                  <h3 style={{ margin: 0 }}>{s.name}</h3>
+                  <label className="skill-toggle" title={s.enabled === false ? "Enable" : "Disable"}>
+                    <input
+                      type="checkbox"
+                      checked={s.enabled !== false}
+                      onChange={async (e) => {
+                        if (!port) return;
+                        await fetch(API(port, "/api/setup/skills/enable"), {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ id: s.id, enabled: e.target.checked }),
+                        });
+                        const res = await fetch(API(port, "/api/setup/skills"), { cache: "no-store" });
+                        const r = await res.json();
+                        setSkills(r.skills || []);
+                      }}
+                    />
+                    <span>{s.enabled === false ? "Off" : "On"}</span>
+                  </label>
+                </div>
                 <p>{s.description || s.path}</p>
               </div>
             ))}
@@ -2287,10 +2332,16 @@ function App() {
         }}
         onPointerUp={async () => {
           if (!whipArmed || !port) return;
-          setWhipLevel((n) => Math.min(5, n + 1));
+          const next = Math.min(5, whipLevel + 1);
+          setWhipLevel(next);
           playSoftBeep();
-          setWhipMsg("Whipped! Accelerating connectivity heal…");
+          setWhipMsg(`Whipped! Heal interval boosted (level ${next})`);
           try {
+            await fetch(API(port, "/api/setup/whip"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ level: next }),
+            });
             await fetch(API(port, "/api/setup/recover"), { method: "POST" });
           } catch {
             /* ignore */
