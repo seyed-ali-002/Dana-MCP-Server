@@ -1,1 +1,313 @@
-PLACEHOLDER
+from __future__ import annotations
+
+try:
+    from .ssl_util import configure_ssl_environment
+except ImportError:
+    from dana.ssl_util import configure_ssl_environment  # type: ignore
+
+configure_ssl_environment()
+import json
+import os
+import sys
+
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+os.environ.setdefault("PYTHONUTF8", "1")
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+except Exception:
+    pass
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
+from dana import setup
+
+
+def _heal_loop(stop: threading.Event) -> None:
+    if stop.wait(12):
+        return
+    while not stop.is_set():
+        try:
+            setup.background_heal_tick()
+        except Exception as exc:
+            try:
+                setup._setup_log(f"Background heal tick failed: {exc}", "warning")
+            except Exception:
+                pass
+        try:
+            interval = int(setup.heal_interval_seconds())
+        except Exception:
+            interval = 20
+        if stop.wait(max(5, interval)):
+            break
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _send(self, payload: dict[str, object], code: int = 200) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
+        except (ConnectionError, BrokenPipeError, OSError) as exc:
+            setup._setup_log(f"Setup client connection closed while responding: {exc}", "warning")
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path
+        if path == "/api/setup/status":
+            self._send(setup.status().to_dict()); return
+        if path == "/api/setup/auth-flow":
+            self._send(setup.auth_flow_status()); return
+        if path == "/api/setup/usage":
+            self._send(setup.token_usage()); return
+        if path == "/api/setup/updates/check":
+            self._send(setup.check_for_updates()); return
+        if path == "/api/setup/logs":
+            self._send(setup.setup_logs()); return
+        if path == "/api/setup/activity":
+            self._send(setup.runtime_activity()); return
+        if path == "/api/setup/download":
+            self._send(setup.download_status()); return
+        if path == "/api/setup/config":
+            self._send(setup.configuration()); return
+        if path == "/api/setup/diagnose":
+            try:
+                self._send(setup.diagnose_connectivity())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if path == "/api/setup/supermcp":
+            try:
+                self._send(setup.supermcp_status())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if path == "/api/setup/connection-test":
+            try:
+                self._send(setup.test_connections())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if path == "/api/setup/skills":
+            try:
+                self._send(setup.list_skills())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if path == "/api/setup/skills/packs":
+            try:
+                self._send(setup.pack_status())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if path == "/api/setup/skills/preview":
+            try:
+                from urllib.parse import parse_qs
+                qs = parse_qs(urlparse(self.path).query)
+                sid = (qs.get("id") or [""])[0]
+                from dana import skills_registry
+                self._send(skills_registry.get_skill(sid))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if path == "/api/setup/whip/status":
+            try:
+                self._send(setup.whip_status())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if path == "/api/setup/zero/status":
+            try:
+                self._send(setup.zero_computer_status())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        self._send({"error": "not_found"}, 404)
+
+    def do_POST(self) -> None:
+        request_path = urlparse(self.path).path
+        action = {
+            "/api/setup/install-tailscale": setup.install_tailscale,
+            "/api/setup/login-tailscale": setup.login_tailscale,
+            "/api/setup/enable-funnel": setup.enable_funnel,
+            "/api/setup/start-dana": setup.start_dana,
+            "/api/setup/stop-dana": setup.stop_dana,
+            "/api/setup/bootstrap": setup.bootstrap,
+            "/api/setup/recover": setup.recover_connectivity,
+            "/api/setup/diagnose": setup.diagnose_connectivity,
+            "/api/setup/reset-defaults": setup.reset_setup_defaults,
+            "/api/setup/repair-funnel": setup.repair_funnel,
+            "/api/setup/supermcp/start": setup.start_supermcp,
+            "/api/setup/supermcp/stop": setup.stop_supermcp,
+            "/api/setup/zero/install": setup.install_zero_computer,
+        }.get(request_path)
+        if request_path == "/api/setup/download/pause":
+            self._send(setup.pause_download()); return
+        if request_path == "/api/setup/download/resume":
+            self._send(setup.resume_download()); return
+        if request_path == "/api/setup/download/cancel":
+            self._send(setup.cancel_download()); return
+        if request_path == "/api/setup/open-browser":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.open_browser_url(str(payload.get("url", "")).strip()))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/local-only":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.set_local_only(bool(payload.get("enabled", True))))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/autostart":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.set_autostart(bool(payload.get("enabled", True))))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path in {"/api/setup/security/revoke-token", "/api/setup/security/token", "/api/setup/config"}:
+            try:
+                if request_path == "/api/setup/security/revoke-token":
+                    self._send(setup.set_auth_token("", revoke=True)); return
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                if request_path == "/api/setup/security/token":
+                    self._send(setup.set_auth_token(str(payload.get("token", "")))); return
+                values = payload.get("values", payload)
+                if not isinstance(values, dict):
+                    raise ValueError("Configuration values must be an object")
+                self._send(setup.update_configuration(values)); return
+            except Exception as exc:
+                setup._setup_log(f"Configuration/security action failed: {exc}", "error")
+                self._send({"ok": False, "message": str(exc)}, 400)
+                return
+        if request_path == "/api/setup/skills/install":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.install_skill(str(payload.get("name") or "skill"), str(payload.get("content") or "")))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/skills/add-path":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.add_skill_path(str(payload.get("path") or "")))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/skills/sync":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.sync_skill_pack(str(payload.get("pack") or "")))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/skills/enable":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.set_skill_enabled(str(payload.get("id") or payload.get("skill_id") or ""), bool(payload.get("enabled", True))))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/skills/import-pack":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.import_skill_pack(str(payload.get("pack") or "")))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/whip":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.set_whip_level(int(payload.get("level", 0))))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/skills/import":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.import_skill_file(str(payload.get("path") or "")))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if not action:
+            self._send({"error": "not_found"}, 404); return
+        try:
+            self._send(action())
+        except (ConnectionError, BrokenPipeError, OSError) as exc:
+            setup._setup_log(f"Setup client disconnected during action: {exc}", "warning")
+        except Exception as exc:
+            setup._setup_log(f"Unhandled setup error: {exc}", "error")
+            try:
+                self._send({"ok": False, "message": str(exc)}, 500)
+            except Exception:
+                pass
+
+    def log_message(self, _format: str, *_args: object) -> None:
+        return
+
+
+def serve(host: str = "127.0.0.1", port: int = 0) -> ThreadingHTTPServer:
+    server = ThreadingHTTPServer((host, port), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True, name="dana-setup-api").start()
+    return server
+
+
+if __name__ == "__main__":
+    if "--serve" in sys.argv:
+        from dana.main import run
+        run()
+    else:
+        server = serve()
+        port = str(server.server_address[1])
+        port_file = os.environ.get("DANA_SETUP_PORT_FILE")
+        if port_file:
+            from pathlib import Path
+            target = Path(port_file)
+            temporary = target.with_suffix(target.suffix + ".tmp")
+            temporary.write_text(port, encoding="ascii")
+            temporary.replace(target)
+        print(f"DANA_SETUP_PORT={port}", flush=True)
+        heal_stop = threading.Event()
+        heal_thread = threading.Thread(target=_heal_loop, args=(heal_stop,), name="dana-heal", daemon=True)
+        heal_thread.start()
+        try:
+            server.serve_forever()
+        finally:
+            heal_stop.set()
