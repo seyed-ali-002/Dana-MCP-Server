@@ -387,7 +387,7 @@ async def _logged_call_tool(
             worker_number, worker_name = 1, "Gateway"
         else:
             worker_number, worker_name, result = await WORKER_POOL.run(operation)
-        result = _maybe_context_compact(result)
+        result = _maybe_context_compact(_json_safe(result) if not hasattr(result, "model_dump") else result)
         usage = _reported_usage(result)
         if usage is not None:
             input_tokens, output_tokens = usage
@@ -431,6 +431,40 @@ async def _logged_call_tool(
             )
 
 
+
+def _json_safe(value: Any) -> Any:
+    """Convert MCP/Pydantic objects into plain JSON-serializable data."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            return value.decode("utf-8", errors="replace")
+        except Exception:
+            return str(value)
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(v) for v in value]
+    # Pydantic v2 / MCP content blocks (TextContent, ImageContent, ...)
+    if hasattr(value, "model_dump"):
+        try:
+            return _json_safe(value.model_dump(mode="json"))
+        except Exception:
+            pass
+    if hasattr(value, "dict"):
+        try:
+            return _json_safe(value.dict())
+        except Exception:
+            pass
+    text = getattr(value, "text", None)
+    if isinstance(text, str):
+        return {"type": getattr(value, "type", "text"), "text": text}
+    try:
+        json.dumps(value)
+        return value
+    except Exception:
+        return str(value)
+
 def _token_text(value: Any) -> str:
     """Return the payload text that a client actually receives, not its Python repr.
 
@@ -458,18 +492,23 @@ def _token_text(value: Any) -> str:
                     parts.append(item["text"])
                 elif hasattr(item, "text") and isinstance(item.text, str):
                     parts.append(item.text)
+                else:
+                    try:
+                        parts.append(json.dumps(_json_safe(item), ensure_ascii=False, separators=(",", ":")))
+                    except Exception:
+                        parts.append(str(item))
             if parts:
-                return "\\n".join(parts)
+                return "\n".join(parts)
         if "structuredContent" in value and value.get("structuredContent") is not None:
             try:
-                return json.dumps(value["structuredContent"], ensure_ascii=False, separators=(",", ":"))
+                return json.dumps(_json_safe(value["structuredContent"]), ensure_ascii=False, separators=(",", ":"))
             except (TypeError, ValueError):
                 return str(value["structuredContent"])
 
     if isinstance(value, str):
         return value
     try:
-        return json.dumps(value, ensure_ascii=False, default=str, separators=(",", ":"))
+        return json.dumps(_json_safe(value), ensure_ascii=False, default=str, separators=(",", ":"))
     except (TypeError, ValueError):
         return str(value)
 
