@@ -320,6 +320,9 @@ function App() {
   const [whipArmed, setWhipArmed] = useState(false);
   const [whipTrail, setWhipTrail] = useState<{ x: number; y: number; id: number }[]>([]);
   const [whipMsg, setWhipMsg] = useState("");
+  const [healInterval, setHealInterval] = useState<number | null>(null);
+  const [skillPreview, setSkillPreview] = useState<{ id: string; name?: string; content?: string; message?: string } | null>(null);
+  const [packBusy, setPackBusy] = useState(false);
   const [zeroStatus, setZeroStatus] = useState<{ installed?: boolean; path?: string; message?: string } | null>(null);
   const [zeroBusy, setZeroBusy] = useState(false);
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
@@ -519,6 +522,28 @@ function App() {
     document.documentElement.setAttribute("data-theme", theme);
     document.documentElement.setAttribute("data-accent", accent);
   }, [theme, accent]);
+
+
+  useEffect(() => {
+    if (!port) return;
+    let cancelled = false;
+    const tick = () => {
+      fetch(API(port, "/api/setup/whip/status"), { cache: "no-store" })
+        .then((r) => r.json())
+        .then((j) => {
+          if (cancelled) return;
+          if (typeof j.heal_interval_sec === "number") setHealInterval(j.heal_interval_sec);
+          if (typeof j.whip_level === "number") setWhipLevel(j.whip_level);
+        })
+        .catch(() => {});
+    };
+    tick();
+    const id = window.setInterval(tick, 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [port]);
 
   useEffect(() => {
     if (!port || view !== "Skills") return;
@@ -1922,25 +1947,53 @@ function App() {
               <button
                 key={pack}
                 className="secondary"
-                disabled={!port}
+                disabled={!port || packBusy}
                 onClick={async () => {
                   if (!port) return;
+                  setPackBusy(true);
                   setMessage(`Importing ${pack}…`);
-                  const r = await fetch(API(port, "/api/setup/skills/import-pack"), {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ pack }),
-                  });
-                  const j = await r.json();
-                  setMessage(String(j.message || (j.ok ? "Imported" : "Import failed")));
-                  const res = await fetch(API(port, "/api/setup/skills"), { cache: "no-store" });
-                  const list = await res.json();
-                  setSkills(list.skills || []);
+                  try {
+                    const r = await fetch(API(port, "/api/setup/skills/import-pack"), {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ pack }),
+                    });
+                    const j = await r.json();
+                    setMessage(String(j.message || (j.ok ? "Imported" : "Import failed")));
+                    const res = await fetch(API(port, "/api/setup/skills"), { cache: "no-store" });
+                    setSkills((await res.json()).skills || []);
+                  } finally {
+                    setPackBusy(false);
+                  }
                 }}
               >
                 Import {pack}
               </button>
             ))}
+            <button
+              className="primary"
+              disabled={!port || packBusy}
+              onClick={async () => {
+                if (!port) return;
+                setPackBusy(true);
+                setMessage("Syncing skill packs…");
+                try {
+                  const r = await fetch(API(port, "/api/setup/skills/sync"), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ pack: "" }),
+                  });
+                  const j = await r.json();
+                  setMessage(String(j.message || (j.ok ? "Synced" : "Sync finished with errors")));
+                  const res = await fetch(API(port, "/api/setup/skills"), { cache: "no-store" });
+                  setSkills((await res.json()).skills || []);
+                } finally {
+                  setPackBusy(false);
+                }
+              }}
+            >
+              {packBusy ? "Working…" : "Sync all packs"}
+            </button>
           </div>
           <div className="skills-grid">
             {skills.map((s) => (
@@ -1967,6 +2020,25 @@ function App() {
                   </label>
                 </div>
                 <p>{s.description || s.path}</p>
+                <button
+                  className="linkish"
+                  type="button"
+                  onClick={async () => {
+                    if (!port) return;
+                    const r = await fetch(
+                      API(port, `/api/setup/skills/preview?id=${encodeURIComponent(s.id)}`),
+                      { cache: "no-store" },
+                    );
+                    const j = await r.json();
+                    setSkillPreview(
+                      j.ok === false
+                        ? { id: s.id, message: j.message }
+                        : { id: s.id, name: j.name, content: j.content },
+                    );
+                  }}
+                >
+                  Preview
+                </button>
               </div>
             ))}
             {!skills.length && <div className="log-empty">No skills loaded yet.</div>}
@@ -2322,7 +2394,28 @@ function App() {
       >
         🪄
       </button>
-      {whipMsg ? <div className="whip-banner">{whipMsg} · boost x{Math.max(1, whipLevel)}</div> : null}
+      {skillPreview && (
+        <div className="skill-preview-backdrop" onClick={() => setSkillPreview(null)}>
+          <div className="skill-preview-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="skill-preview-head">
+              <strong>{skillPreview.name || skillPreview.id}</strong>
+              <button type="button" className="secondary" onClick={() => setSkillPreview(null)}>Close</button>
+            </div>
+            {skillPreview.message ? (
+              <p className="muted">{skillPreview.message}</p>
+            ) : (
+              <pre className="skill-preview-body">{skillPreview.content || "(empty)"}</pre>
+            )}
+          </div>
+        </div>
+      )}
+      {whipMsg || healInterval != null ? (
+        <div className="whip-banner">
+          {whipMsg || "Connectivity heal"}
+          {whipLevel > 0 ? ` · boost x${whipLevel}` : ""}
+          {healInterval != null ? ` · every ${healInterval}s` : ""}
+        </div>
+      ) : null}
       <div
         className={"whip-overlay" + (whipArmed ? " active" : "")}
         onPointerMove={(e) => {
@@ -2337,11 +2430,17 @@ function App() {
           playSoftBeep();
           setWhipMsg(`Whipped! Heal interval boosted (level ${next})`);
           try {
-            await fetch(API(port, "/api/setup/whip"), {
+            const wr = await fetch(API(port, "/api/setup/whip"), {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ level: next }),
             });
+            try {
+              const wj = await wr.json();
+              if (typeof wj.heal_interval_sec === "number") setHealInterval(wj.heal_interval_sec);
+            } catch {
+              /* ignore */
+            }
             await fetch(API(port, "/api/setup/recover"), { method: "POST" });
           } catch {
             /* ignore */

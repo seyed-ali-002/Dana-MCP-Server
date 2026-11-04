@@ -2385,3 +2385,13 @@ def whip_status() -> dict[str, object]:
 def heal_interval_seconds() -> int:
     # base 20s; each whip level shaves ~3s down to a floor of 5s
     return max(5, 20 - int(_WHIP_LEVEL) * 3)
+
+def pack_status() -> dict[str, object]:
+    from . import skills_registry
+    return skills_registry.pack_status()
+
+def sync_skill_pack(pack: str = "") -> dict[str, object]:
+    from . import skills_registry
+    result = skills_registry.sync_skill_pack(pack)
+    _setup_log(str(result.get("message", "pack sync")), "success" if result.get("ok") else "warning")
+    return result

@@ -371,3 +371,61 @@ def active_skill_context(max_chars: int = 12000) -> str:
         chunks.append(piece)
         total += len(piece)
     return "\n\n".join(chunks)
+
+def pack_status() -> dict:
+    """Report which known packs are present under user skills."""
+    reg = _load_registry()
+    packs = []
+    for key in KNOWN_PACKS:
+        dest = _user_skills_dir() / f"pack-{key}"
+        count = 0
+        if dest.is_dir():
+            count = sum(1 for _ in dest.rglob("*.md"))
+        packs.append({
+            "id": key,
+            "installed": dest.is_dir() and count > 0,
+            "path": str(dest),
+            "files": count,
+            "url": KNOWN_PACKS[key]["url"],
+        })
+    return {
+        "ok": True,
+        "packs": packs,
+        "last_sync": reg.get("last_pack_sync"),
+    }
+
+
+def sync_skill_pack(pack: str = "") -> dict:
+    """Re-import one pack or all installed known packs (fresh shallow clone)."""
+    key = (pack or "").strip().lower()
+    targets = [key] if key else [p["id"] for p in pack_status().get("packs", []) if p.get("installed")]
+    if key and key not in KNOWN_PACKS:
+        return {"ok": False, "message": f"Unknown pack: {pack}", "known_packs": list(KNOWN_PACKS.keys())}
+    if not targets:
+        targets = list(KNOWN_PACKS.keys())  # first-time: offer nothing special — sync all keys means install missing
+        targets = [k for k in KNOWN_PACKS]  # explicit all
+
+    results = []
+    ok_all = True
+    for name in targets:
+        dest = _user_skills_dir() / f"pack-{name}"
+        if dest.exists():
+            shutil.rmtree(dest, ignore_errors=True)
+        result = import_skill_pack(name)
+        results.append({"pack": name, "ok": bool(result.get("ok")), "message": result.get("message"), "imported": result.get("imported", 0)})
+        if not result.get("ok"):
+            ok_all = False
+
+    with _LOCK:
+        reg = _load_registry()
+        import time as _time
+        reg["last_pack_sync"] = _time.time()
+        _save_registry(reg)
+
+    listing = list_skills()
+    return {
+        "ok": ok_all,
+        "results": results,
+        "message": f"Synced {sum(1 for r in results if r['ok'])}/{len(results)} pack(s).",
+        **listing,
+    }

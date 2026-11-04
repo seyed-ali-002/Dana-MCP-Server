@@ -49,6 +49,17 @@ def register_skills_tools(mcp: FastMCP) -> None:
         return skills.remove_skill(skill_id)
 
     @mcp.tool()
+    @mcp.tool()
+    def sync_skill_pack(pack: str = "") -> dict[str, Any]:
+        """Re-download and re-import one skill pack (or all installed packs if pack is empty)."""
+        return skills.sync_skill_pack(pack)
+
+    @mcp.tool()
+    def skill_pack_status() -> dict[str, Any]:
+        """Show which upstream skill packs are installed locally."""
+        return skills.pack_status()
+
+    @mcp.tool()
     def skill_context(max_chars: int = 12000) -> dict[str, Any]:
         """Return concatenated enabled skill instructions for the agent context."""
         text = skills.active_skill_context(max_chars=max(1000, min(max_chars, 50000)))

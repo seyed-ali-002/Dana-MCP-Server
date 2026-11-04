@@ -193,6 +193,15 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send({"ok": False, "message": str(exc)}, 400)
             return
+        if request_path == "/api/setup/skills/sync":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.sync_skill_pack(str(payload.get("pack") or "")))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
         if request_path == "/api/setup/skills/enable":
             try:
                 length = int(self.headers.get("Content-Length", "0") or 0)
