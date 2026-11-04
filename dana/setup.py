@@ -1284,30 +1284,79 @@ def check_for_updates() -> dict[str, object]:
 
 
 def verify_public_endpoint(host: str, timeout: float = 8.0) -> bool:
+    """Probe the public Funnel URL without using system HTTP proxies (VPN-safe).
+
+    Dana mounts MCP at /{token}/mcp when auth is enabled; older checks only hit
+    /mcp and falsely reported the public endpoint as down on many networks.
+    """
     import urllib.error
     import urllib.request as ureq
-    url = f"https://{host}/mcp"
-    request = ureq.Request(url, method="GET", headers={"User-Agent": "Dana-Setup/1"})
+
+    host = (host or "").strip().rstrip(".")
+    if not host:
+        return False
+
+    token = (getattr(settings, "auth_token", None) or "").strip()
+    mcp = (getattr(settings, "mcp_path", None) or "/mcp").strip() or "/mcp"
+    if not mcp.startswith("/"):
+        mcp = "/" + mcp
+
+    paths: list[str] = []
+    if token:
+        paths.append(f"/{token}{mcp if mcp != "/" else ""}")
+        paths.append(f"/{token}/mcp")
+        paths.append(f"/{token}")
+    paths.append(mcp)
+    paths.append("/mcp")
+    paths.append("/")
+    # de-dupe while preserving order
+    seen: set[str] = set()
+    ordered_paths: list[str] = []
+    for path in paths:
+        path = path or "/"
+        if path not in seen:
+            seen.add(path)
+            ordered_paths.append(path)
+
     ctx = None
     try:
         from .ssl_util import ssl_context as _sc
         ctx = _sc()
     except Exception:
         ctx = None
-    try:
-        opener = ureq.build_opener(ureq.ProxyHandler({}))
-        if ctx is not None:
-            opener.add_handler(ureq.HTTPSHandler(context=ctx))
-        with opener.open(request, timeout=timeout) as response:
-            return response.status in {200, 401, 403, 405}
-    except urllib.error.HTTPError as exc:
-        return exc.code in {401, 403, 405}
-    except (OSError, urllib.error.URLError, TimeoutError):
+
+    def _try(url: str) -> bool:
+        request = ureq.Request(
+            url,
+            method="GET",
+            headers={
+                "User-Agent": "Dana-Setup/1",
+                "Accept": "application/json, text/event-stream, */*",
+            },
+        )
         try:
-            with ssl_urlopen(request, timeout=timeout) as response:
-                return response.status in {200, 401, 403, 405}
-        except Exception:
-            return False
+            opener = ureq.build_opener(ureq.ProxyHandler({}))
+            if ctx is not None:
+                opener.add_handler(ureq.HTTPSHandler(context=ctx))
+            with opener.open(request, timeout=timeout) as response:
+                return int(getattr(response, "status", 0) or 0) in {200, 401, 403, 404, 405}
+        except urllib.error.HTTPError as exc:
+            # Auth-gated or method-not-allowed still proves the Funnel route is live.
+            return int(getattr(exc, "code", 0) or 0) in {200, 401, 403, 404, 405}
+        except (OSError, urllib.error.URLError, TimeoutError):
+            try:
+                with ssl_urlopen(request, timeout=timeout) as response:
+                    return int(getattr(response, "status", 0) or 0) in {200, 401, 403, 404, 405}
+            except urllib.error.HTTPError as exc:
+                return int(getattr(exc, "code", 0) or 0) in {200, 401, 403, 404, 405}
+            except Exception:
+                return False
+
+    for path in ordered_paths:
+        url = f"https://{host}{path}"
+        if _try(url):
+            return True
+    return False
 
 
 def _tailscale_static_arch() -> str:
@@ -1806,14 +1855,21 @@ def recover_connectivity() -> dict[str, object]:
     if active and host:
         notes.append("funnel:active")
         verified = verify_public_endpoint(host)
-        return {
-            "ok": True,
-            "funnel_active": True,
-            "hostname": host,
-            "endpoint_verified": verified,
-            "notes": notes,
-            "message": "Connectivity looks healthy." if verified else "Funnel is up; public endpoint is warming up.",
-        }
+        if verified:
+            return {
+                "ok": True,
+                "funnel_active": True,
+                "hostname": host,
+                "endpoint_verified": True,
+                "notes": notes,
+                "message": "Connectivity looks healthy.",
+            }
+        # Funnel claims active but public HTTPS fails (VPN/proxy/stale route).
+        notes.append("funnel:stale-or-unreachable")
+        _setup_log(
+            "Funnel is marked active but the public URL is unreachable; re-publishing the route.",
+            "warning",
+        )
 
     # Re-publish Funnel without requiring a full guided setup pass.
     try:
