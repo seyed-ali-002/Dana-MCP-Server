@@ -90,10 +90,11 @@ def is_allowed(path: str | Path) -> bool:
 
 
 def resolve_user_path(path: str | Path) -> Path:
-    """Resolve relative tool paths against allowed roots, then cwd/home.
+    """Resolve relative tool paths against allowed roots, then project/cwd/home.
 
     When allowed_paths is non-empty, prefer roots from that list so relative
     names like "config" resolve inside the project even if process cwd differs.
+    When allowed_paths is empty, access is unrestricted (deny_paths still apply).
     """
     raw = Path(str(path)).expanduser()
     if raw.is_absolute():
@@ -101,14 +102,30 @@ def resolve_user_path(path: str | Path) -> Path:
 
     policy = load_policy()
     allowed_roots = [_norm(x) for x in policy.get("allowed_paths", [])]
+    extra_roots: list[Path] = []
+    for key in ("DANA_PROJECT_ROOT", "DANA_ROOT", "DANA_HOME"):
+        env = os.getenv(key, "").strip()
+        if env:
+            extra_roots.append(_norm(env))
+    try:
+        # dana/security/path_policy.py -> package root (Dana/)
+        pkg_root = Path(__file__).resolve().parents[2]
+        extra_roots.append(pkg_root)
+    except Exception:
+        pass
     under_allowed = [(root / raw).resolve(strict=False) for root in allowed_roots]
+    under_extra = [(root / raw).resolve(strict=False) for root in extra_roots]
     cwd_c = (Path.cwd() / raw).resolve(strict=False)
     home_c = (Path.home() / raw).resolve(strict=False)
 
-    for c in under_allowed + [cwd_c, home_c]:
-        if c.exists() and is_allowed(c):
-            return c
-    for c in under_allowed:
+    candidates = under_allowed + under_extra + [cwd_c, home_c]
+    for c in candidates:
+        try:
+            if c.exists() and is_allowed(c):
+                return c
+        except OSError:
+            continue
+    for c in under_allowed + under_extra:
         if is_allowed(c):
             return c
     if is_allowed(cwd_c):
@@ -117,6 +134,8 @@ def resolve_user_path(path: str | Path) -> Path:
         return home_c
     if under_allowed:
         return under_allowed[0]
+    if under_extra:
+        return under_extra[0]
     return cwd_c
 
 
