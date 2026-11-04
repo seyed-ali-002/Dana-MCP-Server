@@ -106,6 +106,7 @@ type ToolEvent = {
   output: number;
   success: boolean;
   source: string;
+  line?: string;
 };
 
 const API = (p: number, path: string) => "http://127.0.0.1:" + p + path;
@@ -285,6 +286,17 @@ function notifyUser(title: string, body: string, withSound: boolean) {
     }
   } catch { /* ignore */ }
   if (withSound) playSoftBeep();
+}
+
+
+function LogChevron() {
+  return (
+    <span className="log-chevron" aria-hidden="true">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="6 9 12 15 18 9" />
+      </svg>
+    </span>
+  );
 }
 
 function App() {
@@ -1913,20 +1925,58 @@ function App() {
             </div>
             <div className="log-list tool-log-list">
               {(usage?.recent_events || []).length ? (
-                (usage?.recent_events || []).map((e, i) => (
-                  <div
-                    className={"log-row log-" + (e.success ? "success" : "error")}
-                    key={e.time + e.tool + i}
-                  >
-                    <span className="log-time">{e.time}</span>
-                    <span className={"log-level " + (e.success ? "success" : "error")}>
-                      {e.success ? "OK" : "FAIL"}
-                    </span>
-                    <span className="log-message">
-                      {e.tool} · {e.input + e.output} tok · {Math.round(e.duration_ms)}ms
-                    </span>
-                  </div>
-                ))
+                (usage?.recent_events || []).map((e, i) => {
+                  const level = e.success ? "success" : "error";
+                  const preview =
+                    e.tool +
+                    " · " +
+                    (e.input + e.output) +
+                    " tok · " +
+                    Math.round(e.duration_ms) +
+                    "ms" +
+                    (e.worker ? " · " + e.worker : "");
+                  const detail =
+                    "tool: " + e.tool +
+                    "
+status: " + (e.success ? "OK" : "FAIL") +
+                    "
+worker: " + (e.worker || "—") +
+                    "
+duration_ms: " + String(Math.round(e.duration_ms || 0)) +
+                    "
+input_tokens: " + String(e.input || 0) +
+                    "
+output_tokens: " + String(e.output || 0) +
+                    "
+time: " + (e.time || "—");
+                  return (
+                    <details
+                      className={"log-collapse log-" + level + (e.success ? "" : " important")}
+                      key={e.time + e.tool + i}
+                    >
+                      <summary>
+                        <LogChevron />
+                        <span className="log-time">{e.time}</span>
+                        <span className={"log-level " + level}>
+                          {e.success ? "OK" : "FAIL"}
+                        </span>
+                        <span className="log-message">{preview}</span>
+                      </summary>
+                      <div className="log-detail-body">
+                        <div className="log-detail-grid">
+                          <div><span className="eyebrow">Tool</span><code>{e.tool}</code></div>
+                          <div><span className="eyebrow">Status</span><code>{e.success ? "OK" : "FAIL"}</code></div>
+                          <div><span className="eyebrow">Worker</span><code>{e.worker || "—"}</code></div>
+                          <div><span className="eyebrow">Duration</span><code>{Math.round(e.duration_ms)} ms</code></div>
+                          <div><span className="eyebrow">Tokens</span><code>{e.input + e.output}</code></div>
+                          <div><span className="eyebrow">Time</span><code>{e.time}</code></div>
+                        </div>
+                        <div className="log-detail-label">Full detail</div>
+                        <pre className="log-full">{detail}</pre>
+                      </div>
+                    </details>
+                  );
+                })
               ) : (
                 <div className="log-empty">No operations recorded yet.</div>
               )}
@@ -2177,33 +2227,40 @@ function App() {
               </p>
               <div className="log-list">
             {logs.length ? (
-              logs
-                .slice()
-                .reverse()
-                .map((x, i) => {
-                  const key = x.time + x.level + i;
-                  const isErr = x.level === "error" || x.level === "warning";
-                  return (
-                    <details className={"log-collapse log-" + x.level + (isErr ? " important" : "")} key={key}>
-                      <summary>
-                        <span className="log-time">{x.time}</span>
-                        <span className={"log-level " + x.level}>{x.level.toUpperCase()}</span>
-                        <span className="log-message">
-                          {(x.message || "").slice(0, 140)}
-                          {(x.message || "").length > 140 ? "…" : ""}
-                        </span>
-                      </summary>
-                      <div className="log-detail-grid">
-                        <div><span className="eyebrow">Time</span><code>{x.time}</code></div>
-                        <div><span className="eyebrow">Level</span><code>{x.level}</code></div>
-                      </div>
-                      <pre className="log-full">{x.message}</pre>
-                    </details>
-                  );
-                })
-            ) : (
-              <div className="log-empty">No setup events yet.</div>
-            )}
+                    logs
+                      .slice()
+                      .reverse()
+                      .map((x, i) => {
+                        const key = x.time + x.level + i;
+                        const isErr = x.level === "error" || x.level === "warning";
+                        const full = x.message || "";
+                        const preview = full.length > 120 ? full.slice(0, 120) + "…" : full;
+                        return (
+                          <details
+                            className={"log-collapse log-" + x.level + (isErr ? " important" : "")}
+                            key={key}
+                          >
+                            <summary>
+                              <LogChevron />
+                              <span className="log-time">{x.time}</span>
+                              <span className={"log-level " + x.level}>{x.level.toUpperCase()}</span>
+                              <span className="log-message">{preview || "—"}</span>
+                            </summary>
+                            <div className="log-detail-body">
+                              <div className="log-detail-grid">
+                                <div><span className="eyebrow">Time</span><code>{x.time || "—"}</code></div>
+                                <div><span className="eyebrow">Level</span><code>{x.level || "info"}</code></div>
+                                <div><span className="eyebrow">Length</span><code>{full.length} chars</code></div>
+                              </div>
+                              <div className="log-detail-label">Full message</div>
+                              <pre className="log-full">{full || "(empty)"}</pre>
+                            </div>
+                          </details>
+                        );
+                      })
+                  ) : (
+                    <div className="log-empty">No setup events yet.</div>
+                  )}
           </div>
             </section>
 
@@ -2222,27 +2279,61 @@ function App() {
               </p>
               <div className="log-list tool-log-list">
                 {toolEvents.length ? (
-                  toolEvents.map((ev, i) => (
-                    <div
-                      className={"log-row tool-row " + (ev.success ? "log-success" : "log-error")}
-                      key={ev.time + ev.tool + i}
-                    >
-                      <span className="log-time">{ev.time}</span>
-                      <span className={ev.success ? "log-level success" : "log-level error"}>
-                        {ev.success ? "OK" : "FAIL"}
-                      </span>
-                      <span className="log-message">
-                        <code>{ev.tool}</code>
-                        {" · "}
-                        {ev.worker}
-                        {ev.number ? " #" + ev.number : ""}
-                        {" · "}
-                        {Math.round(ev.duration_ms)} ms
-                        {" · "}
-                        {(ev.input + ev.output).toLocaleString()} tok
-                      </span>
-                    </div>
-                  ))
+                  toolEvents.map((ev, i) => {
+                    const level = ev.success ? "success" : "error";
+                    const preview =
+                      (ev.tool || "tool") +
+                      (ev.worker ? " · " + ev.worker : "") +
+                      (ev.number ? " #" + ev.number : "") +
+                      " · " +
+                      Math.round(ev.duration_ms) +
+                      " ms · " +
+                      (ev.input + ev.output).toLocaleString() +
+                      " tok";
+                    const detailLines = [
+                      "tool: " + (ev.tool || "—"),
+                      "status: " + (ev.success ? "OK" : "FAIL"),
+                      "worker: " + (ev.worker || "—"),
+                      "number: " + String(ev.number || 0),
+                      "duration_ms: " + String(Math.round(ev.duration_ms || 0)),
+                      "input_tokens: " + String(ev.input || 0),
+                      "output_tokens: " + String(ev.output || 0),
+                      "total_tokens: " + String((ev.input || 0) + (ev.output || 0)),
+                      "source: " + (ev.source || "—"),
+                      "time: " + (ev.time || "—"),
+                    ];
+                    if (ev.line) detailLines.push("raw: " + ev.line);
+                    return (
+                      <details
+                        className={"log-collapse log-" + level + (ev.success ? "" : " important")}
+                        key={ev.time + ev.tool + i}
+                      >
+                        <summary>
+                          <LogChevron />
+                          <span className="log-time">{ev.time}</span>
+                          <span className={"log-level " + level}>
+                            {ev.success ? "OK" : "FAIL"}
+                          </span>
+                          <span className="log-message">{preview}</span>
+                        </summary>
+                        <div className="log-detail-body">
+                          <div className="log-detail-grid">
+                            <div><span className="eyebrow">Tool</span><code>{ev.tool || "—"}</code></div>
+                            <div><span className="eyebrow">Status</span><code>{ev.success ? "OK" : "FAIL"}</code></div>
+                            <div><span className="eyebrow">Worker</span><code>{ev.worker || "—"}</code></div>
+                            <div><span className="eyebrow">#</span><code>{ev.number || 0}</code></div>
+                            <div><span className="eyebrow">Duration</span><code>{Math.round(ev.duration_ms)} ms</code></div>
+                            <div><span className="eyebrow">Tokens</span><code>{(ev.input + ev.output).toLocaleString()} (in {ev.input} / out {ev.output})</code></div>
+                            <div><span className="eyebrow">Source</span><code>{ev.source || "—"}</code></div>
+                            <div><span className="eyebrow">Time</span><code>{ev.time || "—"}</code></div>
+                          </div>
+                          <div className="log-detail-label">Full detail</div>
+                          <pre className="log-full">{detailLines.join("
+")}</pre>
+                        </div>
+                      </details>
+                    );
+                  })
                 ) : (
                   <div className="log-empty">
                     No tool activity yet. Connect an MCP client and run tools to see them here.
