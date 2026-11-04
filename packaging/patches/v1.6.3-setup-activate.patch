@@ -1,0 +1,7 @@
+Apply the v1.6.3 Activate / public-host fixes already present in the developer's local tree:
+1) settings.public_host restored after write_env
+2) _reclaim_stale_runtime_port before start
+3) embedded runtime syncs DANA_* env into settings
+4) readiness wait retry 25s + 15s
+
+Source of truth: local /mnt/.../Dana/dana/setup.py after this session.
