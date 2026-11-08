@@ -3,228 +3,226 @@
 > **وضعیت:** زنده (Living Document)  
 > **نسخه سند:** 1.0.0  
 > **تاریخ:** 2026-11-08  
-> **مخاطب:** مدل‌های هوش مصنوعی و توسعه‌دهندگانی که با AI روی Dana کار می‌کنند  
-> **وابسته به:** `08-development-roadmap.md`, `09-srs.md`, `11-ai-guardrails.md`
+> **مخاطب:** مدل‌های هوش مصنوعی و توسعه‌دهندگانی که با agent کار می‌کنند  
+> **مراجع اجباری قبل از کد:** `09-srs.md` · `08-development-roadmap.md` · `11-ai-guardrails.md` · این فایل
 
 ---
 
-## 0. قانون طلایی برای AI
+## 1. نقش AI در این مخزن
 
-1. **اول بخوان، بعد بنویس:** قبل از تغییر، فایل‌های مرتبط در جدول §3 و guardrailهای `11-ai-guardrails.md` را در نظر بگیر.
-2. **کد GitHub/`main` مرجع است** مگر کاربر صریحاً مسیر محلی دیگری بدهد.
-3. **بدون معیار پذیرش کار نکن:** هر تسک باید به یک ID از Roadmap (`R17-*`) یا SRS (`FR-*` / `UI-*` / `NFR-*`) وصل شود.
-4. **رفتار عمومی عوض شد → SRS + در صورت milestone بودن Roadmap را به‌روز کن.**
-5. **توکن واقعی، `.env` واقعی، و secret را commit نکن.**
+| مجاز | غیرمجاز (بدون تأیید صریح انسان) |
+|------|----------------------------------|
+| رفع باگ و تکمیل الزامات `Partial`/`Planned` طبق Roadmap | انتشار توکن واقعی، `.env`، یا secret |
+| به‌روزرسانی مستندات زنده پس از تغییر رفتار | SemVer major بدون دلیل معماری |
+| تست و doctor/smoke محلی | حذف path policy یا `clean_subprocess_env` |
+| PR/commit با پیام واضح | بازنویسی کامل UI بدون milestone مربوط |
+| افزایش patch/minor هم‌تراز با `06-versioning-release.md` | وابستگی ابری اجباری برای هسته |
 
----
-
-## 1. دامنه اختیارات AI (Decision Boundary)
-
-| مجاز (به‌طور پیش‌فرض) | ممنوع مگر دستور صریح کاربر |
-|------------------------|-----------------------------|
-| رفع باگ در محدوده تسک | افزایش major version بدون درخواست |
-| افزودن تست برای تغییر خود | حذف قابلیت کاربرنهایی |
-| به‌روزرسانی docs زنده مرتبط | تغییر LICENSE یا مالکیت |
-| refactor محلی محدود | بازنویسی کامل UI/معماری |
-| commit/push اگر کاربر خواست | force-push روی `main` |
-| تنظیمات نمونه در `.env.example` | نوشتن secret در ریپو |
-
-اگر تسک مبهم است: فرض محافظه‌کارانه بگیر، در پاسخ فرض را بگو، و تغییرات برگشت‌پذیر نگه دار.
+**اولویت کار AI:** پایداری اتصال و first-run (Roadmap 1.7) قبل از فیچرهای فان یا UI سنگین.
 
 ---
 
-## 2. ترتیب کار پیشنهادی برای هر تسک
+## 2. ترتیب خواندن (Context Pack)
 
-```text
-1) تسک را به FR/UI/NFR یا R17/R18/… نگاشت کن
-2) جدول §3 → فایل‌های اصلی را باز کن
-3) 11-ai-guardrails را برای ضدالگوهای همان حوزه چک کن
-4) تغییر حداقلی را اعمال کن
-5) py_compile / تست مرتبط / اسموک §5
-6) docs زنده در صورت نیاز
-7) خلاصه برای انسان: چه عوض شد، چه ریسکی ماند
-```
+برای هر تسک، به این ترتیب زمینه بگیر:
+
+1. `project_description_md/README.md` — نقشه اسناد  
+2. `09-srs.md` — الزام با شناسه (`FR-*` / `UI-*` / `NFR-*`)  
+3. `08-development-roadmap.md` — اولویت نسخه و acceptance  
+4. `11-ai-guardrails.md` — ممنوعیت‌ها  
+5. همین فایل — نگاشت فایل و اسموک  
+6. فقط فایل‌های کد مرتبط از جدول بخش 3  
+
+اگر تسک مبهم است: اول شناسه الزام/TECH را مشخص کن؛ بدون شناسه کد ننویس.
 
 ---
 
-## 3. نقشه الزام / حوزه → فایل‌های کد
+## 3. نگاشت الزام → فایل (Requirement Traceability)
 
 ### 3.1 هسته MCP و runtime
 
-| حوزه / الزام | فایل‌های اصلی |
-|--------------|----------------|
-| ورود سرور، workers، call_tool wrapper | `dana/server.py` |
-| بوت runtime | `dana/runtime.py`, `dana/main.py` |
-| تنظیمات و env | `dana/config.py`, `.env.example` |
-| شکل نتیجه MCP / schema | `dana/mcp_result_format.py` |
-| لاگ امن برای stdio | `dana/file_logging.py` |
+| الزام / موضوع | فایل‌های اصلی |
+|----------------|----------------|
+| FR-010…016 سرور MCP، worker، tool call | `dana/server.py`, `dana/main.py`, `dana/runtime.py` |
+| ثبت ابزارها | `dana/tools/__init__.py`, `dana/tools/tool_catalog.py` |
+| orchestration موازی | `dana/tools/runtime_orchestration.py`, `dana/tools/optimization.py` |
+| شکل نتیجه MCP / schema | `dana/mcp_result_fix.py` |
+| لاگ امن stdio | `dana/file_logging.py` |
+| تنظیمات و توکن | `dana/config.py`, `.env.example` |
 | HTTP / امنیت transport | `dana/http.py`, `dana/security/http.py` |
-| ثبت ابزارها | `dana/tools/__init__.py` |
-| parallel / plan / batch | `dana/tools/runtime_orchestration.py`, `dana/tools/optimization.py` |
 
-### 3.2 نصب، setup، Funnel، endpoint
+### 3.2 نصب، setup، Funnel
 
-| حوزه / الزام | فایل‌های اصلی |
-|--------------|----------------|
-| CLI | `dana/cli.py` |
-| Setup state machine / start-stop | `dana/setup.py` |
-| Installer / Tailscale install flow | `dana/installer.py` |
-| Tailscale API helpers | `dana/tailscale.py` |
-| Public host probes | `dana/public_host.py` |
-| Setup HTTP API برای UI | `dana/setup_service.py` |
-| Doctor | `dana/doctor.py` |
-| SSL/CA | `dana/ssl_util.py` |
-| Deployment / proxy | `dana/deployment.py` |
-| Docker مسیر اختیاری | `dana/container.py` |
+| الزام / موضوع | فایل‌های اصلی |
+|----------------|----------------|
+| FR-001…008 نصب و first-run | `dana/installer.py`, `dana/setup.py`, `dana/cli.py` |
+| API برای UI setup | `dana/setup_service.py` |
+| Tailscale / Funnel | `dana/tailscale.py`, `dana/public_host.py` |
+| SSL / CA | `dana/ssl_util.py` |
+| doctor | `dana/doctor.py` |
+| deployment / proxy | `dana/deployment.py`, `dana/container.py` |
 
 ### 3.3 امنیت و subprocess
 
-| حوزه / الزام | فایل‌های اصلی |
-|--------------|----------------|
-| پاک‌سازی env فرزند | `dana/subprocess_env.py` (**اجباری برای هر subprocess خارجی**) |
-| Path policy | `dana/security/path_policy.py` |
-| Access policy tools | `dana/tools/access_policy.py` |
-| Agent filesystem tools | `dana/tools/agent.py` |
+| الزام / موضوع | فایل‌های اصلی |
+|----------------|----------------|
+| Path policy FR-040 | `dana/security/path_policy.py`, `dana/tools/access_policy.py` |
+| NFR-002 scrub env | `dana/subprocess_env.py` + همهٔ `subprocess.run/Popen` |
+| agent / shell | `dana/tools/agent.py`, `dana/tools/local_agent.py`, `dana/tools/system.py` |
 
-### 3.4 ابزارها و skill
+### 3.4 مهارت‌ها، SuperMCP، ابزارها
 
-| حوزه | فایل |
-|------|------|
-| Local desktop agent | `dana/tools/local_agent.py` |
-| Skills registry | `dana/skills_registry.py`, `dana/tools/skills.py` |
+| موضوع | فایل |
+|--------|------|
+| Skill registry | `dana/skills_registry.py`, `dana/tools/skills.py` |
 | SuperMCP | `dana/supermcp.py` |
-| Context compaction | `dana/tools/context_engine.py` |
-| Token analytics | `dana/tools/token_analytics.py` |
+| Context / token | `dana/tools/context_engine.py`, `dana/tools/token_analytics.py` |
+| Desktop automation | `dana/tools/local_agent.py` |
 | Zero computer | `dana/tools/zero_computer.py` |
-| Reporting | `dana/reporting.py` |
+| Documents | `dana/tools/documents.py`, `dana/tools/formatting.py` |
+| Reporting | `dana/reporting.py`, `dana/terminal_ui.py` |
 
 ### 3.5 Desktop UI
 
-| حوزه | فایل |
-|------|------|
-| لانچر GUI | `dana/gui.py` |
-| اپ React | `ui/src/App.tsx`, `ui/src/App.css` |
+| الزام | فایل |
+|--------|------|
+| UI-001…014 Control Center | `ui/src/App.tsx`, `ui/src/App.css` |
 | Whip (فان) | `ui/src/WhipOverlay.tsx`, `ui/src/whipAssets.ts`, `ui/public/whip/` |
+| لانچر دسکتاپ | `dana/gui.py` |
 | Tauri / بیلد | `ui/src-tauri/`, `packaging/*`, `.github/workflows/gui-build.yml` |
 
 ### 3.6 نسخه و انتشار
 
-| حوزه | فایل |
-|------|------|
-| نسخه Python package | `pyproject.toml` |
-| ست نسخه | `packaging/set_version.sh` |
+| موضوع | فایل |
+|--------|------|
+| نسخه Python | `pyproject.toml` |
+| همگام‌سازی نسخه | `packaging/set_version.sh` |
+| UI version | `ui/package.json`, `ui/src-tauri/tauri.conf.json` |
 | سیاست نسخه | `project_description_md/06-versioning-release.md` |
 
 ---
 
-## 4. نگاشت سریع SRS → محل پیاده‌سازی
+## 4. الگوهای اجباری در کد
 
-| ID | خلاصه | محل اولیه |
-|----|--------|-----------|
-| FR-010…016 | MCP runtime و نتایج | `server.py`, `mcp_result_format.py` |
-| FR-018 | session recovery | `server.py`, لایه HTTP MCP |
-| FR-003…008 | first-run Tailscale/Funnel | `installer.py`, `setup.py`, UI `App.tsx` |
-| FR-020…024 | LOCAL/PUBLIC health | `public_host.py`, `setup.py`, UI |
-| FR-030…032 | CLI | `cli.py`, `doctor.py` |
-| FR-040…041 | path policy | `security/path_policy.py`, `tools/agent.py` |
-| FR-051 | SuperMCP قابل حمل | `supermcp.py` |
-| UI-* | Control Center | `ui/src/App.tsx`, `App.css`, `setup_service.py` |
-| NFR-002 | env scrub | `subprocess_env.py` + همه callers |
-| NFR-005 | CI bundle | `packaging/`, `gui-build.yml` |
-
----
-
-## 5. اسموک‌تست‌های حداقلی (برای AI پس از تغییر)
-
-### 5.1 همیشه بعد از تغییر Python
-
-```bash
-python3 -m py_compile dana/**/*.py  # یا فایل‌های تغییر یافته
-# در صورت وجود venv پروژه:
-pytest -q --tb=no  # یا حداقل تست‌های مرتبط
-```
-
-### 5.2 بعد از تغییر subprocess / agent / installer
-
-```bash
-# هیچ subprocess.run/Popen بدون env= نباید بماند (به جز موارد با popen_kwargs/child_env)
-rg -n "subprocess\.(run|Popen)\(" dana -g '*.py'
-# سپس از نظر منطقی env=clean_subprocess_env را تأیید کن
-```
-
-### 5.3 بعد از تغییر MCP result / tools
-
-- ابزار بدون schema → نباید کلاینت را با structured اجباری بشکند.
-- خطا → مسیر failure/`error_result` نه success با متن خطا.
-- لاگ روی stderr/فایل نه stdout آلوده.
-
-### 5.4 بعد از تغییر setup/UI API
-
-- `dana doctor` (اگر محیط اجازه می‌دهد)
-- start → status → stop؛ stop نباید بی‌اجازه دوباره start شود.
-
-### 5.5 بعد از تغییر UI
-
-```bash
-cd ui && npm ci && npm run build
-```
-
----
-
-## 6. چک‌لیست PR برای مدل
-
-- [ ] ID الزام/roadmap مشخص شده
-- [ ] فقط فایل‌های لازم تغییر کرده
-- [ ] guardrailهای مرتبط در `11` رعایت شده
-- [ ] `py_compile` / تست مرتبط OK
-- [ ] اگر رفتار کاربر عوض شد: `09-srs.md` به‌روز شد
-- [ ] اگر milestone جابه‌جا شد: `08-development-roadmap.md` وضعیت آیتم را عوض کرد
-- [ ] کپی `docs/` در صورت تغییر 08/09/10/11 هم‌تراز شد (`scripts/sync_living_docs.sh`)
-- [ ] راز/توکن commit نشده
-- [ ] خلاصه ریسک باقی‌مانده برای انسان نوشته شده
-
----
-
-## 7. الگوهای کد اجباری (خلاصه)
-
-### 7.1 Subprocess
+### 4.1 Subprocess
 
 ```python
-from dana.subprocess_env import clean_subprocess_env  # یا from .subprocess_env import ...
+from dana.subprocess_env import clean_subprocess_env  # یا relative: from .subprocess_env import ...
 
-subprocess.run(cmd, check=False, text=True, capture_output=True, env=clean_subprocess_env())
+subprocess.run(cmd, check=False, capture_output=True, text=True, env=clean_subprocess_env())
 ```
 
-### 7.2 Path
+هر `subprocess.run` / `Popen` جدید **بدون** `env=clean_subprocess_env()` یا env معادل scrubشده ممنوع است.
+
+### 4.2 مسیر فایل
 
 ```python
 from dana.security.path_policy import require_path
-path = require_path(user_path, purpose="read")  # نه Path(x).resolve() خام برای ورودی کاربر
+path = require_path(user_path, purpose="read")  # یا write
 ```
 
-### 7.3 نتیجه ابزار
+دور زدن policy فقط با تصمیم صریح محصولی و به‌روزرسانی SRS.
 
-- ترجیح dict/`error_result` واضح
-- اگر schema ثبت نشده، structured اجباری برنگردان
-- از print روی stdout در مسیر MCP خودداری کن
+### 4.3 نتیجه ابزار MCP
+
+- اگر ابزار `outputSchema` ندارد: متن/dict آزاد؛ کلاینت را با schema جعلی نشکن.
+- اگر schema ثبت شده: دقیقاً همان ساختار را برگردان.
+- خطا: از مسیر failure/`error_result` استفاده کن؛ success با پیام خطا نفرست.
+- از `dana.mcp_result_fix` (`ensure_structured`, `error_result`, `strip_tool_output_schemas`) پیروی کن.
+
+### 4.4 لاگ و stdout
+
+- stdout مخصوص پروتکل MCP است.
+- لاگ → stderr یا فایل (`file_logging`).
+- `print` دیباگ در مسیر سرور ممنوع مگر پشت flag توسعه.
+
+### 4.5 Async
+
+داخل event loop از `asyncio.run` تو در تو استفاده نکن. برای موازی‌سازی: `async def` + `asyncio.gather` (الگوی `runtime_orchestration.py`).
 
 ---
 
-## 8. اسناد مرتبط که AI باید بشناسد
+## 5. چک‌لیست قبل از اتمام تسک (AI PR Checklist)
 
-| سند | نقش |
-|-----|------|
-| `00`–`07` | معماری و دامنه |
-| `08` Roadmap | چه چیزی بعدی است |
-| `09` SRS | چه چیزی الزام است |
-| `10` همین فایل | چطور در کد پیاده شود |
-| `11` Guardrails | چه کارهایی ممنوع/خطرناک است |
-| `README_FA.md` | پیام کاربرنهایی |
+```text
+[ ] شناسه الزام/TECH/Roadmap مشخص است
+[ ] فقط فایل‌های لازم تغییر کرده (diff کوچک‌تر = بهتر)
+[ ] هیچ subprocess بدون clean env اضافه نشده
+[ ] path policy رعایت شده
+[ ] stdout آلوده نشده
+[ ] py_compile / تست مرتبط سبز است
+[ ] اگر رفتار کاربر عوض شد → 09-srs.md به‌روز شد
+[ ] اگر milestone جلو رفت → 08-development-roadmap.md وضعیت آیتم را عوض کرد
+[ ] اگر نگاشت فایل عوض شد → این فایل یا 11 به‌روز شد
+[ ] توکن/secret در diff نیست
+[ ] پیام commit خلاصه و دقیق است
+```
 
 ---
 
-## 9. Changelog سند
+## 6. اسموک‌تست‌های پیشنهادی
+
+### 6.1 از سورس (Linux/macOS)
+
+```bash
+cd /path/to/Dana
+python -m py_compile dana/server.py dana/setup.py dana/installer.py
+pytest -q || true   # اگر محیط dev آماده است
+
+# در صورت نصب محلی:
+dana doctor
+dana status        # یا معادل setup.status
+```
+
+### 6.2 اتصال
+
+```text
+1) dana start / Activate در UI
+2) LOCAL endpoint پاسخ دهد (مثلاً health یا MCP initialize)
+3) dana stop → نباید خودبه‌خود دوباره start شود
+4) در صورت Funnel: PUBLIC جدا از LOCAL گزارش شود
+```
+
+### 6.3 رگرسیون subprocess (AppImage/PyInstaller)
+
+```text
+از باینری بسته‌بندی‌شده یک ابزار که curl/git صدا می‌زند اجرا شود؛
+خطای OPENSSL / unknown url type: https نباید ظاهر شود.
+```
+
+### 6.4 UI
+
+```text
+باز کردن Control Center → Start/Stop → Logs scroll و collapsible
+Quit از tray → پروسه باقی نماند
+باز کردن دوباره → یک instance
+```
+
+---
+
+## 7. تصمیم‌گیری وقتی کد و SRS اختلاف دارند
+
+1. رفتار **امنیتی** → سخت‌گیرانه‌تر را حفظ کن و SRS را اصلاح کن.  
+2. رفتار **کاربرنهایی مستند در README** → با انسان تأیید کن.  
+3. باگ واضح در برابر الزام `Must` → الزام غالب است؛ کد را درست کن.  
+4. فیچر جدید خارج Roadmap → اول آیتم Roadmap اضافه شود، بعد کد.
+
+---
+
+## 8. همگام‌سازی اسناد زنده
+
+پس از ویرایش `08` / `09` / `10` / `11`:
+
+```bash
+bash scripts/sync_living_docs.sh
+```
+
+یا دستی کپی به `docs/` طبق اسکریپت.
+
+---
+
+## 9. Changelog
 
 | نسخه | تاریخ | شرح |
 |------|------|------|
-| 1.0.0 | 2026-11-08 | ایجاد اولیه برای کار عامل‌های AI روی Dana |
+| 1.0.0 | 2026-11-08 | ایجاد راهنمای پیاده‌سازی AI با نگاشت فایل و چک‌لیست |

@@ -1,9 +1,9 @@
-# 11 — AI Guardrails (ضدالگوها و خطوط قرمز)
+# 11 — AI Guardrails (ضد‌الگوها و خطوط قرمز)
 
 > **وضعیت:** زنده  
-> **نسخه سند:** 1.0.0  
+> **نسخه:** 1.0.0  
 > **تاریخ:** 2026-11-08  
-> **استفاده:** قبل از هر PR/patch توسط انسان یا AI خوانده شود
+> **استفاده:** قبل از هر commit توسط انسان یا مدل خوانده شود
 
 ---
 
@@ -12,75 +12,86 @@
 | ممنوع | دلیل |
 |--------|------|
 | Commit کردن `.env` با توکن واقعی | credential leakage |
-| گذاشتن توکن نمونهٔ واقعی در README/issue/screenshot | همان |
-| باز کردن path policy به «همه مسیرها» بدون مستندسازی و UI واضح | ریسک تخریب سیستم کاربر |
-| اجرای دستور مخرب به‌عنوان پیش‌فرض ابزار | ایمنی کاربر |
-| نوشتن secret در لاگ UI یا report عمومی | نشت |
+| گذاشتن توکن واقعی در README، issue، لاگ نمونه، screenshot در repo | credential |
+| غیرفعال کردن کامل auth برای «راحتی تست» روی branch اصلی | exposure عمومی Funnel |
+| hard-code مسیر شخصی (`/mnt/.../Ali/...`) در کد محصول | غیرقابل‌حمل؛ شکست برای همه کاربران |
+| باز کردن path policy بدون به‌روزرسانی SRS و هشدار UI | ریسک سیستم کاربر |
 
 ---
 
 ## 2. خطوط قرمز پروتکل MCP
 
-| ضدالگو | علامت شکست | کار درست |
-|---------|-------------|----------|
-| `print()` / log روی **stdout** در مسیر سرور | قطع session / JSON خراب | فقط stderr یا `file_logging` |
-| ثبت `outputSchema` و برگرداندن متن خام | `outputSchema defined but no structured output` | یا schema را بردار یا structured مطابق قرارداد بده |
-| برگرداندن خطا به‌صورت success | کلاینت validate می‌کند و قطع می‌شود | `error_result` / flag خطا |
-| `asyncio.run` داخل event loop MCP | parallel/batch می‌شکند | `async def` + `await` / `asyncio.gather` |
-| فرض session ابدی بدون recovery | `Session not found` | بازیابی یا پیام اقدام واضح |
+| ممنوع | به‌جای آن |
+|--------|-----------|
+| `print()` / لاگ روی stdout در مسیر سرور | stderr یا `file_logging` |
+| برگرداندن متن خام وقتی `outputSchema` ثبت شده | structured مطابق schema یا حذف schema |
+| برگرداندن خطا به‌صورت success | `error_result` / flag خطا |
+| `asyncio.run()` داخل event loop برای parallel tools | `async def` + `gather` |
+| فرض اینکه همه کلاینت‌ها stateless یکسان‌اند | تست Streamable HTTP و session |
 
 ---
 
-## 3. خطوط قرمز PyInstaller / AppImage / subprocess
+## 3. خطوط قرمز بسته‌بندی و subprocess
 
-| ضدالگو | علامت | کار درست |
-|---------|--------|----------|
-| `subprocess` بدون `env=clean_subprocess_env()` | `OPENSSL_* not found`, `unknown url type: https` | همیشه env تمیز |
-| پاس دادن `os.environ` خام به فرزند | همان | scrub در `subprocess_env.py` |
-| hard-code مسیر `/mnt/...` یا home یک کاربر | شکست روی ماشین دیگر | env var + path قابل حمل |
-
-**قانون:** هر `subprocess.run` / `Popen` جدید بدون `env=` در review رد شود.
+| ممنوع | به‌جای آن |
+|--------|-----------|
+| `subprocess.*` بدون scrub env | `env=clean_subprocess_env()` |
+| اعتماد به `LD_LIBRARY_PATH` ارثی از PyInstaller | پاک‌سازی در `dana/subprocess_env.py` |
+| شکستن prefetch/retry بیلد Windows NSIS برای «ساده کردن CI» | حفظ cache/retry |
+| حذف sidecar ضروری از installer برای کم‌حجم‌سازی بی‌ضابطه | بهینه‌سازی با لیست allow از قابلیت Must |
 
 ---
 
-## 4. خطوط قرمز lifecycle و UI
+## 4. خطوط قرمز UX / lifecycle
 
-| ضدالگو | کار درست |
-|---------|----------|
-| بعد از Stop دستی، auto-start دوباره | فقط Start صریح کاربر |
-| چند instance همزمان از GUI/tray | single-instance؛ focus به پنجره موجود |
-| Quit از tray ولی پروسه زنده | shutdown کامل |
-| دیالوگ دانلود بعد از 100% نصب موفق دوباره | تشخیص installed و رفتن به step بعد |
-| گرفتن sudo در هر قدم بعد از یک‌بار موفقیت | کش session |
-| تغییر Config که runtime را بدون هشدار می‌کشد | apply کنترل‌شده + restart آگاهانه |
+| ممنوع | به‌جای آن |
+|--------|-----------|
+| auto-start بعد از Stop دستی کاربر | فقط Start صریح |
+| چند instance همزمان از tray + شورتکات | single-instance lock |
+| Quit از tray ولی زنده ماندن پروسه MCP | shutdown کامل |
+| حلقه دیالوگ دانلود 100% تکراری | تشخیص installed و رفتن به step بعد |
+| پیام فقط stack trace انگلیسی برای کاربر نهایی | پیام اقدام‌پذیر + جزئیات در collapsible |
 
 ---
 
 ## 5. خطوط قرمز محصول و scope
 
-| ضدالگو | کار درست |
-|---------|----------|
-| اضافه کردن وابستگی سنگین برای فیچر حاشیه‌ای | اختیاری / lazy / optional extra |
-| فیچر فان (مثل Whip) را به مسیر بحرانی MCP گره زدن | overlay جدا، قابل خاموش |
-| افزایش major برای باگ‌فیکس | SemVer درست (`06-versioning-release.md`) |
-| «فعلاً لاگ را حذف کنیم تا سبز شود» | ریشه را درست کن |
-| تغییر رفتار عمومی بدون SRS | `09-srs.md` را هم‌زمان به‌روز کن |
+| ممنوع | دلیل |
+|--------|------|
+| افزودن انبوه repo خارجی بدون معیار پذیرش | پیچیدگی و رگرسیون |
+| فیچر فان (مثل Whip) به‌عنوان blocker انتشار | انحراف از پایداری |
+| major version برای فقط تغییر UI | SemVer را بی‌معنی می‌کند |
+| «فعلاً لاگ را خاموش کنیم تا خطا نیاید» | مخفی کردن باگ |
 
 ---
 
-## 6. چک ۳۰ ثانیه‌ای قبل از commit
+## 6. رگرسیون‌های تاریخی (دوباره ایجاد نکن)
 
-1. آیا subprocess جدید `clean_subprocess_env` دارد؟
-2. آیا stdout در مسیر MCP آلوده می‌شود؟
-3. آیا schema/result با قرارداد ابزار می‌خواند؟
-4. آیا Stop/Start و single-instance خراب نشده؟
-5. آیا توکن/مسیر شخصی در diff هست؟
-6. آیا docs زنده در صورت نیاز لمس شده؟
+این‌ها قبلاً در پروژه دیده شده‌اند:
+
+1. **OpenSSL / HTTPS از AppImage** ← نشت `LD_LIBRARY_PATH`  
+2. **`Session not found` / schema validation** ← outputSchema و session HTTP  
+3. **`charmap` روی Windows** ← encode کاراکترهای UI در console  
+4. **PUBLIC قطع با LOCAL سبز** ← نبود watchdog جدا  
+5. **placeholder اشتباهاً در فایل اصلی** ← همیشه محتوای واقعی را verify کن  
+6. **مسیر SuperMCP شخصی** ← فقط env/`DANA_SUPERMCP_HOME` و مسیر قابل‌حمل  
 
 ---
 
-## 7. Changelog
+## 7. حداقل بررسی بعد از تغییر حساس
+
+| نوع تغییر | بررسی |
+|-----------|--------|
+| subprocess / installer / agent | grep برای `subprocess.` بدون `env=` |
+| MCP tool result | Inspector یا کلاینت واقعی؛ بدون validation error |
+| setup / funnel | first-run و second-run (نباید re-download اجباری) |
+| UI lifecycle | stop، quit tray، single window |
+| docs | SRS/Roadmap/این guardrail اگر رفتار عوض شد |
+
+---
+
+## 8. Changelog
 
 | نسخه | تاریخ | شرح |
 |------|------|------|
-| 1.0.0 | 2026-11-08 | جمع‌بندی ضدالگوهای تکراری تاریخچهٔ پروژه |
+| 1.0.0 | 2026-11-08 | ثبت خطوط قرمز و رگرسیون‌های تاریخی |
