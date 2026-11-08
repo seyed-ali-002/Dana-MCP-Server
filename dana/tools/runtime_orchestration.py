@@ -90,35 +90,32 @@ def register_runtime_orchestration_tools(mcp: FastMCP) -> None:
         return workspace_context(path)
 
     @mcp.tool()
-    def dana_parallel_call(calls: list[dict[str, Any]], fail_fast: bool = False) -> dict[str, Any]:
+    async def dana_parallel_call(calls: list[dict[str, Any]], fail_fast: bool = False) -> dict[str, Any]:
         """Execute independent Dana tool calls concurrently. Each call has name and optional arguments."""
         if not calls:
             return {"count": 0, "results": []}
         if len(calls) > settings.normalized_workers() * 4:
             raise ValueError(f"At most {settings.normalized_workers() * 4} parallel calls are allowed per batch")
 
-        async def execute() -> dict[str, Any]:
-            async def one(index: int, call: dict[str, Any]) -> dict[str, Any]:
-                name = str(call.get("name", ""))
-                args = call.get("arguments", {})
-                if not name or not isinstance(args, dict):
-                    return {"index": index, "ok": False, "error": "Each call needs a name and object arguments"}
-                try:
-                    result = await mcp._tool_manager.call_tool(name, args, convert_result=False)
-                    return {"index": index, "name": name, "ok": True, "result": result}
-                except Exception as exc:
-                    return {"index": index, "name": name, "ok": False, "error": compact_error(exc)}
+        async def one(index: int, call: dict[str, Any]) -> dict[str, Any]:
+            name = str(call.get("name", ""))
+            args = call.get("arguments", {})
+            if not name or not isinstance(args, dict):
+                return {"index": index, "ok": False, "error": "Each call needs a name and object arguments"}
+            try:
+                result = await mcp._tool_manager.call_tool(name, args, convert_result=True)
+                return {"index": index, "name": name, "ok": True, "result": result}
+            except Exception as exc:
+                return {"index": index, "name": name, "ok": False, "error": compact_error(exc)}
 
-            futures = [asyncio.create_task(one(i, call)) for i, call in enumerate(calls)]
-            results = await asyncio.gather(*futures)
-            if fail_fast and any(not item["ok"] for item in results):
-                return {"count": len(results), "failed": True, "results": results}
-            return {"count": len(results), "failed": any(not item["ok"] for item in results), "results": results}
-
-        return asyncio.run(execute()) if not _inside_event_loop() else {"error": "Use the async MCP execution path; nested synchronous parallel calls are not supported."}
+        results = list(await asyncio.gather(*(one(i, call) for i, call in enumerate(calls))))
+        failed = any(not item["ok"] for item in results)
+        if fail_fast and failed:
+            return {"count": len(results), "failed": True, "results": results}
+        return {"count": len(results), "failed": failed, "results": results}
 
     @mcp.tool()
-    def dana_plan_execute(plan: dict[str, Any], fail_fast: bool = False) -> dict[str, Any]:
+    async def dana_plan_execute(plan: dict[str, Any], fail_fast: bool = False) -> dict[str, Any]:
         """Execute a dependency-aware task DAG. Independent tasks run concurrently; dependent tasks wait for prerequisites."""
         tasks = parse_plan(plan)
 
@@ -129,15 +126,14 @@ def register_runtime_orchestration_tools(mcp: FastMCP) -> None:
                 tool_name = task.payload.get("tool") or task.payload.get("name")
                 arguments = task.payload.get("arguments", task.payload.get("args", {}))
                 if not tool_name:
-                    # A planning-only node is valid and can be used as a checkpoint.
                     return {"checkpoint": task.name}
                 if not isinstance(arguments, dict):
                     raise ValueError(f"Task '{task.id}' arguments must be an object")
-                return await mcp._tool_manager.call_tool(str(tool_name), arguments, convert_result=False)
+                return await mcp._tool_manager.call_tool(str(tool_name), arguments, convert_result=True)
 
             return await runtime.execute(tasks, runner, fail_fast=fail_fast)
 
-        return asyncio.run(execute()) if not _inside_event_loop() else {"error": "Nested synchronous plan execution is not supported; use individual task calls."}
+        return await execute()
 
     @mcp.tool()
     def dana_runtime_health() -> dict[str, Any]:
@@ -169,9 +165,9 @@ def register_runtime_orchestration_tools(mcp: FastMCP) -> None:
         return dana_workspace_context(path)
 
     @mcp.tool(name="dana_parallel_execute")
-    def dana_parallel_execute_legacy(calls: list[dict[str, Any]], fail_fast: bool = False) -> dict[str, Any]:
+    async def dana_parallel_execute_legacy(calls: list[dict[str, Any]], fail_fast: bool = False) -> dict[str, Any]:
         """Backward-compatible alias for dana_parallel_call."""
-        return dana_parallel_call(calls, fail_fast=fail_fast)
+        return await dana_parallel_call(calls, fail_fast=fail_fast)
 
     @mcp.tool(name="dana_runtime_healthcheck")
     def dana_runtime_healthcheck_legacy() -> dict[str, Any]:
