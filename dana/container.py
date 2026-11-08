@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from .subprocess_env import clean_subprocess_env
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +28,7 @@ def docker_command() -> list[str]:
         capture_output=True,
         check=False,
         timeout=15,
+        env=clean_subprocess_env(),
     )
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
@@ -54,6 +56,7 @@ def compose(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         cwd=ROOT,
         text=True,
         check=check,
+        env=clean_subprocess_env(),
     )
 
 
@@ -66,7 +69,6 @@ def is_available() -> bool:
 
 
 def install() -> None:
-    # Pull/build is deliberately separated from start so failures are explicit.
     compose("build", "--pull")
 
 
