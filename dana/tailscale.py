@@ -7,6 +7,7 @@ import threading
 import time
 
 from .config import settings
+from .subprocess_env import clean_subprocess_env
 
 
 class DanaFunnelManager:
@@ -57,7 +58,7 @@ class DanaFunnelManager:
         last_err = ""
         for cmd in attempts:
             try:
-                result = subprocess.run(cmd, text=True, capture_output=True, check=False, timeout=15)
+                result = subprocess.run(cmd, text=True, capture_output=True, check=False, timeout=15, env=clean_subprocess_env())
             except (OSError, subprocess.TimeoutExpired) as exc:
                 last_err = str(exc)
                 continue
@@ -76,6 +77,7 @@ class DanaFunnelManager:
                 capture_output=True,
                 check=False,
                 timeout=10,
+                env=clean_subprocess_env(),
             )
         except (OSError, subprocess.TimeoutExpired):
             return False
@@ -99,6 +101,7 @@ class DanaFunnelManager:
                 capture_output=True,
                 check=False,
                 timeout=10,
+                env=clean_subprocess_env(),
             )
         except (OSError, subprocess.TimeoutExpired):
             return False
@@ -154,4 +157,3 @@ class DanaFunnelManager:
             if self._stop.wait(interval):
                 break
             self.ensure(retries=2 if self._failures else 1)
-
