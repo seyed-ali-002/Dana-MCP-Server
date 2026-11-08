@@ -7,7 +7,7 @@ without native MCP support.
 Permission / path rules learned from SuperMCP deployments:
 - Never write under system or read-only mount points; use ~/.config/dana/supermcp.
 - Unset LD_LIBRARY_PATH for the Node child (AppImage / bundled lib conflicts).
-- Prefer npx; fall back to a local SuperMCP install if present.
+- Prefer npx; fall back to a local SuperMCP install if present via DANA_SUPERMCP_HOME.
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import settings
+from .subprocess_env import clean_subprocess_env
 
 _PROXY_PKG = "@srbhptl39/mcp-superassistant-proxy@0.1.8"
 _DEFAULT_PORT = 3006
@@ -77,7 +78,9 @@ def _bundled_proxy_entry() -> Path | None:
     env = os.environ.get("DANA_SUPERMCP_HOME") or os.environ.get("SUPERMCP_HOME")
     if env:
         candidates.append(Path(env))
-    candidates.append(Path("/mnt/1CEC9AE6EC9ABA0A/Ali/MCP_Server/SuperMCP"))
+    for extra in (os.environ.get("DANA_SUPERMCP_EXTRA") or "").split(os.pathsep):
+        if extra.strip():
+            candidates.append(Path(extra.strip()))
     try:
         repo = Path(__file__).resolve().parents[1]
         candidates.append(repo.parent / "SuperMCP")
@@ -120,13 +123,21 @@ def write_config(*, tool_manifest: Path | None = None) -> Path:
     cached = _data_dir() / "dana-tools.json"
     if "toolManifest" not in server and cached.is_file():
         server["toolManifest"] = str(cached)
-    hist = Path("/mnt/1CEC9AE6EC9ABA0A/Ali/MCP_Server/SuperMCP/dana-tools.json")
-    if "toolManifest" not in server and hist.is_file():
+    for hist in (
+        Path(os.environ.get("DANA_SUPERMCP_HOME") or "") / "dana-tools.json",
+        Path(os.environ.get("SUPERMCP_HOME") or "") / "dana-tools.json",
+        Path(__file__).resolve().parents[1] / "SuperMCP" / "dana-tools.json",
+        Path(__file__).resolve().parents[1].parent / "SuperMCP" / "dana-tools.json",
+    ):
+        if "toolManifest" in server:
+            break
         try:
-            cached.write_text(hist.read_text(encoding="utf-8"), encoding="utf-8")
-            server["toolManifest"] = str(cached)
+            if hist.is_file():
+                cached.write_text(hist.read_text(encoding="utf-8"), encoding="utf-8")
+                server["toolManifest"] = str(cached)
+                break
         except OSError:
-            server["toolManifest"] = str(hist)
+            continue
     payload = {"mcpServers": {"Dana": server}}
     path = _config_file()
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -165,13 +176,8 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _child_env() -> dict[str, str]:
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if k not in {"LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONHOME", "PYTHONPATH"}
-    }
-    env.pop("LD_LIBRARY_PATH", None)
-    return env
+    """Environment for Node/npx SuperMCP proxy without PyInstaller library leakage."""
+    return clean_subprocess_env(extra={"DANA_SUPERMCP": "1"})
 
 
 def _build_command(config_path: Path, port: int) -> list[str]:
