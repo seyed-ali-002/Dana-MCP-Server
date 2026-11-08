@@ -24,7 +24,23 @@ bash ./packaging/build_sidecar.sh
 cd ui
 npm ci
 npm run build
-npm run tauri build
+
+tauri_ok=0
+for attempt in 1 2 3; do
+  echo "tauri build attempt ${attempt}/3…"
+  if npm run tauri build; then
+    tauri_ok=1
+    break
+  fi
+  if [[ -n "$(find src-tauri/target/release/bundle/dmg -name '*.dmg' 2>/dev/null | head -1)" ]]; then
+    echo "Warning: tauri reported failure but .dmg exists — continuing."
+    tauri_ok=1
+    break
+  fi
+  echo "tauri build failed; waiting 25s before retry…"
+  sleep 25
+done
+[[ "$tauri_ok" -eq 1 ]] || { echo "tauri build failed after retries." >&2; exit 1; }
 
 # Notarize DMG when Apple ID secrets are configured.
 if [[ -n "${APPLE_ID:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
