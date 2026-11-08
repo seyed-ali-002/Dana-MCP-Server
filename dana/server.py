@@ -306,8 +306,19 @@ async def _logged_call_tool(name: str, arguments: dict[str, Any], context: Any =
         report_name = name
         if name == "dana_call_tool" and isinstance(arguments, dict) and arguments.get("name"):
             report_name = str(arguments["name"])
-        if name not in _ORCHESTRATION_TOOLS:
-            detail = {"args": str(arguments)[:600], "result": (str(result)[:1200] if success else "")}
+        should_log = (name not in _ORCHESTRATION_TOOLS) or (name == "dana_call_tool" and report_name != "dana_call_tool")
+        if should_log:
+            logged_args = arguments.get("arguments", arguments) if name == "dana_call_tool" and isinstance(arguments, dict) else arguments
+            try:
+                args_str = json.dumps(_json_safe(logged_args), ensure_ascii=False, indent=2)
+            except Exception:
+                args_str = str(logged_args)
+            res_text = _token_text(result)
+            detail = {
+                "args": args_str[:2000],
+                "result": (res_text[:2000] if success else ""),
+                "error": (res_text[:2000] if not success else ""),
+            }
             try:
                 threading.Thread(
                     target=update_report,

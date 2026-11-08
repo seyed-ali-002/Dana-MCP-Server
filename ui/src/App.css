@@ -1176,14 +1176,11 @@ input[type="checkbox"] {
 .logs-stack {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   min-height: 0;
-  max-height: calc(100vh - 150px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 6px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  width: 100%;
+  overflow: visible;
+  padding-bottom: 56px;
 }
 .logs-stack::-webkit-scrollbar {
   width: 8px;
@@ -2235,4 +2232,116 @@ button.linkish {
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 4px;
+}
+
+
+/* --- Responsive Resize, Collapsible Logs & OpenWhip Canvas Fixes --------- */
+.shell {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.content,
+.content-aligned {
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px clamp(16px, 2.5vw, 32px) 84px;
+}
+
+.log-list,
+.tool-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  min-height: 120px;
+  max-height: clamp(240px, 42vh, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+.log-list > .log-collapse,
+.tool-log-list > .log-collapse {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: unset;
+  height: auto;
+  overflow: visible;
+  margin: 0;
+}
+
+.log-collapse summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 12px;
+  width: 100%;
+  border-radius: 9px;
+}
+
+.log-collapse[open] > summary {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.log-collapse > .log-detail-body {
+  display: none;
+}
+
+.log-collapse[open] > .log-detail-body {
+  display: block;
+  width: 100%;
+  padding-bottom: 6px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  border-bottom-left-radius: 9px;
+  border-bottom-right-radius: 9px;
+  overflow-x: auto;
+}
+
+.log-detail-body .log-full {
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 4px 12px 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* OpenWhip Canvas Overlay */
+.whip-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 92;
+  display: block;
+}
+
+html.whip-cursor-active,
+html.whip-cursor-active body,
+html.whip-cursor-active * {
+  cursor: crosshair !important;
+}
+
+.whip-banner {
+  max-width: calc(100vw - 140px);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

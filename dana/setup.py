@@ -342,7 +342,10 @@ def runtime_activity(limit: int = 80) -> dict[str, object]:
                 "output": int(event.get("output") or 0),
                 "success": bool(event.get("success")),
                 "source": str(event.get("source") or "estimate"),
-                "line": "",
+                "args": str(event.get("args") or ""),
+                "result": str(event.get("result") or ""),
+                "error": str(event.get("error") or ""),
+                "line": str(event.get("line") or ""),
             })
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         events = []
@@ -1202,11 +1205,16 @@ def token_usage() -> dict[str, object]:
             "time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(float(event.get("time") or 0))),
             "tool": str(event.get("tool", "")),
             "worker": str(event.get("worker", "")),
+            "number": int(event.get("number") or 0),
             "input": int(event.get("input") or 0),
             "output": int(event.get("output") or 0),
             "duration_ms": float(event.get("duration") or 0),
             "success": bool(event.get("success")),
             "source": str(event.get("source", "estimate")),
+            "args": str(event.get("args") or ""),
+            "result": str(event.get("result") or ""),
+            "error": str(event.get("error") or ""),
+            "line": str(event.get("line") or ""),
         })
     return {
         "available": True,

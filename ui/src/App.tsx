@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import logo from "../src-tauri/icons/icon.png";
+import WhipOverlay from "./WhipOverlay";
+import { playOpenWhipCrack } from "./whipAssets";
 import "./App.css";
 
 type Status = {
@@ -78,11 +80,16 @@ type UsageState = {
     time: string;
     tool: string;
     worker: string;
+    number?: number;
     input: number;
     output: number;
     duration_ms: number;
     success: boolean;
     source: string;
+    args?: string;
+    result?: string;
+    error?: string;
+    line?: string;
   }[];
   report_json?: string;
   report_html?: string;
@@ -106,6 +113,9 @@ type ToolEvent = {
   output: number;
   success: boolean;
   source: string;
+  args?: string;
+  result?: string;
+  error?: string;
   line?: string;
 };
 
@@ -380,6 +390,9 @@ function normalizeToolEvent(raw: any, index: number): ToolEvent {
     output: Number(raw.output || 0) || 0,
     success,
     source: String(raw.source || ""),
+    args: raw.args ? String(raw.args) : "",
+    result: raw.result ? String(raw.result) : "",
+    error: raw.error ? String(raw.error) : "",
     line: String(raw.line || ""),
   };
 }
@@ -425,7 +438,6 @@ function App() {
   const [skillPath, setSkillPath] = useState("");
   const [whipLevel, setWhipLevel] = useState(0);
   const [whipArmed, setWhipArmed] = useState(false);
-  const [whipTrail, setWhipTrail] = useState<{ x: number; y: number; id: number }[]>([]);
   const [whipMsg, setWhipMsg] = useState("");
   const [toastMsg, setToastMsg] = useState<{ title: string; body: string } | null>(null);
   const [healInterval, setHealInterval] = useState<number | null>(null);
@@ -2453,7 +2465,25 @@ function App() {
                             <div><span className="eyebrow">Source</span><code>{ev.source || "—"}</code></div>
                             <div><span className="eyebrow">Time</span><code>{ev.time || "—"}</code></div>
                           </div>
-                          <div className="log-detail-label">Full detail</div>
+                          {ev.args ? (
+                            <>
+                              <div className="log-detail-label">Arguments (Input)</div>
+                              <pre className="log-full">{ev.args}</pre>
+                            </>
+                          ) : null}
+                          {ev.result ? (
+                            <>
+                              <div className="log-detail-label">Result (Output)</div>
+                              <pre className="log-full">{ev.result}</pre>
+                            </>
+                          ) : null}
+                          {ev.error ? (
+                            <>
+                              <div className="log-detail-label">Error</div>
+                              <pre className="log-full">{ev.error}</pre>
+                            </>
+                          ) : null}
+                          <div className="log-detail-label">Full metadata</div>
                           <pre className="log-full">{detailLines.join("\n")}</pre>
                         </div>
                       </details>
@@ -2654,38 +2684,31 @@ function App() {
       <button
         type="button"
         className={"whip-fab" + (whipArmed ? " armed" : "") + (whipLevel > 0 ? " boosted" : "")}
-        title={whipArmed ? "Whip armed — drag to crack" : "Arm Dana Whip (fun)"}
+        title={whipArmed ? "Whip active — move mouse fast to crack (click to disarm)" : "Activate OpenWhip cursor & sound"}
         aria-label="Dana Whip"
         onClick={() => {
-          setWhipArmed((v) => !v);
-          setWhipMsg(whipArmed ? "" : "Whip armed — drag across the window");
-          if (!whipArmed) playSoftBeep();
+          const nextArmed = !whipArmed;
+          setWhipArmed(nextArmed);
+          setWhipMsg(nextArmed ? "OpenWhip active — swing mouse fast to crack!" : "");
+          if (nextArmed) playOpenWhipCrack(playWhipCrack);
         }}
       >
         <svg className="whip-icon" width="28" height="28" viewBox="0 0 64 64" aria-hidden="true">
           <path
-            d="M14 50c8-6 12-14 14-22 2-8 6-14 14-18"
+            d="M12 52 L24 40"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="5.5"
+            strokeLinecap="round"
+          />
+          <path
+            d="M24 40 C34 28, 22 14, 38 12 C50 10, 54 24, 44 32 C36 38, 46 48, 56 44"
             fill="none"
             stroke="currentColor"
             strokeWidth="3.2"
             strokeLinecap="round"
           />
-          <path
-            d="M42 10c6 2 10 6 12 12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3.2"
-            strokeLinecap="round"
-          />
-          <circle cx="14" cy="50" r="4" fill="currentColor" />
-          <path
-            d="M48 22c4 1 8 4 10 8"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            opacity="0.7"
-          />
+          <circle cx="11" cy="53" r="3.5" fill="currentColor" />
         </svg>
         {whipLevel > 0 ? <span className="whip-level-badge">{whipLevel}</span> : null}
       </button>
@@ -2720,19 +2743,13 @@ function App() {
           {healInterval != null ? ` · every ${healInterval}s` : ""}
         </div>
       ) : null}
-      <div
-        className={"whip-overlay" + (whipArmed ? " active" : "")}
-        onPointerMove={(e) => {
-          if (!whipArmed) return;
-          const id = Date.now();
-          setWhipTrail((prev) => [...prev.slice(-18), { x: e.clientX, y: e.clientY, id }]);
-        }}
-        onPointerUp={async () => {
-          if (!whipArmed || !port) return;
+      <WhipOverlay
+        armed={whipArmed}
+        onCrack={async () => {
           const next = Math.min(5, whipLevel + 1);
           setWhipLevel(next);
-          playWhipCrack();
-        setWhipMsg(`Whipped! Heal interval boosted (level ${next})`);
+          setWhipMsg(`FASTER! Whipped — heal interval boosted (level ${next})`);
+          if (!port) return;
           try {
             const wr = await fetch(API(port, "/api/setup/whip"), {
               method: "POST",
@@ -2749,13 +2766,8 @@ function App() {
           } catch {
             /* ignore */
           }
-          setTimeout(() => setWhipTrail([]), 400);
         }}
-      >
-        {whipTrail.map((p) => (
-          <span key={p.id} className="whip-trail" style={{ left: p.x, top: p.y }} />
-        ))}
-      </div>
+      />
     </div>
   );
 }
