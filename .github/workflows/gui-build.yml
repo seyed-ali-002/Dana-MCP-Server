@@ -100,6 +100,21 @@ jobs:
         shell: bash
         run: bash ./packaging/build_linux.sh
 
+      - name: Cache Tauri Windows toolchains (WiX / NSIS)
+        if: startsWith(matrix.platform, 'windows')
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/AppData/Local/tauri
+          key: tauri-win-tools-wix314-nsis313-v1
+          restore-keys: |
+            tauri-win-tools-
+
+      - name: Prefetch Tauri Windows tools (WiX + NSIS)
+        if: startsWith(matrix.platform, 'windows')
+        shell: pwsh
+        run: ./packaging/prefetch_tauri_tools.ps1
+
       - name: Build Dana Desktop (Windows)
         if: startsWith(matrix.platform, 'windows')
         shell: pwsh
