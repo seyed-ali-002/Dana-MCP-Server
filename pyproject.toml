@@ -4,12 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dana-mcp-server"
-version = "1.6.16"
+version = "1.6.17"
 description = "Cross-platform Python MCP server exposed through Tailscale Funnel."
 readme = "README.md"
 requires-python = ">=3.11"
-# Runtime core for the desktop installer / MCP server.
-# Heavy optional stacks live under [project.optional-dependencies].
 dependencies = [
   "fastapi>=0.115,<1",
   "uvicorn[standard]>=0.30,<1",
@@ -23,7 +21,6 @@ dependencies = [
   "pypdf>=5,<7",
   "rich>=13,<15",
   "tiktoken>=0.9,<1",
-  # Desktop control tools (local_agent) — core Dana value, keep in installer
   "pyautogui>=0.9.54,<1",
 ]
 
