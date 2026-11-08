@@ -2345,3 +2345,212 @@ html.whip-cursor-active * {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* === Endpoint display cards (visual only; URLs unchanged) ================== */
+.endpoint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+.endpoint-card {
+  border: 1px solid var(--border, #2a2f3a);
+  border-radius: 14px;
+  padding: 14px 14px 12px;
+  background: color-mix(in srgb, var(--card, #12151c) 92%, transparent);
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 18%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.endpoint-card.compact {
+  margin-top: 10px;
+  box-shadow: none;
+}
+.endpoint-card.is-up {
+  border-color: color-mix(in srgb, #22c55e 45%, var(--border, #2a2f3a));
+}
+.endpoint-card.is-down {
+  border-color: color-mix(in srgb, #f59e0b 35%, var(--border, #2a2f3a));
+}
+.endpoint-card-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.endpoint-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.endpoint-chip {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent, #3b82f6) 22%, transparent);
+  color: var(--text, #e8eaef);
+}
+.endpoint-live {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.endpoint-live.up {
+  background: color-mix(in srgb, #22c55e 25%, transparent);
+  color: #86efac;
+}
+.endpoint-live.down {
+  background: color-mix(in srgb, #f59e0b 22%, transparent);
+  color: #fcd34d;
+}
+.endpoint-card-head strong {
+  font-size: 15px;
+  font-weight: 650;
+}
+.endpoint-parts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.endpoint-part {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg, #0b0d12) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border, #2a2f3a) 80%, transparent);
+}
+.endpoint-part.wide {
+  grid-column: 1 / -1;
+}
+.endpoint-part span {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.65;
+  margin-bottom: 4px;
+}
+.endpoint-part b {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  word-break: break-all;
+}
+.endpoint-part b.https { color: #86efac; }
+.endpoint-part b.http { color: #93c5fd; }
+.endpoint-part b.mono-path,
+.endpoint-part b.token-hint {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+.endpoint-full {
+  min-width: 0;
+}
+.endpoint-full code {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #000 35%, transparent);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  max-height: 4.6em;
+  overflow: auto;
+}
+.endpoint-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.endpoint-empty {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.7;
+}
+.endpoint-test {
+  font-size: 12px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border, #2a2f3a);
+}
+.endpoint-test.ok { color: #86efac; }
+.endpoint-test.fail { color: #fca5a5; }
+
+.connection-test-panel {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border, #2a2f3a);
+}
+.connection-test-panel.success {
+  border-color: color-mix(in srgb, #22c55e 40%, var(--border));
+  background: color-mix(in srgb, #22c55e 8%, transparent);
+}
+.connection-test-panel.error {
+  border-color: color-mix(in srgb, #ef4444 40%, var(--border));
+  background: color-mix(in srgb, #ef4444 8%, transparent);
+}
+.connection-test-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  opacity: 0.8;
+}
+.connection-test-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+.connection-test-item {
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border, #2a2f3a);
+  background: color-mix(in srgb, var(--card, #12151c) 80%, transparent);
+}
+.connection-test-item.ok { border-color: color-mix(in srgb, #22c55e 35%, var(--border)); }
+.connection-test-item.fail { border-color: color-mix(in srgb, #ef4444 35%, var(--border)); }
+.connection-test-item-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.connection-test-item-head span {
+  font-weight: 700;
+}
+.connection-test-item.ok .connection-test-item-head span { color: #86efac; }
+.connection-test-item.fail .connection-test-item-head span { color: #fca5a5; }
+.connection-test-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  opacity: 0.75;
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+.connection-test-detail {
+  font-size: 12px;
+}
+
+[data-theme="light"] .endpoint-card {
+  background: color-mix(in srgb, #fff 88%, #e8eef8);
+  box-shadow: 0 6px 18px color-mix(in srgb, #1e3a5f 8%, transparent);
+}
+[data-theme="light"] .endpoint-part {
+  background: color-mix(in srgb, #f3f6fb 90%, #fff);
+}
+[data-theme="light"] .endpoint-full code {
+  background: color-mix(in srgb, #e8eef8 80%, #fff);
+}
+[data-theme="light"] .endpoint-live.up { color: #166534; }
+[data-theme="light"] .endpoint-live.down { color: #92400e; }
+

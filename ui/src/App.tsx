@@ -166,6 +166,53 @@ async function resolveSetupPort(): Promise<number> {
   return invoke<number>("start_setup_service");
 }
 
+
+/** Display-only URL breakdown for endpoint cards (does not alter connection strings). */
+function parseEndpoint(url: string | undefined | null): {
+  raw: string;
+  scheme: string;
+  host: string;
+  port: string;
+  path: string;
+  tokenHint: string;
+  isHttps: boolean;
+  isLocal: boolean;
+} | null {
+  if (!url || !url.trim()) return null;
+  try {
+    const u = new URL(url);
+    const segments = u.pathname.split("/").filter(Boolean);
+    // token is usually first path segment before /mcp
+    let tokenHint = "";
+    const mcpIdx = segments.findIndex((s) => s === "mcp" || s.endsWith("mcp"));
+    if (mcpIdx > 0) {
+      const tok = segments[0];
+      tokenHint = tok.length <= 8 ? tok : `${tok.slice(0, 4)}…${tok.slice(-4)}`;
+    }
+    return {
+      raw: url,
+      scheme: u.protocol.replace(":", ""),
+      host: u.hostname,
+      port: u.port || (u.protocol === "https:" ? "443" : u.protocol === "http:" ? "80" : ""),
+      path: u.pathname || "/",
+      tokenHint,
+      isHttps: u.protocol === "https:",
+      isLocal: u.hostname === "127.0.0.1" || u.hostname === "localhost" || u.hostname === "::1",
+    };
+  } catch {
+    return {
+      raw: url,
+      scheme: "",
+      host: "",
+      port: "",
+      path: url,
+      tokenHint: "",
+      isHttps: url.startsWith("https"),
+      isLocal: url.includes("127.0.0.1") || url.includes("localhost"),
+    };
+  }
+}
+
 async function openExternal(url: string, setupPort?: number | null) {
   if (!url) return;
   try {
@@ -1603,10 +1650,35 @@ function App() {
             </b>
           </div>
           <p className="logs-description">
-            Local SSE proxy for Gemini / Perplexity / web AI without native MCP. Extension connects to{" "}
-            <code>{status?.supermcp?.sse_url || "http://127.0.0.1:3006/sse"}</code>
+            Local SSE proxy for Gemini / Perplexity / web AI without native MCP.
           </p>
-          <div className="meta">{status?.supermcp?.node_available === false ? "Node.js required" : (status?.supermcp?.upstream || "—")}</div>
+          {(() => {
+            const sse = status?.supermcp?.sse_url || "http://127.0.0.1:3006/sse";
+            const ep = parseEndpoint(sse);
+            return (
+              <div className={`endpoint-card compact ${status?.supermcp?.running ? "is-up" : "is-down"}`}>
+                <header className="endpoint-card-head">
+                  <div className="endpoint-title-row">
+                    <span className="endpoint-chip">SSE</span>
+                    <span className={`endpoint-live ${status?.supermcp?.running ? "up" : "down"}`}>
+                      {status?.supermcp?.running ? "Proxy on" : "Proxy off"}
+                    </span>
+                  </div>
+                  <strong>Super Assistant bridge</strong>
+                </header>
+                {ep && (
+                  <div className="endpoint-parts">
+                    <div className="endpoint-part"><span>Scheme</span><b>{ep.scheme}</b></div>
+                    <div className="endpoint-part"><span>Host</span><b>{ep.host}</b></div>
+                    <div className="endpoint-part"><span>Port</span><b>{ep.port}</b></div>
+                    <div className="endpoint-part wide"><span>Path</span><b className="mono-path">{ep.path}</b></div>
+                  </div>
+                )}
+                <div className="endpoint-full"><code>{sse}</code></div>
+                <div className="meta">{status?.supermcp?.node_available === false ? "Node.js required" : (status?.supermcp?.upstream || "—")}</div>
+              </div>
+            );
+          })()}
           <div className="card-actions">
             <button className="primary" disabled={busy || !!status?.supermcp?.running} onClick={() => run("/api/setup/supermcp/start")}>Start proxy</button>
             <button className="secondary" disabled={busy || !status?.supermcp?.running} onClick={() => run("/api/setup/supermcp/stop")}>Stop proxy</button>
@@ -1626,39 +1698,80 @@ function App() {
                   {testing ? "Testing…" : "Test connection"}
                 </button>
               </div>
-              <div className="connection-list">
+              <div className="endpoint-grid">
                 {(
                   [
-                    ["LOCAL", status?.local_mcp_url],
-                    ["FUNNEL", status?.public_mcp_url],
-                  ] as const
-                ).map(([label, url]) => (
-                  <div className="connection-row" key={label}>
-                    <div>
-                      <span className="eyebrow">{label}</span>
-                      <strong>
-                        {label === "LOCAL" ? "Local MCP endpoint" : "Public MCP endpoint"}
-                      </strong>
-                      <code>{url || "Unavailable"}</code>
-                    </div>
-                    <button className="secondary" disabled={!url} onClick={() => copy(url || "")}>
-                      {copied === url ? "Copied" : "Copy"}
-                    </button>
-                  </div>
-                ))}
+                    ["LOCAL", "Local MCP", status?.local_mcp_url, status?.dana_running] as const,
+                    ["FUNNEL", "Public Funnel", status?.public_mcp_url, !!(status?.funnel_active && status?.public_mcp_url)] as const,
+                  ]
+                ).map(([label, title, url, live]) => {
+                  const ep = parseEndpoint(url);
+                  const test = connectionTest?.checks?.find((c) => c.name === label.toLowerCase() || c.name === (label === "FUNNEL" ? "public" : "local"));
+                  const ok = test ? test.ok : live;
+                  return (
+                    <article className={`endpoint-card ${ok ? "is-up" : "is-down"}`} key={label}>
+                      <header className="endpoint-card-head">
+                        <div className="endpoint-title-row">
+                          <span className="endpoint-chip">{label}</span>
+                          <span className={`endpoint-live ${ok ? "up" : "down"}`}>{ok ? "Reachable" : (url ? "Pending" : "Unavailable")}</span>
+                        </div>
+                        <strong>{title}</strong>
+                      </header>
+                      {ep ? (
+                        <div className="endpoint-parts">
+                          <div className="endpoint-part"><span>Scheme</span><b className={ep.isHttps ? "https" : "http"}>{ep.scheme || "—"}</b></div>
+                          <div className="endpoint-part"><span>Host</span><b>{ep.host || "—"}</b></div>
+                          <div className="endpoint-part"><span>Port</span><b>{ep.port || "—"}</b></div>
+                          <div className="endpoint-part wide"><span>Path</span><b className="mono-path">{ep.path || "/"}</b></div>
+                          {ep.tokenHint ? (
+                            <div className="endpoint-part wide"><span>Token</span><b className="token-hint">{ep.tokenHint}</b></div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="endpoint-empty">No endpoint published yet.</p>
+                      )}
+                      <div className="endpoint-full">
+                        <code title={url || "">{url || "Unavailable"}</code>
+                      </div>
+                      <div className="endpoint-actions">
+                        <button className="secondary" type="button" disabled={!url} onClick={() => copy(url || "")}>
+                          {copied === url ? "Copied" : "Copy full URL"}
+                        </button>
+                        {ep?.host && !ep.isLocal ? (
+                          <button className="secondary" type="button" onClick={() => openExternal(`https://${ep.host}`)}>
+                            Open host
+                          </button>
+                        ) : null}
+                      </div>
+                      {test && (
+                        <footer className={`endpoint-test ${test.ok ? "ok" : "fail"}`}>
+                          Last test: {test.ok ? "OK" : (test.error || `HTTP ${test.status || "error"}`)}
+                        </footer>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
               {connectionTest && (
-                <div
-                  className={
-                    connectionTest.ok ? "connection-test success" : "connection-test error"
-                  }
-                >
-                  {connectionTest.checks.map((c) => (
-                    <span key={c.name}>
-                      {c.name.toUpperCase()}:{" "}
-                      {c.ok ? "OK" : c.error || "HTTP " + (c.status || "error")}
-                    </span>
-                  ))}
+                <div className={`connection-test-panel ${connectionTest.ok ? "success" : "error"}`}>
+                  <div className="connection-test-title">Connection test</div>
+                  <div className="connection-test-grid">
+                    {connectionTest.checks.map((c) => {
+                      const ep = parseEndpoint(c.url);
+                      return (
+                        <div className={`connection-test-item ${c.ok ? "ok" : "fail"}`} key={c.name}>
+                          <div className="connection-test-item-head">
+                            <strong>{c.name.toUpperCase()}</strong>
+                            <span>{c.ok ? "PASS" : "FAIL"}</span>
+                          </div>
+                          {ep && (
+                            <div className="connection-test-meta">{ep.scheme}://{ep.host}{ep.port ? `:${ep.port}` : ""}{ep.path}</div>
+                          )}
+                          <div className="connection-test-detail">{c.ok ? "Handshake OK" : (c.error || `HTTP ${c.status || "error"}`)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </section>
@@ -1831,10 +1944,19 @@ function App() {
             ))}
           </div>
           {connectionTest && (
-            <div className={connectionTest.ok ? "connection-test success" : "connection-test error"}>
-              {connectionTest.checks.map((c) => (
-                <span key={c.name}>{c.name.toUpperCase()}: {c.ok ? "OK" : c.error || "HTTP " + (c.status || "error")}</span>
-              ))}
+            <div className={`connection-test-panel ${connectionTest.ok ? "success" : "error"}`}>
+              <div className="connection-test-title">Last endpoint test</div>
+              <div className="connection-test-grid">
+                {connectionTest.checks.map((c) => (
+                  <div className={`connection-test-item ${c.ok ? "ok" : "fail"}`} key={c.name}>
+                    <div className="connection-test-item-head">
+                      <strong>{c.name.toUpperCase()}</strong>
+                      <span>{c.ok ? "PASS" : "FAIL"}</span>
+                    </div>
+                    <div className="connection-test-detail">{c.ok ? "Handshake OK" : (c.error || `HTTP ${c.status || "error"}`)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </section>
