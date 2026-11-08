@@ -187,3 +187,6 @@ AI client
 - پس از تغییر رفتار: به‌روزرسانی `09-srs.md`
 - کپی هم‌تراز در `docs/DEVELOPMENT_ROADMAP.md` و `docs/SRS.md`
 
+## AI agents
+
+See `10-ai-implementation-guide.md`, `11-ai-guardrails.md`, `12-ai-context-pack.md`, and root `AGENTS.md`.

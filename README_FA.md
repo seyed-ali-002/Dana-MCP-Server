@@ -196,3 +196,7 @@ dana doctor --show-url
 | `full` | `pip install dana-mcp-server[full]` | browser + lint + security |
 | `dev` | `pip install -e ".[dev]"` | pytest و ابزار توسعه |
 
+## Documentation for developers & AI
+
+- Living SRS & roadmap: `project_description_md/09-srs.md`, `08-development-roadmap.md`
+- AI agents: `AGENTS.md`, `project_description_md/10-ai-implementation-guide.md`

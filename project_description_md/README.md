@@ -31,6 +31,9 @@
 | `07-development-guidelines.md` | قواعد توسعه، تغییر، تست و نگهداری |
 | `08-development-roadmap.md` | نقشه راه نسخه‌های آینده (Living Document) |
 | `09-srs.md` | مشخصات الزامات نرم‌افزار — SRS (Living Document) |
+| `10-ai-implementation-guide.md` | راهنمای پیاده‌سازی برای AI (نقشه فایل، چک‌لیست) |
+| `11-ai-guardrails.md` | خطوط قرمز و ضدالگوها برای انسان/AI |
+| `12-ai-context-pack.md` | ترتیب بارگذاری زمینه برای مدل‌ها |
 
 ## اصل مهم امنیتی
 
@@ -50,3 +53,8 @@ URL توکن‌دار Dana یک credential محسوب می‌شود. توکن ن
 **قانون:** هر تغییر رفتاری کاربرنهایی یا API عمومی → به‌روزرسانی SRS. هر milestone نسخه‌ای → به‌روزرسانی Roadmap و در صورت نیاز SRS.
 
 نسخهٔ کوتاه همان اسناد در `docs/DEVELOPMENT_ROADMAP.md` و `docs/SRS.md` نیز نگهداری می‌شود (کپی هم‌زمان با این پوشه).
+
+## عامل‌های AI
+
+- دستورالعمل ریشه: [`AGENTS.md`](../AGENTS.md)
+- همگام‌سازی آینه‌ها: `bash scripts/sync_living_docs.sh`
