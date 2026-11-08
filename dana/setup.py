@@ -657,6 +657,7 @@ class SetupStatus:
     local_only: bool = False
     user_stopped: bool = False
     supermcp: dict | None = None
+    health: dict | None = None
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -966,6 +967,80 @@ def _funnel_active() -> bool:
     return _funnel_status()[0]
 
 
+
+def _port_bindable(port: int) -> bool:
+    """True when 127.0.0.1:port can be bound (not in use)."""
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", int(port)))
+        return True
+    except OSError:
+        return False
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+
+
+def ensure_runtime_port(preferred: int | None = None) -> int:
+    """Pick a free local port when the configured port is occupied by a non-Dana process (R17-06)."""
+    preferred = int(preferred or settings.port or 8765)
+    if _dana_running(timeout=0.4):
+        return int(settings.port or preferred)
+    if _port_bindable(preferred):
+        return preferred
+    # Prefer reclaim; if still busy, scan upward.
+    try:
+        _reclaim_stale_runtime_port()
+    except Exception:
+        pass
+    if _port_bindable(preferred) or _dana_running(timeout=0.3):
+        return preferred
+    for candidate in range(preferred + 1, preferred + 40):
+        if _port_bindable(candidate):
+            _setup_log(
+                f"Port {preferred} is busy; switching local MCP to {candidate}.",
+                "warning",
+            )
+            os.environ["DANA_PORT"] = str(candidate)
+            try:
+                settings.port = candidate
+            except Exception:
+                pass
+            try:
+                env = _read_env()
+                env["DANA_PORT"] = str(candidate)
+                _write_env(env)
+            except Exception:
+                pass
+            return candidate
+    _setup_log(f"Could not find a free port near {preferred}; keeping configured port.", "warning")
+    return preferred
+
+
+def health_report() -> dict[str, object]:
+    """Multi-layer health for watchdog / Repair / UI (R17-01)."""
+    from .health import build_health_snapshot
+
+    st = status()
+    return build_health_snapshot(
+        port=int(settings.port or 8765),
+        token=str(st.auth_token or settings.auth_token or ""),
+        mcp_path=str(getattr(settings, "mcp_path", "/mcp") or "/mcp"),
+        dana_running=bool(st.dana_running),
+        funnel_active=bool(st.funnel_active),
+        funnel_hostname=str(st.funnel_hostname or ""),
+        public_verified=bool(st.public_verified),
+        tailscale_backend=str(st.tailscale_backend or ""),
+        local_only=bool(st.local_only),
+        user_stopped=bool(st.user_stopped),
+        connectivity=str(st.connectivity or ""),
+    )
+
+
 def _port_listening(timeout: float = 0.4) -> bool:
     """Wrapper so tests that mock _dana_running() without kwargs still pass."""
     try:
@@ -1085,11 +1160,30 @@ def status() -> SetupStatus:
         _sm = _supermcp_mod.status()
     except Exception:
         _sm = {"running": False, "enabled": False}
+    health_snap = None
+    try:
+        from .health import build_health_snapshot
+        health_snap = build_health_snapshot(
+            port=int(settings.port or 8765),
+            token=str(token or ""),
+            mcp_path=str(getattr(settings, "mcp_path", "/mcp") or "/mcp"),
+            dana_running=bool(running),
+            funnel_active=bool(active),
+            funnel_hostname=str(funnel_host or ""),
+            public_verified=bool(public_verified),
+            tailscale_backend=str(backend or ""),
+            local_only=bool(local_only),
+            user_stopped=bool(_USER_STOPPED),
+            connectivity=str(connectivity or ""),
+        )
+    except Exception:
+        health_snap = None
     return SetupStatus(
         installed, backend, hostname, active, funnel_host, running,
         public_url or local_url, local_url, public_url, token, action, message,
         connectivity, public_verified, hint, local_only, bool(_USER_STOPPED),
         _sm,
+        health_snap,
     )
 
 def test_connections() -> dict[str, object]:
@@ -2263,7 +2357,17 @@ def _start_dana_impl() -> dict[str, object]:
     os.environ["DANA_AUTH_TOKEN"] = token
     os.environ["DANA_DEPLOYMENT_MODE"] = "local"
     os.environ["DANA_HOST"] = "127.0.0.1"
-    os.environ["DANA_PORT"] = str(settings.port)
+    # R17-02: default stateless Streamable HTTP to avoid sticky session loss across reconnects
+    os.environ.setdefault("DANA_STATELESS_HTTP", "1")
+    try:
+        chosen = ensure_runtime_port(int(settings.port or 8765))
+    except Exception:
+        chosen = int(settings.port or 8765)
+    os.environ["DANA_PORT"] = str(chosen)
+    try:
+        settings.port = int(chosen)
+    except Exception:
+        pass
     settings.auth_token = token
 
     # Funnel is configured before Dana starts in the guided flow, but
@@ -2343,7 +2447,8 @@ def _start_dana_impl() -> dict[str, object]:
             _setup_log("Dana runtime is ready on the local MCP port (retry).", "success")
             return {"ok": True, "message": "Dana is running."}
         tail = _tail_log(log)
-        detail = "Dana did not become ready on the local MCP port within 40 seconds."
+        from .health import friendly_setup_error
+        detail = friendly_setup_error("Dana did not become ready on the local MCP port within 40 seconds.")
         if tail:
             detail = f"{detail} Recent log:\n{tail[-1200:]}"
         _setup_log(detail, "error")

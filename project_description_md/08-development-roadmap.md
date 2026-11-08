@@ -3,7 +3,7 @@
 > **وضعیت سند:** زنده (Living Document)  
 > **نسخه سند:** 1.0.0  
 > **تاریخ به‌روزرسانی:** 2026-11-08  
-> **نسخه فعلی محصول:** 1.6.17  
+> **نسخه فعلی محصول:** 1.7.0  
 > **مرجع مرتبط:** `09-srs.md`، `06-versioning-release.md`، `07-development-guidelines.md`
 
 ---
@@ -78,14 +78,14 @@
 
 | ID | آیتم | وضعیت | معیار پذیرش |
 |----|------|--------|-------------|
-| R17-01 | Health watchdog جدا برای LOCAL / PUBLIC / Funnel / MCP session | `planned` | وضعیت هر لایه در UI و CLI قابل مشاهده؛ بازیابی خودکار حداقل یک‌بار قبل از اعلام شکست |
-| R17-02 | Session recovery برای Streamable HTTP | `planned` | پس از قطع کوتاه، کلاینت DeepSeek بدون خطای ماندگار `Session not found` دوباره وصل شود |
-| R17-03 | Offline-graceful / network flap | `planned` | قطع کوتاه اینترنت باعث کرش runtime یا نیاز به نصب مجدد نشود |
-| R17-04 | First-run Funnel بدون restart اپ | `planned` | از نصب Tailscale تا Funnel و نمایش لینک تأیید در یک flow بدون بستن/باز کردن اجباری اپ |
-| R17-05 | کش اعتبار sudo برای session | `planned` | یک‌بار دریافت رمز کافی باشد تا پایان session جاری |
-| R17-06 | انتخاب پورت آزاد اگر 8765 اشغال باشد | `planned` | اپ/CLI پورت جایگزین را انتخاب و در `.env` و UI ثبت کند |
-| R17-07 | Single-instance + بستن کامل از tray | `planned` | باز کردن دوباره session دوم نسازد؛ Quit از tray پروسه را کامل پایان دهد |
-| R17-08 | پیام خطای کاربرپسند برای شکست‌های setup | `planned` | به‌جای stack خام، پیام + اقدام پیشنهادی در UI |
+| R17-01 | Health watchdog جدا برای LOCAL / PUBLIC / Funnel / MCP session | `done` | وضعیت هر لایه در UI و CLI قابل مشاهده؛ بازیابی خودکار حداقل یک‌بار قبل از اعلام شکست |
+| R17-02 | Session recovery برای Streamable HTTP | `done` | پس از قطع کوتاه، کلاینت DeepSeek بدون خطای ماندگار `Session not found` دوباره وصل شود |
+| R17-03 | Offline-graceful / network flap | `done` | قطع کوتاه اینترنت باعث کرش runtime یا نیاز به نصب مجدد نشود |
+| R17-04 | First-run Funnel بدون restart اپ | `done` | از نصب Tailscale تا Funnel و نمایش لینک تأیید در یک flow بدون بستن/باز کردن اجباری اپ |
+| R17-05 | کش اعتبار sudo برای session | `done` | یک‌بار دریافت رمز کافی باشد تا پایان session جاری |
+| R17-06 | انتخاب پورت آزاد اگر 8765 اشغال باشد | `done` | اپ/CLI پورت جایگزین را انتخاب و در `.env` و UI ثبت کند |
+| R17-07 | Single-instance + بستن کامل از tray | `done` | باز کردن دوباره session دوم نسازد؛ Quit از tray پروسه را کامل پایان دهد |
+| R17-08 | پیام خطای کاربرپسند برای شکست‌های setup | `done` | به‌جای stack خام، پیام + اقدام پیشنهادی در UI |
 
 **خروجی نسخه 1.7:** تگ `v1.7.0` پس از سبز بودن تست‌های اتصال و checklist دستی روی حداقل Linux + یک OS دیگر.
 
@@ -172,6 +172,7 @@
 | نسخه سند | تاریخ | تغییر |
 |----------|------|--------|
 | 1.0.0 | 2026-11-08 | ایجاد اولیه بر اساس وضعیت v1.6.17 و پیشنهادهای محصول |
+| 1.1.0 | 2026-11-08 | R17-* marked done with v1.7.0 health/port/stateless/session work |
 
 ---
 

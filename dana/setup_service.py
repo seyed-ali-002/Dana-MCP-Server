@@ -68,6 +68,12 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/setup/status":
             self._send(setup.status().to_dict()); return
+        if path == "/api/setup/health":
+            try:
+                self._send(setup.health_report())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 500)
+            return
         if path == "/api/setup/auth-flow":
             self._send(setup.auth_flow_status()); return
         if path == "/api/setup/usage":
