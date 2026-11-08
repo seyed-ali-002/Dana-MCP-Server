@@ -8,6 +8,7 @@ import re
 import secrets
 import shutil
 import subprocess
+from .subprocess_env import clean_subprocess_env
 import sys
 import time
 from pathlib import Path
@@ -59,7 +60,7 @@ def banner(title: str = "DANA") -> None:
 def run_command(
     command: list[str], *, check: bool = True
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, check=check, text=True, cwd=ROOT)
+    return subprocess.run(command, check=check, text=True, cwd=ROOT, env=clean_subprocess_env())
 
 
 def command_exists(name: str) -> bool:
@@ -459,7 +460,8 @@ def install_server_dependencies() -> None:
 
 def port_is_listening(port: int) -> bool:
     result = subprocess.run(
-        ["sudo", "ss", "-ltn"], text=True, capture_output=True, cwd=ROOT, check=False
+        ["sudo", "ss", "-ltn"], text=True, capture_output=True, cwd=ROOT, check=False,
+        env=clean_subprocess_env()
     )
     output = result.stdout
     return f":{port} " in output or f":{port}\n" in output
@@ -612,7 +614,8 @@ def _tailscale_hostname_from_status() -> str | None:
     for command in commands:
         try:
             result = subprocess.run(
-                command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=10
+                command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=10,
+                env=clean_subprocess_env()
             )
         except subprocess.TimeoutExpired:
             continue
@@ -636,28 +639,28 @@ def _elevate_command(command: list[str], *, timeout: float = 60.0) -> subprocess
     """Request OS elevation without storing the password."""
     system = platform.system().lower()
     if hasattr(os, "geteuid") and os.geteuid() == 0:
-        return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout, env=clean_subprocess_env())
     if system == "darwin":
         import shlex
         shell = " ".join(shlex.quote(part) for part in command)
         shell_as = shell.replace("\\", "\\\\").replace(chr(34), "\\" + chr(34))
         script = "do shell script " + chr(34) + shell_as + chr(34) + " with administrator privileges"
-        return subprocess.run(["osascript", "-e", script], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        return subprocess.run(["osascript", "-e", script], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout, env=clean_subprocess_env())
     if system == "windows":
-        return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout, env=clean_subprocess_env())
     if shutil.which("sudo"):
-        noninteractive = subprocess.run(["sudo", "-n", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        noninteractive = subprocess.run(["sudo", "-n", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout, env=clean_subprocess_env())
         if noninteractive.returncode == 0:
             return noninteractive
     if shutil.which("pkexec"):
-        elevated = subprocess.run(["pkexec", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        elevated = subprocess.run(["pkexec", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout, env=clean_subprocess_env())
         if elevated.returncode == 0 or elevated.stdout or elevated.stderr:
             return elevated
     if shutil.which("sudo"):
-        interactive = subprocess.run(["sudo", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+        interactive = subprocess.run(["sudo", *command], cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout, env=clean_subprocess_env())
         if interactive.returncode == 0 or interactive.stdout or interactive.stderr:
             return interactive
-    return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout)
+    return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=timeout, env=clean_subprocess_env())
 
 
 def _run_tailscale(command: list[str], *, timeout: float = 20.0) -> subprocess.CompletedProcess[str]:
@@ -667,7 +670,7 @@ def _run_tailscale(command: list[str], *, timeout: float = 20.0) -> subprocess.C
     is_funnel = any(part == "funnel" for part in command)
     effective_timeout = max(timeout, 120.0) if is_funnel else timeout
     try:
-        result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=effective_timeout)
+        result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=effective_timeout, env=clean_subprocess_env())
     except subprocess.TimeoutExpired as exc:
         out = getattr(exc, "stdout", None) or ""
         err = getattr(exc, "stderr", None) or ""

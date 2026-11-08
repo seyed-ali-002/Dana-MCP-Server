@@ -4,6 +4,7 @@ import ast
 import json
 import re
 import subprocess
+from dana.subprocess_env import clean_subprocess_env
 import sys
 import time
 import traceback
@@ -17,7 +18,8 @@ from mcp.server.fastmcp import FastMCP
 def _run(cmd: list[str], cwd: str | None = None, timeout: int = 300) -> dict[str, Any]:
     try:
         p = subprocess.run(
-            cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout
+            cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout,
+            env=clean_subprocess_env()
         )
         return {
             "returncode": p.returncode,

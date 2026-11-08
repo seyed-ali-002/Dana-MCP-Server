@@ -7,6 +7,7 @@ import platform
 import shutil
 import stat
 import subprocess
+from dana.subprocess_env import clean_subprocess_env
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -196,7 +197,7 @@ def register_zero_computer_tools(mcp: FastMCP) -> None:
         if args.strip():
             cmd.extend(args.split())
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, env=clean_subprocess_env())
         except Exception as exc:
             return {"ok": False, "installed": True, "error": str(exc)}
         return {

@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+from dana.subprocess_env import clean_subprocess_env
 import sys
 import time
 from pathlib import Path
@@ -40,7 +41,8 @@ def files(root: Path, suffixes: set[str] | None = None):
 def run(cmd: list[str], cwd: str | None = None, timeout: int = 120):
     try:
         p = subprocess.run(
-            cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout
+            cmd, cwd=cwd, text=True, capture_output=True, timeout=timeout,
+            env=clean_subprocess_env()
         )
         return {
             "returncode": p.returncode,

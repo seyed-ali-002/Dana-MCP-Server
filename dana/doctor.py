@@ -6,6 +6,7 @@ import json
 import platform
 import socket
 import subprocess
+from .subprocess_env import clean_subprocess_env
 import sys
 import urllib.error
 import urllib.request
@@ -29,7 +30,7 @@ class Check:
 
 def _run(command: list[str], timeout: float = 8) -> subprocess.CompletedProcess[str] | None:
     try:
-        return subprocess.run(command, text=True, capture_output=True, check=False, timeout=timeout)
+        return subprocess.run(command, text=True, capture_output=True, check=False, timeout=timeout, env=clean_subprocess_env())
     except (OSError, subprocess.TimeoutExpired):
         return None
 

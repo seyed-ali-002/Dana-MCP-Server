@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+from .subprocess_env import clean_subprocess_env
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,7 +27,7 @@ def command_exists(name: str) -> bool:
 
 
 def _run(command: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, check=check, text=True, capture_output=True)
+    return subprocess.run(command, check=check, text=True, capture_output=True, env=clean_subprocess_env())
 
 
 def detect_proxy(domain: str) -> ProxyTarget | None:

@@ -5,6 +5,7 @@ import json
 import re
 import shutil
 import subprocess
+from .subprocess_env import clean_subprocess_env
 import tempfile
 from pathlib import Path
 from threading import RLock
@@ -275,7 +276,7 @@ def import_skill_pack(pack: str) -> dict:
             str(meta["url"]), str(tmp_path),
         ]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=clean_subprocess_env())
         except Exception as exc:
             return {"ok": False, "message": f"git clone failed: {exc}"}
         if result.returncode != 0:

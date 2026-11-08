@@ -319,7 +319,7 @@ def stop() -> dict[str, object]:
     if pid and _pid_alive(pid):
         try:
             if os.name == "nt":
-                subprocess.run(["taskkill", "/PID", str(pid), "/F"], check=False, capture_output=True)
+                subprocess.run(["taskkill", "/PID", str(pid), "/F"], check=False, capture_output=True, env=clean_subprocess_env())
             else:
                 os.kill(pid, signal.SIGTERM)
                 time.sleep(0.4)

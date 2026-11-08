@@ -9,6 +9,7 @@ import os
 import time
 import threading
 import subprocess
+from .subprocess_env import clean_subprocess_env
 from multiprocessing import current_process
 from pathlib import Path
 from typing import Any
@@ -135,7 +136,7 @@ def _tailscale_dns_name() -> str:
     if configured:
         return configured
     try:
-        result = subprocess.run(["tailscale", "status", "--json"], text=True, capture_output=True, check=False, timeout=3)
+        result = subprocess.run(["tailscale", "status", "--json"], text=True, capture_output=True, check=False, timeout=3, env=clean_subprocess_env())
         if result.returncode == 0:
             payload = json.loads(result.stdout or "{}")
             name = str(payload.get("Self", {}).get("DNSName", "")).strip().rstrip(".").lower()

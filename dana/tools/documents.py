@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import shutil
 import subprocess
+from dana.subprocess_env import clean_subprocess_env
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -236,7 +237,7 @@ def register_document_tools(mcp: FastMCP) -> None:
         if source.suffix.lower() != ".pdf":
             raise ValueError("Expected a PDF file.")
         try:
-            result = subprocess.run(["pdfinfo", str(source)], text=True, capture_output=True, timeout=30, check=False)
+            result = subprocess.run(["pdfinfo", str(source)], text=True, capture_output=True, timeout=30, check=False, env=clean_subprocess_env())
         except FileNotFoundError as exc:
             raise RuntimeError("pdfinfo is not installed.") from exc
         return {"ok": result.returncode == 0, "stdout": result.stdout, "stderr": result.stderr}
@@ -260,7 +261,8 @@ def register_document_tools(mcp: FastMCP) -> None:
             raise RuntimeError("tesseract is not installed.")
         try:
             result = subprocess.run(["tesseract", str(source), "stdout", "-l", language], text=True,
-                                    capture_output=True, timeout=180, check=False)
+                                    capture_output=True, timeout=180, check=False,
+                                    env=clean_subprocess_env())
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError("OCR timed out.") from exc
         return {"ok": result.returncode == 0, "path": str(source), "language": language,

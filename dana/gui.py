@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from .subprocess_env import clean_subprocess_env
 import sys
 import threading
 import time
@@ -42,9 +43,9 @@ def find_packaged_binary() -> Path | None:
 
 def _launch_packaged(binary: Path) -> None:
     if binary.suffix == ".app":
-        subprocess.Popen(["open", str(binary)])
+        subprocess.Popen(["open", str(binary)], env=clean_subprocess_env())
     else:
-        subprocess.Popen([str(binary)], cwd=ROOT)
+        subprocess.Popen([str(binary)], cwd=ROOT, env=clean_subprocess_env())
     print(f"Dana Desktop launched: {binary}")
 
 
@@ -59,7 +60,7 @@ def _launch_tauri_dev() -> bool:
     # web-only fallback below.
     if "--native" not in sys.argv[2:] and shutil.which("cargo") is None:
         return False
-    subprocess.run(["npm", "run", "tauri", "dev"], cwd=ui, check=True)
+    subprocess.run(["npm", "run", "tauri", "dev"], cwd=ui, check=True, env=clean_subprocess_env())
     return True
 
 

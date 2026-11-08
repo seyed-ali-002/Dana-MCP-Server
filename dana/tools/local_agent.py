@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dana.subprocess_env import clean_subprocess_env
 import json, os, platform, shutil, socket, sqlite3, subprocess, time
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,7 @@ _DESKTOP_LOG = logging.getLogger("dana.desktop")
 
 def _run(cmd:list[str], timeout:int=30, dangerous:bool=False, cwd:str|None=None, input_text:str|None=None)->dict[str,Any]:
     if dangerous and not settings.allow_dangerous_tools: raise PermissionError("Dangerous operations require DANA_ALLOW_DANGEROUS_TOOLS.")
-    try: p=subprocess.run(cmd,input=input_text,text=True,capture_output=True,cwd=cwd,timeout=max(1,min(timeout,300)),check=False)
+    try: p=subprocess.run(cmd,input=input_text,text=True,capture_output=True,cwd=cwd,timeout=max(1,min(timeout,300)),check=False, env=clean_subprocess_env())
     except FileNotFoundError as exc: raise RuntimeError(f"Command not found: {cmd[0]}") from exc
     except subprocess.TimeoutExpired as exc: raise TimeoutError(f"Command timed out after {timeout}s") from exc
     return {"command":cmd,"returncode":p.returncode,"stdout":p.stdout[-50000:],"stderr":p.stderr[-20000:],"ok":p.returncode==0}
@@ -54,7 +55,7 @@ def _ydotool_variant() -> str:
         return _YDOTOOL_VARIANT
     if not shutil.which("ydotool"):
         raise RuntimeError("ydotool is not installed.")
-    probe = subprocess.run(["ydotool", "help"], capture_output=True, text=True, timeout=5, check=False)
+    probe = subprocess.run(["ydotool", "help"], capture_output=True, text=True, timeout=5, check=False, env=clean_subprocess_env())
     help_text = (probe.stdout + "\\n" + probe.stderr).lower()
     if "recorder" in help_text and "debug" not in help_text:
         _YDOTOOL_VARIANT = "legacy"
@@ -180,7 +181,7 @@ def _desktop_ydo(action:str,x:int=0,y:int=0,button:str="left",clicks:int=1,scrol
                 break
     if _YDOTOOLD is None and shutil.which("ydotoold") and not any(p and p.exists() for p in socket_candidates):
         try:
-            _YDOTOOLD = subprocess.Popen(["ydotoold"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            _YDOTOOLD = subprocess.Popen(["ydotoold"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=clean_subprocess_env())
             time.sleep(0.35)
             if Path("/tmp/.ydotool_socket").exists() and not os.getenv("YDOTOOL_SOCKET"):
                 os.environ["YDOTOOL_SOCKET"]="/tmp/.ydotool_socket"

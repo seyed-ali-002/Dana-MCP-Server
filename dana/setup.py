@@ -6,6 +6,7 @@ import platform
 import re
 import shutil
 import subprocess
+from .subprocess_env import clean_subprocess_env
 import tempfile
 import tarfile
 import time
@@ -665,7 +666,7 @@ def _ts_run(args: list[str], timeout: float = 20) -> subprocess.CompletedProcess
     return _run(_tailscale_cmd(*args), timeout=timeout)
 
 def _run(command: list[str], timeout: float = 20) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, text=True, capture_output=True, check=False, timeout=timeout)
+    return subprocess.run(command, text=True, capture_output=True, check=False, timeout=timeout, env=clean_subprocess_env())
 
 
 def _privileged_run(command: list[str], timeout: float = 60) -> subprocess.CompletedProcess[str]:
@@ -828,6 +829,7 @@ def _open(url: str) -> bool:
                 timeout=15,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                env=clean_subprocess_env()
             )
             if completed.returncode == 0:
                 _setup_log(f"Opened browser via {' '.join(command[:2])}.")
@@ -1537,7 +1539,7 @@ def _install_macos() -> dict[str, object]:
         if not mac_url: raise RuntimeError("Could not locate the current Tailscale macOS installer.")
         target = Path(tempfile.gettempdir()) / "Tailscale.pkg"
         _download_file(mac_url, target, "Tailscale macOS installer")
-        subprocess.Popen(["open", str(target)])
+        subprocess.Popen(["open", str(target)], env=clean_subprocess_env())
         return {"ok": True, "pending": True, "action_required": "finish_installer", "message": "Tailscale package opened. Complete installation (enter your Mac password if asked), then click Continue in Dana.", "url": TAILSCALE_DOWNLOAD}
     except Exception as exc:
         return {"ok": False, "message": str(exc), "url": TAILSCALE_DOWNLOAD}
@@ -1671,7 +1673,7 @@ def set_autostart(enabled: bool = True) -> dict[str, object]:
             agents.mkdir(parents=True, exist_ok=True)
             plist = agents / "com.dana.mcp.plist"
             if not enabled:
-                subprocess.run(["launchctl", "unload", str(plist)], capture_output=True, check=False)
+                subprocess.run(["launchctl", "unload", str(plist)], capture_output=True, check=False, env=clean_subprocess_env())
                 plist.unlink(missing_ok=True)
                 return {"ok": True, "enabled": False, "message": "Autostart disabled."}
             app = "/Applications/Dana.app/Contents/MacOS/Dana"
@@ -1689,7 +1691,7 @@ def set_autostart(enabled: bool = True) -> dict[str, object]:
                 '',
             ]
             plist.write_text("\n".join(lines), encoding="utf-8")
-            subprocess.run(["launchctl", "load", str(plist)], capture_output=True, check=False)
+            subprocess.run(["launchctl", "load", str(plist)], capture_output=True, check=False, env=clean_subprocess_env())
             return {"ok": True, "enabled": True, "path": str(plist), "message": "Autostart enabled."}
         if system == "windows":
             run_key = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -2136,6 +2138,7 @@ def _reclaim_stale_runtime_port() -> None:
                 check=False,
                 timeout=8,
                 creationflags=0x08000000,
+                env=clean_subprocess_env()
             ).stdout or ""
             for line in out.splitlines():
                 if f":{port}" not in line or "LISTENING" not in line.upper():
@@ -2150,6 +2153,7 @@ def _reclaim_stale_runtime_port() -> None:
                 capture_output=True,
                 check=False,
                 timeout=5,
+                env=clean_subprocess_env()
             ).stdout or ""
             for line in out.splitlines():
                 if f":{port}" not in line:
@@ -2163,6 +2167,7 @@ def _reclaim_stale_runtime_port() -> None:
                 capture_output=True,
                 check=False,
                 timeout=5,
+                env=clean_subprocess_env()
             ).stdout or ""
             for part in out.split():
                 if part.strip().isdigit():
@@ -2185,13 +2190,14 @@ def _reclaim_stale_runtime_port() -> None:
                     check=False,
                     timeout=5,
                     creationflags=0x08000000,
+                    env=clean_subprocess_env()
                 )
                 cmdline = (q.stdout or "").lower()
             else:
                 try:
                     cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode("utf-8", "ignore").lower()
                 except OSError:
-                    q = subprocess.run(["ps", "-p", str(pid), "-o", "command="], text=True, capture_output=True, check=False, timeout=3)
+                    q = subprocess.run(["ps", "-p", str(pid), "-o", "command="], text=True, capture_output=True, check=False, timeout=3, env=clean_subprocess_env())
                     cmdline = (q.stdout or "").lower()
         except OSError:
             continue
@@ -2200,7 +2206,7 @@ def _reclaim_stale_runtime_port() -> None:
         _setup_log(f"Reclaiming stale runtime pid {pid} holding port {port}.", "warning")
         try:
             if os.name == "nt":
-                subprocess.run(["taskkill", "/PID", str(pid), "/F"], check=False, capture_output=True, timeout=8, creationflags=0x08000000)
+                subprocess.run(["taskkill", "/PID", str(pid), "/F"], check=False, capture_output=True, timeout=8, creationflags=0x08000000, env=clean_subprocess_env())
             else:
                 os.kill(pid, signal.SIGTERM)
             killed += 1
