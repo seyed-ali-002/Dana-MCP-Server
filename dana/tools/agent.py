@@ -19,11 +19,14 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
+from dana.security.path_policy import require_path
+from dana.subprocess_env import clean_subprocess_env
+
 _TASKS: dict[str, threading.Timer] = {}
 
 
-def _path(path: str) -> Path:
-    return Path(path).expanduser().resolve()
+def _path(path: str, purpose: str = "access") -> Path:
+    return require_path(path, purpose=purpose)
 
 
 def _run(
@@ -35,11 +38,12 @@ def _run(
     try:
         result = subprocess.run(
             command,
-            cwd=str(_path(cwd)) if cwd else None,
+            cwd=str(_path(cwd, purpose="command cwd")) if cwd else None,
             shell=shell,
             text=True,
             capture_output=True,
             timeout=timeout,
+            env=clean_subprocess_env(),
         )
         return {
             "returncode": result.returncode,
@@ -81,10 +85,6 @@ def register_agent_tools(mcp: FastMCP) -> None:
         count = text.count(old)
         match_mode = "exact"
         if not count:
-            # Planning agents frequently carry a stale copy of a file after another
-            # worker has edited it. Try a conservative whitespace-normalized match
-            # before failing, and return actionable evidence instead of a generic
-            # exception that makes the whole plan look broken.
             normalized_old = "\\n".join(line.rstrip() for line in old.splitlines()).strip()
             lines = text.splitlines()
             normalized_lines = [line.rstrip() for line in lines]
@@ -156,7 +156,6 @@ def register_agent_tools(mcp: FastMCP) -> None:
                 pass
         return results
 
-    # Shell, processes, runtimes and logs
     @mcp.tool()
     def run_command(
         command: str, cwd: str | None = None, timeout: int = 120
@@ -202,7 +201,6 @@ def register_agent_tools(mcp: FastMCP) -> None:
         """Execute a diagnostic command and return stdout/stderr/exit code."""
         return _run(command, cwd, timeout, shell=True)
 
-    # Git and code quality
     @mcp.tool()
     def git(command: list[str], cwd: str = ".", timeout: int = 120) -> dict[str, Any]:
         """Run a Git subcommand, e.g. ['status','--short'] or ['commit','-m','message']."""
@@ -236,7 +234,6 @@ def register_agent_tools(mcp: FastMCP) -> None:
         """Run a project build command."""
         return _run(command, cwd, timeout, shell=True)
 
-    # Environment and HTTP
     @mcp.tool()
     def environment(
         action: str, key: str | None = None, value: str | None = None
@@ -280,7 +277,6 @@ def register_agent_tools(mcp: FastMCP) -> None:
         except Exception as exc:
             return {"error": str(exc)}
 
-    # Database
     @mcp.tool()
     def sqlite_query(
         database: str, query: str, params: list[Any] | None = None
@@ -297,7 +293,6 @@ def register_agent_tools(mcp: FastMCP) -> None:
             conn.commit()
             return {"rowcount": cur.rowcount}
 
-    # Docker, network and system
     @mcp.tool()
     def docker(
         command: list[str], cwd: str = ".", timeout: int = 300
@@ -334,7 +329,6 @@ def register_agent_tools(mcp: FastMCP) -> None:
             "cwd": os.getcwd(),
         }
 
-    # Scheduling
     @mcp.tool()
     def schedule_command(
         task_id: str, command: str, delay_seconds: int, cwd: str | None = None
@@ -357,7 +351,6 @@ def register_agent_tools(mcp: FastMCP) -> None:
         timer.cancel()
         return True
 
-       # Browser automation (optional Playwright dependency)
     @mcp.tool()
     def browser_automation(
         url: str,
@@ -376,7 +369,8 @@ def register_agent_tools(mcp: FastMCP) -> None:
             async with async_playwright() as p:
                 chrome = shutil.which("google-chrome") or shutil.which("google-chrome-stable") or shutil.which("chromium") or shutil.which("chromium-browser")
                 launch_kwargs = {"headless": True}
-                if chrome: launch_kwargs["executable_path"] = chrome
+                if chrome:
+                    launch_kwargs["executable_path"] = chrome
                 browser = await p.chromium.launch(**launch_kwargs)
                 page = await browser.new_page()
                 await page.goto(url, wait_until="networkidle")
@@ -398,13 +392,16 @@ def register_agent_tools(mcp: FastMCP) -> None:
                     raise ValueError("Unknown action")
                 await browser.close()
                 return {"result": result}
+
         result_box: list[dict[str, Any]] = []
         error_box: list[BaseException] = []
+
         def worker() -> None:
             try:
                 result_box.append(asyncio.run(run()))
             except BaseException as exc:
                 error_box.append(exc)
+
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
         thread.join()
