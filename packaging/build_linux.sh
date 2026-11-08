@@ -3,14 +3,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+bash ./packaging/prefetch_tauri_tools.sh || true
 bash ./packaging/build_sidecar.sh
 
 cd ui
 npm ci
 npm run build
 
-# Tauri downloads AppRun for AppImage from GitHub releases; transient 504s are common.
-# Retry a few times, then accept success if at least a .deb was produced.
 tauri_ok=0
 for attempt in 1 2 3; do
   echo "tauri build attempt ${attempt}/3…"

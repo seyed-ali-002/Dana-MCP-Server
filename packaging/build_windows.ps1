@@ -2,7 +2,6 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
 
-# Optional Authenticode signing when GitHub secrets are mapped to env vars.
 if ($env:WINDOWS_CERTIFICATE_BASE64 -and $env:WINDOWS_CERTIFICATE_PASSWORD) {
   Write-Host "Importing Windows code-signing certificate…"
   $certPath = Join-Path $env:TEMP "dana-codesign.pfx"
@@ -14,16 +13,18 @@ if ($env:WINDOWS_CERTIFICATE_BASE64 -and $env:WINDOWS_CERTIFICATE_PASSWORD) {
   $env:WINDOWS_CERTIFICATE_PASSWORD = $env:WINDOWS_CERTIFICATE_PASSWORD
 }
 
+# Prefetch WiX + NSIS into %LOCALAPPDATA%\tauri so Tauri skips live GitHub downloads.
+& "$Root\packaging\prefetch_tauri_tools.ps1"
+
 ./packaging/build_sidecar.ps1
 
 Set-Location ui
 npm ci
 npm run build
 
-# WiX toolset is downloaded from GitHub releases; transient 504s are common.
 $ok = $false
-for ($i = 1; $i -le 3; $i++) {
-  Write-Host "tauri build attempt $i/3…"
+for ($i = 1; $i -le 2; $i++) {
+  Write-Host "tauri build attempt $i/2…"
   npm run tauri build
   if ($LASTEXITCODE -eq 0) {
     $ok = $true
@@ -31,17 +32,18 @@ for ($i = 1; $i -le 3; $i++) {
   }
   $msi = Get-ChildItem "src-tauri/target/release/bundle" -Recurse -Filter *.msi -ErrorAction SilentlyContinue
   $nsis = Get-ChildItem "src-tauri/target/release/bundle" -Recurse -Filter *.exe -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -match 'bundle' }
+    Where-Object { $_.FullName -match 'nsis|bundle' -and $_.Name -notmatch '^ui\.exe$' }
   if ($msi -or $nsis) {
     Write-Host "Warning: tauri reported failure but installer artifacts exist — continuing."
     $ok = $true
     break
   }
-  Write-Host "tauri build failed; waiting 25s before retry…"
-  Start-Sleep -Seconds 25
+  Write-Host "tauri build failed; re-prefetch tools and retry…"
+  & "$Root\packaging\prefetch_tauri_tools.ps1"
+  Start-Sleep -Seconds 10
 }
 if (-not $ok) {
-  throw "tauri build failed after 3 attempts (WiX/CDN download may be unavailable)."
+  throw "tauri build failed after prefetch + retries (WiX/NSIS tools unavailable)."
 }
 
 Write-Host "Dana GUI bundles are in ui/src-tauri/target/release/bundle"
