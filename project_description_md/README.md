@@ -29,6 +29,8 @@
 | `05-desktop-ui-testing.md` | Desktop UI، API setup، تست و diagnostics |
 | `06-versioning-release.md` | Semantic Versioning، tag و GitHub Release |
 | `07-development-guidelines.md` | قواعد توسعه، تغییر، تست و نگهداری |
+| `08-development-roadmap.md` | نقشه راه نسخه‌های آینده (Living Document) |
+| `09-srs.md` | مشخصات الزامات نرم‌افزار — SRS (Living Document) |
 
 ## اصل مهم امنیتی
 
@@ -37,3 +39,14 @@ URL توکن‌دار Dana یک credential محسوب می‌شود. توکن ن
 ## اصل مهم توسعه
 
 هر تغییر باید با وضعیت فعلی repository هماهنگ شود، تست مناسب داشته باشد و در صورت تغییر رفتار عمومی، مستندات مربوطه نیز به‌روزرسانی شوند.
+
+## اسناد زنده (باید مرتب به‌روز شوند)
+
+| سند | نقش |
+|-----|------|
+| `08-development-roadmap.md` | اولویت‌بندی و معیار پذیرش فیچرهای آینده |
+| `09-srs.md` | الزامات رسمی کارکردی/غیرکارکردی و وضعیت پیاده‌سازی |
+
+**قانون:** هر تغییر رفتاری کاربرنهایی یا API عمومی → به‌روزرسانی SRS. هر milestone نسخه‌ای → به‌روزرسانی Roadmap و در صورت نیاز SRS.
+
+نسخهٔ کوتاه همان اسناد در `docs/DEVELOPMENT_ROADMAP.md` و `docs/SRS.md` نیز نگهداری می‌شود (کپی هم‌زمان با این پوشه).

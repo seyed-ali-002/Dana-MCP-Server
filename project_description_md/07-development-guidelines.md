@@ -180,3 +180,10 @@ AI client
 - git diff بررسی شده
 - commit واضح است
 - در صورت release، version/tag/release درست هستند
+
+## Roadmap و SRS
+
+- قبل از شروع فیچر جدید: `08-development-roadmap.md`
+- پس از تغییر رفتار: به‌روزرسانی `09-srs.md`
+- کپی هم‌تراز در `docs/DEVELOPMENT_ROADMAP.md` و `docs/SRS.md`
+
