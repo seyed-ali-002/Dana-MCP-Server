@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+from .subprocess_env import clean_subprocess_env
 from pathlib import Path
 
 _PLACEHOLDER_SUFFIXES = (
@@ -58,6 +59,7 @@ def _run_ts(*args: str, timeout: float = 8.0) -> str:
             capture_output=True,
             check=False,
             timeout=timeout,
+            env=clean_subprocess_env(),
         )
     except (OSError, subprocess.TimeoutExpired):
         return ""
