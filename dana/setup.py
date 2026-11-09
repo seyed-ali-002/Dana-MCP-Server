@@ -2747,3 +2747,52 @@ def sync_skill_pack(pack: str = "") -> dict[str, object]:
     result = skills_registry.sync_skill_pack(pack)
     _setup_log(str(result.get("message", "pack sync")), "success" if result.get("ok") else "warning")
     return result
+
+
+_CONNECTION_MODE = "all"
+
+
+def get_connection_mode() -> str:
+    global _CONNECTION_MODE
+    env_vals = _read_env_file() if "_read_env_file" in globals() else {}
+    saved = str(env_vals.get("DANA_CONNECTION_MODE") or os.environ.get("DANA_CONNECTION_MODE") or _CONNECTION_MODE or "all").strip().lower()
+    if saved in {"all", "local", "public", "supermcp"}:
+        _CONNECTION_MODE = saved
+        return saved
+    return "all"
+
+
+def set_connection_mode(mode: str = "all") -> dict[str, object]:
+    """Switch Dana connection mode: all | local | public | supermcp."""
+    global _CONNECTION_MODE
+    m = (mode or "all").strip().lower()
+    if m not in {"all", "local", "public", "supermcp"}:
+        m = "all"
+    _CONNECTION_MODE = m
+    os.environ["DANA_CONNECTION_MODE"] = m
+    try:
+        from . import supermcp
+        if m == "local":
+            set_local_only(True)
+            supermcp.stop()
+            _setup_log("Connection mode set to Local Only (MCP :8765).", "info")
+        elif m == "public":
+            set_local_only(False)
+            supermcp.stop()
+            _setup_log("Connection mode set to Public Funnel Only (MCP + HTTPS Funnel).", "info")
+        elif m == "supermcp":
+            set_local_only(True)
+            supermcp.start()
+            _setup_log("Connection mode set to SuperMCP Assistant Only (MCP + SSE :3006).", "info")
+        else:
+            set_local_only(False)
+            supermcp.start()
+            _setup_log("Connection mode set to All Services (Local + Public Funnel + SuperMCP).", "success")
+    except Exception as exc:
+        _setup_log(f"Connection mode switch warning: {exc}", "warning")
+    return {
+        "ok": True,
+        "connection_mode": m,
+        "message": f"Connection mode switched to {m.upper()}.",
+        "status": status().to_dict(),
+    }

@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" width="1280" height="800">
+  <defs>
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#222631" />
+      <stop offset="100%" stop-color="#1a1d26" />
+    </linearGradient>
+    <linearGradient id="orbGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60a5fa" />
+      <stop offset="100%" stop-color="#2563eb" />
+    </linearGradient>
+  </defs>
+  <!-- Window Background -->
+  <rect width="1280" height="800" rx="16" fill="#121316" />
+  <!-- Sidebar -->
+  <rect x="0" y="0" width="210" height="800" fill="#16181d" />
+  <line x1="210" y1="0" x2="210" y2="800" stroke="#262934" stroke-width="1.5" />
+  <!-- Brand in Sidebar -->
+  <rect x="22" y="24" width="38" height="38" rx="11" fill="#1e293b" stroke="#3b82f6" stroke-width="1.5" />
+  <circle cx="41" cy="43" r="10" fill="#3b82f6" />
+  <text x="72" y="42" fill="#f3f4f6" font-family="system-ui, sans-serif" font-size="16" font-weight="700">DANA</text>
+  <text x="72" y="58" fill="#6b7280" font-family="system-ui, sans-serif" font-size="11">MCP Control Center</text>
+  <!-- Sidebar Nav Items -->
+  <rect x="14" y="84" width="182" height="40" rx="10" fill="#262934" />
+  <circle cx="34" cy="104" r="5" fill="#3b82f6" />
+  <text x="50" y="109" fill="#ffffff" font-family="system-ui, sans-serif" font-size="13" font-weight="600">Dashboard</text>
+  <text x="50" y="155" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="13" font-weight="500">Endpoints</text>
+  <text x="50" y="198" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="13" font-weight="500">Skills &amp; Agents</text>
+  <text x="50" y="241" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="13" font-weight="500">Activity &amp; Logs</text>
+  <text x="50" y="284" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="13" font-weight="500">Settings &amp; Tools</text>
+
+  <!-- Header -->
+  <text x="242" y="48" fill="#f3f4f6" font-family="system-ui, sans-serif" font-size="22" font-weight="700">Dashboard</text>
+  <circle cx="1226" cy="40" r="18" fill="#166534" stroke="#22c55e" stroke-width="1.5" />
+  <path d="M1219 40 l5 5 l10 -10" fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" />
+
+  <!-- Row 1: Hero Status Card + 2 Metric Sparkline Cards -->
+  <rect x="242" y="72" width="490" height="190" rx="20" fill="url(#cardGrad)" stroke="#2c303d" />
+  <text x="270" y="104" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="13">Status</text>
+  <rect x="322" y="88" width="78" height="22" rx="11" fill="#14532d" />
+  <circle cx="335" cy="99" r="4" fill="#4ade80" />
+  <text x="345" y="104" fill="#4ade80" font-family="system-ui, sans-serif" font-size="11" font-weight="700">RUNNING</text>
+  <circle cx="290" cy="148" r="22" fill="#262934" />
+  <text x="279" y="153" fill="#e5e7eb" font-family="system-ui, sans-serif" font-size="13" font-weight="700">MCP</text>
+  <text x="326" y="146" fill="#ffffff" font-family="system-ui, sans-serif" font-size="22" font-weight="700">127.0.0.1:8765</text>
+  <rect x="326" y="158" width="90" height="20" rx="6" fill="#262934" />
+  <text x="336" y="172" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="11">158 Tools Ready</text>
+  <text x="270" y="216" fill="#6b7280" font-family="system-ui, sans-serif" font-size="11">UPTIME</text>
+  <text x="270" y="236" fill="#f3f4f6" font-family="monospace" font-size="15" font-weight="700">03:39:41</text>
+  <text x="380" y="216" fill="#6b7280" font-family="system-ui, sans-serif" font-size="11">PUBLIC GATEWAY</text>
+  <text x="380" y="236" fill="#f3f4f6" font-family="system-ui, sans-serif" font-size="14" font-weight="700">Tailscale Funnel · HTTPS</text>
+  <!-- Scalloped Blue Action Button -->
+  <circle cx="654" cy="166" r="46" fill="url(#orbGrad)" />
+  <rect x="644" y="152" width="6" height="28" rx="3" fill="#ffffff" />
+  <rect x="658" y="152" width="6" height="28" rx="3" fill="#ffffff" />
+
+  <!-- Metric Card 1: Input Tokens -->
+  <rect x="750" y="72" width="240" height="190" rx="20" fill="url(#cardGrad)" stroke="#2c303d" />
+  <text x="774" y="102" fill="#60a5fa" font-family="system-ui, sans-serif" font-size="13" font-weight="600">↑ Input Tokens</text>
+  <text x="774" y="154" fill="#ffffff" font-family="system-ui, sans-serif" font-size="34" font-weight="700">14.2K</text>
+  <text x="774" y="176" fill="#6b7280" font-family="system-ui, sans-serif" font-size="12">Prompt &amp; arguments</text>
+  <path d="M754 242 Q800 235 830 218 T910 215 T986 238" fill="none" stroke="#3b82f6" stroke-width="2.5" />
+
+  <!-- Metric Card 2: Output Tokens -->
+  <rect x="1008" y="72" width="240" height="190" rx="20" fill="url(#cardGrad)" stroke="#2c303d" />
+  <text x="1032" y="102" fill="#34d399" font-family="system-ui, sans-serif" font-size="13" font-weight="600">↓ Output Tokens</text>
+  <text x="1032" y="154" fill="#ffffff" font-family="system-ui, sans-serif" font-size="34" font-weight="700">89.6K</text>
+  <text x="1032" y="176" fill="#6b7280" font-family="system-ui, sans-serif" font-size="12">Compacted responses</text>
+  <path d="M1012 242 Q1060 220 1110 232 T1190 205 T1244 236" fill="none" stroke="#10b981" stroke-width="2.5" />
+
+  <!-- Row 2: Connection Mode Bar + Quick Service Toggles -->
+  <rect x="242" y="278" width="490" height="62" rx="16" fill="url(#cardGrad)" stroke="#2c303d" />
+  <text x="266" y="314" fill="#d1d5db" font-family="system-ui, sans-serif" font-size="13" font-weight="600">Connection Mode</text>
+  <rect x="392" y="288" width="84" height="42" rx="11" fill="#3b82f6" />
+  <text x="412" y="314" fill="#ffffff" font-family="system-ui, sans-serif" font-size="12" font-weight="700">All (3)</text>
+  <text x="494" y="314" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="12">Local</text>
+  <text x="556" y="314" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="12">Public</text>
+  <text x="622" y="314" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="12">SuperMCP</text>
+
+  <rect x="750" y="278" width="240" height="62" rx="16" fill="url(#cardGrad)" stroke="#2c303d" />
+  <text x="774" y="306" fill="#f3f4f6" font-family="system-ui, sans-serif" font-size="13" font-weight="600">Public Funnel</text>
+  <text x="774" y="324" fill="#6b7280" font-family="system-ui, sans-serif" font-size="11">HTTPS :443 → :8765</text>
+  <rect x="926" y="295" width="46" height="26" rx="13" fill="#3b82f6" />
+  <circle cx="959" cy="308" r="10" fill="#ffffff" />
+
+  <rect x="1008" y="278" width="240" height="62" rx="16" fill="url(#cardGrad)" stroke="#2c303d" />
+  <text x="1032" y="306" fill="#f3f4f6" font-family="system-ui, sans-serif" font-size="13" font-weight="600">SuperMCP Proxy</text>
+  <text x="1032" y="324" fill="#6b7280" font-family="system-ui, sans-serif" font-size="11">SSE Port 3006</text>
+  <rect x="1184" y="295" width="46" height="26" rx="13" fill="#3b82f6" />
+  <circle cx="1217" cy="308" r="10" fill="#ffffff" />
+
+  <!-- Row 3: 4 Bento Cards -->
+  <rect x="242" y="356" width="236" height="165" rx="18" fill="url(#cardGrad)" stroke="#2c303d" />
+  <text x="264" y="386" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="12" font-weight="600">LOCAL &amp; PUBLIC IP</text>
+  <text x="264" y="420" fill="#ffffff" font-family="monospace" font-size="15" font-weight="700">127.0.0.1:8765</text>
+  <rect x="264" y="446" width="192" height="54" rx="12" fill="#262934" />
+  <text x="280" y="478" fill="#d1d5db" font-family="system-ui, sans-serif" font-size="12" font-weight="600">Local-Only Lock</text>
+
+  <rect x="496" y="356" width="236" height="165" rx="18" fill="url(#cardGrad)" stroke="#2c303d" />
+  <text x="518" y="386" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="12" font-weight="600">ACTIVE PROFILE</text>
+  <text x="518" y="420" fill="#ffffff" font-family="system-ui, sans-serif" font-size="16" font-weight="700">DANA CORE v1.7.3</text>
+  <text x="518" y="476" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="12">99.2% Success Rate</text>
+  <rect x="518" y="490" width="192" height="6" rx="3" fill="#262934" />
+  <rect x="518" y="490" width="176" height="6" rx="3" fill="#3b82f6" />
+
+  <rect x="750" y="356" width="240" height="165" rx="18" fill="url(#cardGrad)" stroke="#2c303d" />
+  <text x="772" y="386" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="12" font-weight="600">SERVICE HEALTH</text>
+  <rect x="772" y="402" width="196" height="44" rx="10" fill="#262934" />
+  <circle cx="792" cy="424" r="5" fill="#4ade80" />
+  <text x="808" y="429" fill="#f3f4f6" font-family="monospace" font-size="13">Local MCP · 4 ms</text>
+  <rect x="772" y="456" width="196" height="44" rx="10" fill="#262934" />
+  <circle cx="792" cy="478" r="5" fill="#4ade80" />
+  <text x="808" y="483" fill="#f3f4f6" font-family="monospace" font-size="13">Funnel HTTPS · 42 ms</text>
+
+  <rect x="1008" y="356" width="240" height="165" rx="18" fill="url(#cardGrad)" stroke="#2c303d" />
+  <text x="1030" y="386" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="12" font-weight="600">WORKER POOL &amp; HEAL</text>
+  <text x="1030" y="426" fill="#ffffff" font-family="system-ui, sans-serif" font-size="24" font-weight="700">5 Workers</text>
+  <rect x="1030" y="452" width="196" height="8" rx="4" fill="#262934" />
+  <rect x="1030" y="452" width="120" height="8" rx="4" fill="#3b82f6" />
+  <text x="1030" y="486" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="12">Auto-heal every 20s · Whip x0</text>
+
+  <!-- Row 4: Live Activity Table + Quick Skills Column -->
+  <rect x="242" y="538" width="676" height="236" rx="18" fill="url(#cardGrad)" stroke="#2c303d" />
+  <rect x="264" y="556" width="136" height="32" rx="9" fill="#3b82f6" />
+  <text x="282" y="577" fill="#ffffff" font-family="system-ui, sans-serif" font-size="12" font-weight="700">Tool Calls (80)</text>
+  <text x="422" y="577" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="12">Setup Events</text>
+  <rect x="264" y="604" width="632" height="36" rx="8" fill="#262934" />
+  <text x="280" y="627" fill="#e5e7eb" font-family="monospace" font-size="12">18:12:04  OK   run_command · Atlas #1 · 18 ms · 342 tok</text>
+  <rect x="264" y="648" width="632" height="36" rx="8" fill="#262934" />
+  <text x="280" y="671" fill="#e5e7eb" font-family="monospace" font-size="12">18:11:52  OK   read_file · Nova #2 · 2 ms · 1,240 tok</text>
+
+  <rect x="936" y="538" width="312" height="236" rx="18" fill="url(#cardGrad)" stroke="#2c303d" />
+  <text x="958" y="572" fill="#9ca3af" font-family="system-ui, sans-serif" font-size="12" font-weight="600">QUICK GROUPS &amp; SKILLS</text>
+  <rect x="958" y="592" width="268" height="50" rx="12" fill="#262934" />
+  <text x="978" y="622" fill="#ffffff" font-family="system-ui, sans-serif" font-size="13" font-weight="600">⚡ SuperMCP All Tools (158)</text>
+  <rect x="958" y="652" width="268" height="50" rx="12" fill="#262934" />
+  <text x="978" y="682" fill="#ffffff" font-family="system-ui, sans-serif" font-size="13" font-weight="600">🧠 Skill Packs &amp; Zero Agent</text>
+</svg>

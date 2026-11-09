@@ -67,7 +67,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlparse(self.path).path
         if path == "/api/setup/status":
-            self._send(setup.status().to_dict()); return
+            d = setup.status().to_dict()
+            d["connection_mode"] = setup.get_connection_mode()
+            self._send(d); return
+        if path == "/api/setup/connection-mode":
+            self._send({"ok": True, "connection_mode": setup.get_connection_mode()}); return
         if path == "/api/setup/health":
             try:
                 self._send(setup.health_report())
@@ -171,6 +175,15 @@ class Handler(BaseHTTPRequestHandler):
                 raw = self.rfile.read(length) if length else b"{}"
                 payload = json.loads(raw.decode("utf-8") or "{}")
                 self._send(setup.open_browser_url(str(payload.get("url", "")).strip()))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/connection-mode":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                self._send(setup.set_connection_mode(str(payload.get("mode", "all"))))
             except Exception as exc:
                 self._send({"ok": False, "message": str(exc)}, 400)
             return

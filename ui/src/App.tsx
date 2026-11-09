@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import logo from "./assets/dana-logo.svg";
+const logo = "/dana-logo.svg";
 import WhipOverlay from "./WhipOverlay";
 import { playOpenWhipCrack, getWhipVolume, setWhipVolume, isWhipMuted, setWhipMuted } from "./whipAssets";
 import "./App.css";
-import "./flclash.css";
 
 type Status = {
   tailscale_installed: boolean;
@@ -24,6 +23,7 @@ type Status = {
   public_verified?: boolean;
   hint?: string;
   local_only?: boolean;
+  connection_mode?: "all" | "local" | "public" | "supermcp";
   user_stopped?: boolean;
   supermcp?: {
     enabled?: boolean;
@@ -460,9 +460,7 @@ function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const autoHealRef = useRef(false);
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState("Dashboard");
-  const [settingsTab, setSettingsTab] = useState<"Config" | "Skills" | "Repair" | "Usage" | "Help">("Config");
-  const [endpointMode, setEndpointMode] = useState<"all" | "local" | "public" | "supermcp">("all");
+  const [view, setView] = useState("Setup");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("Starting Dana setup service…");
   const [logs, setLogs] = useState<SetupLog[]>([]);
@@ -488,6 +486,10 @@ function App() {
   const [skillPath, setSkillPath] = useState("");
   const [whipLevel, setWhipLevel] = useState(0);
   const [whipArmed, setWhipArmed] = useState(false);
+  const [connMode, setConnMode] = useState<"all" | "local" | "public" | "supermcp">("all");
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [dashTab, setDashTab] = useState<"tools" | "setup" | "endpoints">("tools");
+  const [settingsTab, setSettingsTab] = useState<"general" | "auth" | "env" | "repair" | "whip" | "guide">("general");
   const [whipVol, setWhipVolState] = useState(() => Math.round(getWhipVolume() * 100));
   const [whipMuted, setWhipMutedState] = useState(() => isWhipMuted());
   const [whipMsg, setWhipMsg] = useState("");
@@ -566,6 +568,13 @@ function App() {
       const x = await r.json();
       if (!r.ok) throw Error(x.message || x.error);
       setStatus(x);
+      if (x.connection_mode && ["all", "local", "public", "supermcp"].includes(x.connection_mode)) {
+        setConnMode(x.connection_mode);
+      } else if (x.local_only && x.supermcp?.running) {
+        setConnMode("supermcp");
+      } else if (x.local_only) {
+        setConnMode("local");
+      }
       if (x.message) setMessage(x.message);
       const l = await fetch(API(p, "/api/setup/logs"));
       if (l.ok) {
@@ -603,6 +612,25 @@ function App() {
       if (r.ok) setDownload(await r.json());
     } catch {
       /* ignore */
+    }
+  }
+
+
+  async function switchConnectionMode(nextMode: "all" | "local" | "public" | "supermcp") {
+    setConnMode(nextMode);
+    setModeMenuOpen(false);
+    if (!port) return;
+    try {
+      const r = await fetch(API(port, "/api/setup/connection-mode"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: nextMode }),
+      });
+      const j = await r.json();
+      if (j.message) setMessage(j.message);
+      await refresh(port, true);
+    } catch (e) {
+      setError(String(e));
     }
   }
 
@@ -697,7 +725,7 @@ function App() {
   }, [port]);
 
   useEffect(() => {
-    if (port && (view === "Network" || (view === "Settings" && settingsTab === "Config") || (view === "Settings" && settingsTab === "Repair"))) loadConfig(port);
+    if (port && (view === "Control" || view === "Config" || view === "Repair")) loadConfig(port);
   }, [port, view]);
 
   useEffect(() => {
@@ -1116,23 +1144,18 @@ function App() {
   }
 
   const navItems: {
-    id: "Dashboard" | "Network" | "Logs" | "Settings";
+    id: "Setup" | "Control" | "Skills" | "Logs" | "Usage" | "Config" | "Repair" | "Help";
     label: string;
     icon: string;
   }[] = [
-    { id: "Dashboard", label: "Dashboard", icon: "setup" },
-    { id: "Network", label: "Network", icon: "control" },
-    { id: "Logs", label: "Logs", icon: "logs" },
-    { id: "Settings", label: "Settings", icon: "config" },
+    { id: "Setup", label: "Dashboard", icon: "setup" },
+    { id: "Control", label: "Proxies & Endpoints", icon: "control" },
+    { id: "Skills", label: "Skills & Agents", icon: "skills" },
+    { id: "Logs", label: "Live Requests", icon: "logs" },
+    { id: "Usage", label: "Traffic & Usage", icon: "usage" },
+    { id: "Config", label: "Settings & Tools", icon: "config" },
   ];
-
-  const settingsItems: { id: "Config" | "Skills" | "Repair" | "Usage" | "Help"; label: string; icon: string }[] = [
-    { id: "Config", label: "Configuration", icon: "config" },
-    { id: "Skills", label: "Skills", icon: "skills" },
-    { id: "Repair", label: "Repair", icon: "repair" },
-    { id: "Usage", label: "Usage", icon: "usage" },
-    { id: "Help", label: "Guide", icon: "help" },
-  ];
+  const isSettingsWorkspace = view === "Config" || view === "Repair" || view === "Help";
 
   function NavIcon({ name }: { name: string }) {
     if (name === "setup")
@@ -1207,7 +1230,7 @@ function App() {
           {navItems.map((x) => (
             <button
               key={x.id}
-              className={view === x.id ? "nav-item active" : "nav-item"}
+              className={(view === x.id || (x.id === "Config" && isSettingsWorkspace)) ? "nav-item active" : "nav-item"}
               onClick={() => setView(x.id)}
             >
               <span className="nav-icon">
@@ -1436,260 +1459,387 @@ function App() {
           </section>
         )}
 
-        {port && view === "Dashboard" && (
-          <>
-            <section className={"clash-hub glass " + (ready ? (status?.local_only ? "is-local" : "is-online") : busy ? "is-busy" : "is-offline")}>
-              <div className="clash-hub-left">
-                <button
-                  type="button"
-                  className={"power-orb " + (ready ? "on" : busy ? "connecting" : "off")}
-                  disabled={busy || !status}
-                  onClick={() => {
-                    if (ready) {
-                      run("/api/setup/stop-dana");
-                    } else {
-                      setup();
-                    }
-                  }}
-                  title={ready ? "Click to disconnect Dana" : "Click to connect & activate Dana"}
-                >
-                  <span className="power-orb-ring" />
-                  <span className="power-orb-core">
-                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M12 3v9m5.66-5.66a8 8 0 1 1-11.32 0" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" />
-                    </svg>
-                  </span>
-                </button>
-                <div className="clash-hub-status">
-                  <span className="clash-status-pill">
-                    <span className={"dot " + (ready ? "on" : busy ? "warn" : "")} />
-                    {busy ? "CONNECTING…" : ready ? (status?.local_only ? "CONNECTED · LOCAL" : "CONNECTED · PUBLIC") : "DISCONNECTED"}
-                  </span>
-                  <h2>{ready ? "Dana MCP is Online" : busy ? "Establishing Tunnel…" : "Tap to Connect"}</h2>
-                  <p className="clash-hub-sub">
-                    {status?.hint || (ready ? "Your AI clients can now execute tools on this machine." : "One-click activation for Tailscale, Funnel & local MCP server.")}
-                  </p>
-                  <div className="mode-field">
-                    <label className="mode-label" htmlFor="endpoint-mode">Connection mode</label>
-                    <div className="dana-select-wrap">
-                      <select
-                        id="endpoint-mode"
-                        className="dana-select"
-                        disabled={busy || !port}
-                        value={endpointMode}
-                        onChange={async (e) => {
-                          const mode = e.target.value as "all" | "local" | "public" | "supermcp";
-                          setEndpointMode(mode);
-                          if (!port) return;
-                          if (mode === "local") {
-                            await fetch(API(port, "/api/setup/local-only"), {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ enabled: true }),
-                            });
-                          } else {
-                            await fetch(API(port, "/api/setup/local-only"), {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ enabled: false }),
-                            });
-                          }
-                          if (mode === "supermcp" || mode === "all") {
-                            try { await fetch(API(port, "/api/setup/supermcp/start"), { method: "POST" }); } catch {}
-                          }
-                          await refresh(port);
-                        }}
-                      >
-                        <option value="all">All · Local + Public + SuperMCP</option>
-                        <option value="local">Local only</option>
-                        <option value="public">Public endpoint (Funnel)</option>
-                        <option value="supermcp">SuperMCP Assistant only</option>
-                      </select>
-                      <span className="dana-select-caret" aria-hidden="true">▾</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="clash-hub-right">
-                <div className="clash-url-card">
-                  <div className="clash-url-head">
-                    <span className="eyebrow">ACTIVE MCP ENDPOINT</span>
-                    <div className="clash-url-actions">
-                      <button
-                        type="button"
-                        className="secondary compact-btn"
-                        disabled={!status?.public_mcp_url && !status?.local_mcp_url}
-                        onClick={() => copy((!status?.local_only && status?.public_mcp_url) || status?.local_mcp_url || "")}
-                      >
-                        {copied && (copied === status?.public_mcp_url || copied === status?.local_mcp_url) ? "✓ Copied" : "Copy URL"}
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary compact-btn"
-                        disabled={testing}
-                        onClick={() => {
-                          setView("Network");
-                          testConnection();
-                        }}
-                      >
-                        {testing ? "Pinging…" : "⚡ Ping Test"}
-                      </button>
-                    </div>
-                  </div>
-                  <code className="clash-url-code">
-                    {(!status?.local_only && status?.public_mcp_url) || status?.local_mcp_url || "http://127.0.0.1:8765/mcp"}
-                  </code>
-                </div>
-                <div className="clash-QuickStats">
-                  <div className="clash-stat">
-                    <span>Tailscale</span>
-                    <strong className={status?.tailscale_backend?.toLowerCase() === "running" ? "ok" : "warn"}>
-                      {status?.tailscale_backend || "Offline"}
-                    </strong>
-                  </div>
-                  <div className="clash-stat">
-                    <span>SuperMCP</span>
-                    <strong className={status?.supermcp?.running ? "ok" : "muted"}>
-                      {status?.supermcp?.running ? `Port ${status?.supermcp?.port || 3006}` : "Standby"}
-                    </strong>
-                  </div>
-                  <div className="clash-stat">
-                    <span>Operations</span>
-                    <strong>{(usage?.operations ?? 0).toLocaleString()}</strong>
-                  </div>
-                  <div className="clash-stat">
-                    <span>Total Tokens</span>
-                    <strong>{(usage?.total_tokens ?? 0).toLocaleString()}</strong>
-                  </div>
-                </div>
-              </div>
-            </section>
-            <section className="hero glass">
-              <div className="hero-copy">
-                <span className="kicker">ONE-CLICK DEPLOYMENT</span>
-                <h2>Bring Dana online without the terminal.</h2>
-                <p>
-                  Python runtime, Tailscale, Funnel and the public MCP endpoint are coordinated from
-                  one setup flow.
-                </p>
-                <button
-                  className="primary"
-                  disabled={busy || ready || !status}
-                  onClick={setup}
-                >
-                  {busy
-                    ? "Working…"
-                    : ready
-                      ? "Dana is active"
-                      : status?.tailscale_installed
-                        ? "Activate Dana"
-                        : "Install & Activate"}
-                </button>
-                {pendingInstall && (
-                  <div className="pending-banner">
-                    <p>
-                      Finish the Tailscale installer window, then continue here.
-                      The OS may ask for an administrator password (UAC / sudo / macOS prompt).
-                    </p>
-                    <button
-                      className="primary"
-                      disabled={busy}
-                      onClick={() => {
-                        setPendingInstall(false);
-                        setup();
-                      }}
-                    >
-                      Continue after install
-                    </button>
-                  </div>
-                )}
-                {!!manualUrl && !!error && (
-                  <div className="pending-banner">
-                    <p>
-                      Automatic download failed. Open the official Tailscale page, install
-                      manually, then continue.
-                    </p>
-                    <div className="modal-actions">
-                      <button className="secondary" onClick={() => openExternal(manualUrl)}>
-                        Open Tailscale download
-                      </button>
-                      <button className="primary" disabled={busy} onClick={() => setup()}>
-                        Retry / Continue
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="hero-side">
-                <div className="hero-badge">
-                  <img src={logo} alt="" />
-                  <div>
-                    <strong>Dana MCP</strong>
-                    <span>Self-hosted agent runtime</span>
-                  </div>
-                </div>
-              </div>
-            </section>
+        {port && isSettingsWorkspace && (
+  <section className="fl-settings-shell glass">
+    <div className="fl-settings-header">
+      <div>
+        <span className="eyebrow">SEPARATED WORKSPACE</span>
+        <h2>Settings, Security &amp; System Toolkit</h2>
+      </div>
+      <button type="button" className="secondary compact-btn" onClick={() => setView("Setup")}>
+        ← Back to Dashboard
+      </button>
+    </div>
+    <div className="fl-settings-tabs" role="tablist">
+      {([
+        ["general", "Config", "⚙️ General & Mode"],
+        ["auth", "Config", "🔑 Authentication"],
+        ["env", "Config", "🧩 Environment (.env)"],
+        ["repair", "Repair", "🛠️ Repair & Diagnostics"],
+        ["whip", "Config", "🔊 OpenWhip & Audio"],
+        ["guide", "Help", "📖 Guide & OAuth"],
+      ] as const).map(([tabId, targetView, label]) => (
+        <button
+          key={tabId}
+          type="button"
+          className={"fl-settings-tab" + (settingsTab === tabId && view === targetView ? " active" : "")}
+          onClick={() => { setSettingsTab(tabId); setView(targetView); }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+    {view === "Config" && settingsTab === "general" && (
+      <div className="fl-settings-pane">
+        <div className="fl-settings-row">
+          <div>
+            <strong>Active Connection Routing Mode</strong>
+            <p>Choose which endpoints Dana exposes on this machine.</p>
+          </div>
+          <div className="fl-mode-pills">
+            {([
+              ["all", "⚡ All Services"],
+              ["local", "🔒 Local Only"],
+              ["public", "🌐 Public Only"],
+              ["supermcp", "🧩 SuperMCP Only"],
+            ] as const).map(([mKey, mLabel]) => (
+              <button
+                key={mKey}
+                type="button"
+                className={"fl-mode-pill" + (connMode === mKey ? " active" : "")}
+                onClick={() => switchConnectionMode(mKey)}
+              >
+                {mLabel}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="fl-settings-row">
+          <div>
+            <strong>Desktop Notifications &amp; Alert Tone</strong>
+            <p>Receive alerts when tunnel connectivity changes.</p>
+          </div>
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <button type="button" className={"fl-mode-pill" + (notifyEnabled ? " active" : "")} onClick={() => setNotifyEnabled((v) => !v)}>
+              {notifyEnabled ? "🔔 Notifications ON" : "🔕 Notifications OFF"}
+            </button>
+            <button type="button" className={"fl-mode-pill" + (soundEnabled ? " active" : "")} onClick={() => setSoundEnabled((v) => !v)}>
+              {soundEnabled ? "🔊 Alert Tone ON" : "🔇 Alert Tone OFF"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {view === "Config" && settingsTab === "whip" && (
+      <div className="fl-settings-pane">
+        <div className="fl-settings-row">
+          <div>
+            <strong>OpenWhip Crack Audio &amp; Boost</strong>
+            <p>Control the whip sound volume, mute state, and auto-heal speed boost (Level {whipLevel}/5 · every {healInterval ?? 20}s).</p>
+          </div>
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <button
+              type="button"
+              className={"fl-mode-pill" + (!whipMuted ? " active" : "")}
+              onClick={() => { const next = !whipMuted; setWhipMuted(next); setWhipMutedState(next); }}
+            >
+              {whipMuted ? "🔇 Muted" : `🔊 Volume ${whipVol}%`}
+            </button>
+            <button type="button" className="primary compact-btn" onClick={() => playOpenWhipCrack(playWhipCrack)}>
+              Test Whip Sound
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </section>
+)}
 
-            <div className="grid">
-              {(
-                [
-                  [
-                    "01",
-                    "Tailscale",
-                    status?.tailscale_installed,
-                    "Install and authenticate Tailscale.",
-                    status?.tailscale_backend || "Not connected",
-                  ],
-                  [
-                    "02",
-                    "Funnel",
-                    status?.funnel_active,
-                    "Publish the canonical HTTPS MCP endpoint.",
-                    status?.funnel_hostname || "Not configured",
-                  ],
-                  [
-                    "03",
-                    "Dana Runtime",
-                    status?.dana_running,
-                    "Start the local MCP service.",
-                    localAddr,
-                  ],
-                ] as const
-              ).map(([n, name, ok, desc, meta]) => (
-                <section className="card glass" key={String(name)}>
-                  <div className="card-head">
-                    <span>{n}</span>
-                    <strong>{name}</strong>
-                    <b className={ok ? "state success" : "state warning"}>
-                      {ok ? "READY" : "PENDING"}
-                    </b>
-                  </div>
-                  <p>{desc}</p>
-                  <div className="meta">{meta}</div>
-                </section>
+{port && view === "Setup" && (
+  <div className="flclash-bento">
+    <div className="fl-row-1">
+      <section className={"fl-card fl-status-card " + (ready ? "running" : busy ? "connecting" : "stopped")}>
+        <div className="fl-status-left">
+          <div className="fl-status-pill-row">
+            <span className="fl-muted-label">Status</span>
+            <span className={"fl-running-badge " + (ready ? "on" : busy ? "warn" : "off")}>
+              <i className="fl-dot" />
+              {busy ? "Starting…" : ready ? "Running" : "Stopped"}
+            </span>
+          </div>
+          <div className="fl-host-row">
+            <div className="fl-host-avatar">{connMode === "local" ? "LC" : connMode === "supermcp" ? "SM" : "MCP"}</div>
+            <div className="fl-host-info">
+              <strong className="fl-host-ip">{status?.tailscale_hostname || localAddr}</strong>
+              <div className="fl-host-tags">
+                <span className="fl-tag">{connMode.toUpperCase()}</span>
+                <span className="fl-tag">{status?.funnel_active ? "HTTPS Funnel" : "Local"}</span>
+              </div>
+            </div>
+          </div>
+          <div className="fl-meta-footer">
+            <div><span>Active Time</span><strong>{fmtDuration(usage?.active_seconds ?? 0)}</strong></div>
+            <div><span>Gateway</span><strong>{status?.supermcp?.running ? "Dana + SuperMCP :3006" : "Dana MCP Core"}</strong></div>
+          </div>
+        </div>
+        <button
+          type="button"
+          className={"fl-scallop-orb " + (ready ? "on" : busy ? "busy" : "off")}
+          disabled={busy || !status}
+          onClick={() => (ready ? run("/api/setup/stop-dana") : setup())}
+          title={ready ? "Pause / Stop Dana" : "Start & Connect Dana"}
+        >
+          <svg className="fl-scallop-bg" viewBox="0 0 100 100" aria-hidden="true">
+            <path d="M50 3 C55 3 59 7 64 6 C69 5 74 1 78 4 C82 7 82 13 86 16 C90 19 95 18 97 23 C99 28 95 33 96 38 C97 43 100 47 99 52 C98 57 93 60 92 65 C91 70 94 76 90 80 C86 84 81 82 76 85 C71 88 71 94 66 96 C61 98 56 94 50 94 C44 94 39 98 34 96 C29 94 29 88 24 85 C19 82 14 84 10 80 C6 76 9 70 8 65 C7 60 2 57 1 52 C0 47 3 43 4 38 C5 33 1 28 3 23 C5 18 10 19 14 16 C18 13 18 7 22 4 C26 1 31 5 36 6 C41 7 45 3 50 3 Z" fill="currentColor" />
+          </svg>
+          <span className="fl-orb-icon">
+            {ready ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4.5" height="14" rx="1.8" /><rect x="13.5" y="5" width="4.5" height="14" rx="1.8" /></svg>
+            ) : (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5-11-6.5z" /></svg>
+            )}
+          </span>
+        </button>
+      </section>
+      <section className="fl-card fl-metric-card">
+        <div className="fl-metric-head"><span className="fl-up-label">↑ Input Tokens</span><span className="fl-peak-label">Ops: {(usage?.operations ?? 0).toLocaleString()}</span></div>
+        <div className="fl-metric-val">{(usage?.input_tokens ?? 0).toLocaleString()} <small>tok</small></div>
+        <div className="fl-metric-sub">Exact: {(usage?.exact_tokens ?? 0).toLocaleString()}</div>
+        <svg className="fl-sparkline" viewBox="0 0 220 48" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 42 Q35 38 62 24 T132 22 T220 36" fill="none" stroke="var(--accent)" strokeWidth="2.4" />
+          <path d="M0 42 Q35 38 62 24 T132 22 T220 36 L220 48 L0 48 Z" fill="var(--accent-soft)" opacity="0.45" />
+        </svg>
+      </section>
+      <section className="fl-card fl-metric-card">
+        <div className="fl-metric-head"><span className="fl-down-label">↓ Output Tokens</span><span className="fl-peak-label">Total: {(usage?.total_tokens ?? 0).toLocaleString()}</span></div>
+        <div className="fl-metric-val">{(usage?.output_tokens ?? 0).toLocaleString()} <small>tok</small></div>
+        <div className="fl-metric-sub">Est: {(usage?.estimated_tokens ?? 0).toLocaleString()}</div>
+        <svg className="fl-sparkline" viewBox="0 0 220 48" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0 40 Q48 16 96 30 T168 14 T220 32" fill="none" stroke="var(--success)" strokeWidth="2.4" />
+          <path d="M0 40 Q48 16 96 30 T168 14 T220 32 L220 48 L0 48 Z" fill="var(--success-soft)" opacity="0.45" />
+        </svg>
+      </section>
+    </div>
+    <div className="fl-row-2">
+      <section className="fl-card fl-mode-bar">
+        <div className="fl-mode-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9" />
+          </svg>
+          <span>Connection</span>
+        </div>
+        <div className="fl-mode-pills" role="tablist" aria-label="Connection mode">
+          {([
+            ["all", "All (3)"],
+            ["local", "Local"],
+            ["public", "Public"],
+            ["supermcp", "SuperMCP"],
+          ] as const).map(([mKey, mLabel]) => (
+            <button
+              key={mKey}
+              type="button"
+              className={"fl-mode-pill" + (connMode === mKey ? " active" : "")}
+              onClick={() => switchConnectionMode(mKey)}
+            >
+              {mLabel}
+            </button>
+          ))}
+        </div>
+        <div className="fl-custom-dropdown">
+          <button type="button" className="fl-dropdown-trigger" onClick={() => setModeMenuOpen((v) => !v)} aria-expanded={modeMenuOpen}>
+            <span>{connMode === "all" ? "⚡ All Services" : connMode === "local" ? "🔒 Local Only" : connMode === "public" ? "🌐 Public Only" : "🧩 SuperMCP Only"}</span>
+            <span className={"fl-dd-arrow" + (modeMenuOpen ? " open" : "")}>▾</span>
+          </button>
+          {modeMenuOpen && (
+            <div className="fl-dropdown-menu">
+              {([
+                ["all", "⚡ All Services", "Local MCP (:8765) + Public Funnel (:443) + SuperMCP (:3006)"],
+                ["local", "🔒 Local Only", "Only local MCP on 127.0.0.1:8765 (Funnel & SuperMCP off)"],
+                ["public", "🌐 Public Funnel Only", "Local MCP + Tailscale HTTPS Funnel (SuperMCP off)"],
+                ["supermcp", "🧩 SuperMCP Assistant Only", "Local MCP + Browser SSE proxy on port 3006 (Funnel off)"],
+              ] as const).map(([k, title, desc]) => (
+                <button key={k} type="button" className={"fl-dropdown-item" + (connMode === k ? " selected" : "")}
+                  onClick={() => switchConnectionMode(k)}>
+                  <div><strong>{title}</strong><span>{desc}</span></div>
+                  {connMode === k && <b className="fl-check">✓</b>}
+                </button>
               ))}
             </div>
-
-            <section className="progress-card glass">
-        <div className="progress-top">
-          <span>Setup steps</span>
-          <strong>{setupSteps.filter((s) => s.done).length}/{setupSteps.length}</strong>
+          )}
         </div>
-        <ol className="setup-steps">
-          {setupSteps.map((s, i) => (
-            <li key={s.id} className={s.done ? "done" : i === setupSteps.findIndex((x) => !x.done) ? "current" : ""}>
-              <span className="step-index">{i + 1}</span>
-              <span className="step-label">{s.label}</span>
-              <span className="step-state">{s.done ? "Done" : "Pending"}</span>
-            </li>
-          ))}
-        </ol>
       </section>
-          </>
+      <section className="fl-card fl-toggle-card">
+        <div className="fl-toggle-info">
+          <div className="fl-toggle-icon accent">⇄</div>
+          <div><strong>Public Funnel</strong><span>{status?.funnel_active && !status?.local_only ? "HTTPS :443 Active" : "Disabled / Local"}</span></div>
+        </div>
+        <button type="button" role="switch" aria-checked={!!status?.funnel_active && !status?.local_only}
+          className={"fl-switch" + (status?.funnel_active && !status?.local_only ? " on" : "")}
+          onClick={() => switchConnectionMode(status?.funnel_active && !status?.local_only ? "local" : "all")}>
+          <span className="fl-switch-knob" />
+        </button>
+      </section>
+      <section className="fl-card fl-toggle-card">
+        <div className="fl-toggle-info">
+          <div className="fl-toggle-icon green">⚡</div>
+          <div><strong>SuperMCP Proxy</strong><span>{status?.supermcp?.running ? `Port ${status?.supermcp?.port || 3006} Active` : "Stopped"}</span></div>
+        </div>
+        <button type="button" role="switch" aria-checked={!!status?.supermcp?.running}
+          className={"fl-switch" + (status?.supermcp?.running ? " on" : "")}
+          onClick={async () => {
+            if (!port) return;
+            const ep = status?.supermcp?.running ? "/api/setup/supermcp/stop" : "/api/setup/supermcp/start";
+            await fetch(API(port, ep), { method: "POST" });
+            await refresh(port, true);
+          }}>
+          <span className="fl-switch-knob" />
+        </button>
+      </section>
+    </div>
+    <div className="fl-row-3">
+      <section className="fl-card fl-bento-box">
+        <div className="fl-box-head">
+          <span>ACTIVE ENDPOINT</span>
+          <button type="button" className="fl-icon-act" title="Copy active MCP URL"
+            onClick={() => copy(connMode === "supermcp" ? status?.supermcp?.sse_url || "http://127.0.0.1:3006/sse" : (!status?.local_only && status?.public_mcp_url) || status?.local_mcp_url || "")}>
+            {copied ? "✓" : "⧉"}
+          </button>
+        </div>
+        <code className="fl-ip-display">
+          {connMode === "supermcp" ? status?.supermcp?.sse_url || "http://127.0.0.1:3006/sse" : (!status?.local_only && status?.public_mcp_url) || status?.local_mcp_url || "http://127.0.0.1:8765/mcp"}
+        </code>
+        <div className="fl-sub-pill">
+          <div><strong>LAN / Local Lock</strong><span>{status?.local_only ? "Localhost only" : "Public + Local"}</span></div>
+          <button type="button" role="switch" aria-checked={!!status?.local_only}
+            className={"fl-switch sm" + (status?.local_only ? " on" : "")}
+            onClick={() => switchConnectionMode(status?.local_only ? "all" : "local")}>
+            <span className="fl-switch-knob" />
+          </button>
+        </div>
+      </section>
+      <section className="fl-card fl-bento-box">
+        <div className="fl-box-head"><span>PROFILE &amp; SETUP</span><button type="button" className="fl-icon-act" onClick={() => hardRefresh()} title="Refresh">↻</button></div>
+        <div className="fl-profile-name">DANA CORE v{APP_VERSION}</div>
+        <div className="fl-profile-meta">{setupSteps.filter((s) => s.done).length}/{setupSteps.length} Steps Ready · {(usage?.success_rate ?? 100).toFixed(0)}% Success</div>
+        <div className="fl-progress-bar"><div className="fl-progress-fill" style={{ width: `${(setupSteps.filter((s) => s.done).length / Math.max(1, setupSteps.length)) * 100}%` }} /></div>
+      </section>
+      <section className="fl-card fl-bento-box">
+        <div className="fl-box-head"><span>SERVICE HEALTH</span><button type="button" className="fl-icon-act" onClick={testConnection} disabled={testing} title="Ping endpoints">{testing ? "…" : "⚡"}</button></div>
+        <div className="fl-health-pills">
+          <div className="fl-health-row"><span className={"fl-dot " + (status?.dana_running ? "on" : "off")} /><strong>Local MCP</strong><code>{status?.dana_running ? "8765 · OK" : "Offline"}</code></div>
+          <div className="fl-health-row"><span className={"fl-dot " + (status?.supermcp?.running ? "on" : "warn")} /><strong>SuperMCP</strong><code>{status?.supermcp?.running ? "3006 · SSE" : "Standby"}</code></div>
+        </div>
+      </section>
+      <section className="fl-card fl-bento-box">
+        <div className="fl-box-head"><span>AUTO-HEAL &amp; WHIP</span><button type="button" className="fl-icon-act" onClick={() => { setSettingsTab("whip"); setView("Config"); }} title="Open Whip & Heal Settings">›</button></div>
+        <div className="fl-profile-name">Every {healInterval ?? 20}s</div>
+        <div className="fl-progress-bar"><div className="fl-progress-fill" style={{ width: `${Math.max(18, (whipLevel / 5) * 100)}%` }} /></div>
+        <div className="fl-legend-row"><span><i className="fl-dot on" /> Boost x{whipLevel}</span><span><i className="fl-dot accent" /> Sound {whipMuted ? "Muted" : `${whipVol}%`}</span></div>
+      </section>
+    </div>
+    <div className="fl-row-4">
+      <section className="fl-card fl-activity-box">
+        <div className="fl-tabs-head">
+          <div className="fl-tab-pills">
+            <button type="button" className={"fl-tab-btn" + (dashTab === "tools" ? " active" : "")} onClick={() => setDashTab("tools")}>
+              {toolEvents.length} Tool Calls
+            </button>
+            <button type="button" className={"fl-tab-btn" + (dashTab === "setup" ? " active" : "")} onClick={() => setDashTab("setup")}>
+              {logs.length} System Events
+            </button>
+            <button type="button" className={"fl-tab-btn" + (dashTab === "endpoints" ? " active" : "")} onClick={() => setDashTab("endpoints")}>
+              Connector URLs
+            </button>
+          </div>
+          <button type="button" className="secondary compact-btn" onClick={() => setView("Logs")}>Full Logs ›</button>
+        </div>
+        {dashTab === "tools" && (
+          <div className="log-list tool-log-list fl-compact-logs">
+            {toolEvents.length ? (
+              toolEvents.slice(0, 12).map((ev, i) => {
+                const level = ev.success ? "success" : "error";
+                return (
+                  <details className={"log-collapse log-" + level} key={ev.time + ev.tool + i}>
+                    <summary>
+                      <LogChevron />
+                      <span className="log-time">{ev.time}</span>
+                      <span className={"log-level " + level}>{ev.success ? "OK" : "FAIL"}</span>
+                      <span className="log-message">
+                        {ev.tool} · {ev.worker || "Worker"} #{ev.number || 1} · {Math.round(ev.duration_ms)} ms · {(ev.input + ev.output).toLocaleString()} tok
+                      </span>
+                    </summary>
+                    <div className="log-detail-body">
+                      {ev.args ? (<><div className="log-detail-label">Arguments</div><pre className="log-full">{ev.args}</pre></>) : null}
+                      {ev.result ? (<><div className="log-detail-label">Result</div><pre className="log-full">{ev.result}</pre></>) : null}
+                      {ev.error ? (<><div className="log-detail-label">Error</div><pre className="log-full">{ev.error}</pre></>) : null}
+                    </div>
+                  </details>
+                );
+              })
+            ) : (
+              <div className="log-empty">No tool calls yet — run any tool from your AI client.</div>
+            )}
+          </div>
         )}
-
-        {port && view === "Network" && (
+        {dashTab === "setup" && (
+          <div className="log-list fl-compact-logs">
+            {logs.length ? (
+              logs.slice(-12).reverse().map((x, i) => (
+                <details className={"log-collapse log-" + x.level} key={x.time + i}>
+                  <summary>
+                    <LogChevron />
+                    <span className="log-time">{x.time}</span>
+                    <span className={"log-level " + x.level}>{x.level.toUpperCase()}</span>
+                    <span className="log-message">{x.message}</span>
+                  </summary>
+                  <div className="log-detail-body"><pre className="log-full">{x.message}</pre></div>
+                </details>
+              ))
+            ) : (
+              <div className="log-empty">No setup logs recorded yet.</div>
+            )}
+          </div>
+        )}
+        {dashTab === "endpoints" && (
+          <div className="fl-QuickEndpoints">
+            {[
+              ["Local Streamable HTTP", status?.local_mcp_url || "http://127.0.0.1:8765/mcp"],
+              ["Public Tailscale Funnel", status?.public_mcp_url || "Not published"],
+              ["SuperMCP Browser SSE", status?.supermcp?.sse_url || "http://127.0.0.1:3006/sse"],
+            ].map(([title, u]) => (
+              <div className="fl-ep-row" key={title}>
+                <div><strong>{title}</strong><code>{u}</code></div>
+                <button type="button" className="secondary compact-btn" onClick={() => copy(u)}>{copied === u ? "Copied" : "Copy"}</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      <section className="fl-card fl-groups-box">
+        <div className="fl-box-head"><span>QUICK GROUPS &amp; TOOLS</span><span className="fl-count-chip">{skills.length || 4}</span></div>
+        <div className="fl-group-list">
+          <button type="button" className="fl-group-item" onClick={() => setView("Control")}>
+            <span className="fl-group-badge blue">🌐</span>
+            <div><strong>Endpoints &amp; Proxies</strong><span>Local · Funnel · SuperMCP</span></div>
+          </button>
+          <button type="button" className="fl-group-item" onClick={() => setView("Skills")}>
+            <span className="fl-group-badge green">🧠</span>
+            <div><strong>Skill Packs &amp; Zero Agent</strong><span>{skills.filter((s) => s.enabled !== false).length} active skills</span></div>
+          </button>
+          <button type="button" className="fl-group-item" onClick={() => { setSettingsTab("repair"); setView("Repair"); }}>
+            <span className="fl-group-badge warn">🛠️</span>
+            <div><strong>Repair &amp; Diagnostics</strong><span>Self-heal tunnel &amp; ports</span></div>
+          </button>
+          <button type="button" className="fl-group-item" onClick={() => { setSettingsTab("auth"); setView("Config"); }}>
+            <span className="fl-group-badge red">🔑</span>
+            <div><strong>Settings &amp; Security</strong><span>Token · Env · Whip Audio</span></div>
+          </button>
+        </div>
+      </section>
+    </div>
+  </div>
+)}
+        {port && view === "Control" && (
           <div className="control-view">
             <div className="grid">
               <section className="card glass">
@@ -1914,29 +2064,7 @@ function App() {
     )}
 
 
-    
-        {port && view === "Settings" && (
-          <div className="settings-shell">
-            <aside className="settings-rail" aria-label="Settings sections">
-              <div className="settings-rail-title">Settings</div>
-              {settingsItems.map((x) => (
-                <button
-                  key={x.id}
-                  type="button"
-                  className={"settings-rail-item" + (settingsTab === x.id ? " active" : "")}
-                  onClick={() => setSettingsTab(x.id)}
-                >
-                  <span className="nav-icon"><NavIcon name={x.icon} /></span>
-                  <span>{x.label}</span>
-                </button>
-              ))}
-              <button type="button" className="settings-back" onClick={() => setView("Dashboard")}>
-                ← Back to Dashboard
-              </button>
-            </aside>
-            <div className="settings-main">
-        
-        {port && (view === "Settings" && settingsTab === "Config") && (
+    {port && view === "Config" && (
       <div className="control-view config-view">
         <section className="connections-panel glass">
           <div className="logs-head">
@@ -2023,7 +2151,7 @@ function App() {
       </div>
     )}
 
-    {port && (view === "Settings" && settingsTab === "Repair") && (
+    {port && view === "Repair" && (
       <div className="control-view repair-view">
         <section className="card glass repair-hero">
           <div className="card-head">
@@ -2120,7 +2248,7 @@ function App() {
       </div>
     )}
 
-        {port && (view === "Settings" && settingsTab === "Help") && (
+        {port && view === "Help" && (
       <div className="control-view help-view">
         <section className="connections-panel glass help-toc">
           <span className="eyebrow">CONTENTS</span>
@@ -2209,7 +2337,7 @@ function App() {
       </div>
     )}
 
-{port && (view === "Settings" && settingsTab === "Usage") && (
+{port && view === "Usage" && (
         <div className="usage-view">
           <section className="card glass usage-hero">
             <div className="card-head">
@@ -2394,7 +2522,7 @@ function App() {
         </div>
       )}
 
-      {port && (view === "Settings" && settingsTab === "Skills") && (
+      {port && view === "Skills" && (
         <section className="skills-page">
           <header className="skills-page-head">
             <div>
@@ -2622,10 +2750,7 @@ function App() {
         </section>
       )}
 
-                  </div>
-          </div>
-        )}
-        {port && view === "Logs" && (
+      {port && view === "Logs" && (
           <div className="logs-stack">
             <section className="logs-panel glass">
               <div className="logs-head">
