@@ -14,6 +14,9 @@ from .tool_catalog import ALIASES, category_for, enrich
 
 def _tools(mcp: FastMCP) -> list[Any]:
     manager = mcp._tool_manager
+    bucket = getattr(manager, "_tools", None)
+    if isinstance(bucket, dict) and bucket:
+        return sorted(bucket.values(), key=lambda tool: tool.name)
     return sorted(manager.list_tools(), key=lambda tool: tool.name)
 
 
