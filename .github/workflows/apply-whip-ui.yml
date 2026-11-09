@@ -1,0 +1,30 @@
+name: Apply whip UI polish
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "packaging/hotfix_whip_ui.py"
+      - "packaging/hotfix_whip_css.py"
+      - "ui/src/whipAssets.ts"
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Apply App.tsx and CSS patches
+        run: |
+          python3 packaging/hotfix_whip_ui.py
+          python3 packaging/hotfix_whip_css.py
+      - name: Commit if changed
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ui/src/App.tsx ui/src/App.css ui/src/whipAssets.ts || true
+          git commit -m "feat(ui): whip volume/mute dock and visual polish" || true
+          git push
