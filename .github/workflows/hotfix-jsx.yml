@@ -1,0 +1,26 @@
+name: Hotfix JSX title attribute
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "packaging/hotfix_jsx_title.py"
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Apply JSX fix
+        run: python3 packaging/hotfix_jsx_title.py
+      - name: Commit if changed
+        run: |
+          if git diff --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ui/src/App.tsx dana/__init__.py pyproject.toml ui/package.json
+          git commit -m "fix(1.7.2): close unclosed JSX title attribute (build fix)"
+          git push
