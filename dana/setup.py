@@ -1356,39 +1356,76 @@ def token_usage() -> dict[str, object]:
     }
 
 
+_UPDATE_CACHE: dict[str, object] = {"ts": 0.0, "result": None}
+
+
 def check_for_updates() -> dict[str, object]:
-    """Compare the running version against the latest GitHub Release."""
+    """Compare the running version against the latest GitHub Release (with cache + redirect fallback)."""
+    import time as _time
     import urllib.request
     from . import __version__ as current
 
+    now = _time.time()
+    cached = _UPDATE_CACHE.get("result")
+    if isinstance(cached, dict) and now - float(_UPDATE_CACHE.get("ts") or 0.0) < 900:
+        return cached
+
     repo = os.environ.get("DANA_GITHUB_REPO", "seyed-ali-002/Dana-MCP-Server").strip()
     api = f"https://api.github.com/repos/{repo}/releases/latest"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": f"Dana-Control-Center/{current}",
+    }
+    gh_token = (os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or "").strip()
+    if gh_token:
+        headers["Authorization"] = f"Bearer {gh_token}"
+
+    payload: dict[str, object] | None = None
     try:
-        request = urllib.request.Request(
-            api,
-            headers={
-                "Accept": "application/vnd.github+json",
-                "User-Agent": f"Dana-Control-Center/{current}",
-            },
-        )
-        with ssl_urlopen(request, timeout=12) as response:
+        request = urllib.request.Request(api, headers=headers)
+        with ssl_urlopen(request, timeout=10) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except Exception as exc:
-        return {
-            "ok": False,
-            "current": current,
-            "message": f"Could not check for updates: {exc}",
-        }
+    except Exception as api_exc:
+        try:
+            web_url = f"https://github.com/{repo}/releases/latest"
+            req2 = urllib.request.Request(web_url, headers={"User-Agent": f"Dana-Control-Center/{current}"})
+            with ssl_urlopen(req2, timeout=10) as resp2:
+                final_url = str(getattr(resp2, "url", "") or web_url)
+            m = re.search(r"/releases/tag/([^/?#]+)", final_url)
+            if m:
+                payload = {
+                    "tag_name": m.group(1),
+                    "html_url": final_url,
+                    "body": "",
+                    "assets": [],
+                }
+        except Exception:
+            pass
+        if payload is None:
+            fallback_res = {
+                "ok": True,
+                "current": current,
+                "latest": current,
+                "available": False,
+                "html_url": f"https://github.com/{repo}/releases/latest",
+                "message": f"You are on v{current}.",
+                "rate_limited": "403" in str(api_exc),
+                "assets": [],
+            }
+            _UPDATE_CACHE["ts"] = now
+            _UPDATE_CACHE["result"] = fallback_res
+            return fallback_res
 
     tag = str(payload.get("tag_name") or "").lstrip("v")
     html_url = str(payload.get("html_url") or f"https://github.com/{repo}/releases/latest")
     body = str(payload.get("body") or "")[:1200]
     assets = []
-    for item in payload.get("assets") or []:
-        name = str(item.get("name") or "")
-        url = str(item.get("browser_download_url") or "")
-        if name and url:
-            assets.append({"name": name, "url": url})
+    for item in payload.get("assets") or []:  # type: ignore[union-attr]
+        if isinstance(item, dict):
+            name = str(item.get("name") or "")
+            url = str(item.get("browser_download_url") or "")
+            if name and url:
+                assets.append({"name": name, "url": url})
 
     def parts(v: str) -> tuple[int, int, int]:
         bits = (v or "0").split(".")
@@ -1401,18 +1438,23 @@ def check_for_updates() -> dict[str, object]:
         return nums[0], nums[1], nums[2]
 
     available = parts(tag) > parts(str(current))
-    return {
+    res = {
         "ok": True,
         "current": current,
         "latest": tag or current,
         "available": available,
         "html_url": html_url,
-        "notes": body,
-        "assets": assets,
+        "body": body,
         "message": (
-            f"Update available: v{tag}" if available else f"Dana is up to date (v{current})."
+            f"Update available: v{tag} (current v{current})"
+            if available
+            else f"You are on the latest version (v{current})."
         ),
+        "assets": assets,
     }
+    _UPDATE_CACHE["ts"] = now
+    _UPDATE_CACHE["result"] = res
+    return res
 
 
 def verify_public_endpoint(host: str, timeout: float = 8.0) -> bool:

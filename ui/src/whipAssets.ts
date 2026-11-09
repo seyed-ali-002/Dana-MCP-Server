@@ -3,9 +3,9 @@ export const WHIP_CDN = "https://raw.githubusercontent.com/GitFrog1111/OpenWhip/
 export const WHIP_SOUND_FILES = ["A.mp3", "B.mp3", "C.mp3", "D.mp3", "E.mp3"] as const;
 
 export const WHIP_CURSOR =
-  'url("/whip/divider.png") 8 8, url("' +
+  "url(\"/whip/divider.png\") 8 8, url(\"" +
   WHIP_CDN +
-  '/assets/divider.png") 8 8, crosshair';
+  "/assets/divider.png\") 8 8, crosshair";
 
 export function getWhipVolume(): number {
   try {

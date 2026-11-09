@@ -1431,6 +1431,127 @@ function App() {
 
         {port && view === "Setup" && (
           <>
+            <section className={"clash-hub glass " + (ready ? (status?.local_only ? "is-local" : "is-online") : busy ? "is-busy" : "is-offline")}>
+              <div className="clash-hub-left">
+                <button
+                  type="button"
+                  className={"power-orb " + (ready ? "on" : busy ? "connecting" : "off")}
+                  disabled={busy || !status}
+                  onClick={() => {
+                    if (ready) {
+                      run("/api/setup/stop-dana");
+                    } else {
+                      setup();
+                    }
+                  }}
+                  title={ready ? "Click to disconnect Dana" : "Click to connect & activate Dana"}
+                >
+                  <span className="power-orb-ring" />
+                  <span className="power-orb-core">
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M12 3v9m5.66-5.66a8 8 0 1 1-11.32 0" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" />
+                    </svg>
+                  </span>
+                </button>
+                <div className="clash-hub-status">
+                  <span className="clash-status-pill">
+                    <span className={"dot " + (ready ? "on" : busy ? "warn" : "")} />
+                    {busy ? "CONNECTING…" : ready ? (status?.local_only ? "CONNECTED · LOCAL" : "CONNECTED · PUBLIC") : "DISCONNECTED"}
+                  </span>
+                  <h2>{ready ? "Dana MCP is Online" : busy ? "Establishing Tunnel…" : "Tap to Connect"}</h2>
+                  <p className="clash-hub-sub">
+                    {status?.hint || (ready ? "Your AI clients can now execute tools on this machine." : "One-click activation for Tailscale, Funnel & local MCP server.")}
+                  </p>
+                  <div className="clash-mode-segmented" role="group" aria-label="Routing mode">
+                    <button
+                      type="button"
+                      className={"seg-btn" + (!status?.local_only ? " active" : "")}
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!port) return;
+                        await fetch(API(port, "/api/setup/local-only"), {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ enabled: false }),
+                        });
+                        await refresh(port);
+                      }}
+                    >
+                      🌐 Public Tunnel (Funnel)
+                    </button>
+                    <button
+                      type="button"
+                      className={"seg-btn" + (status?.local_only ? " active" : "")}
+                      disabled={busy}
+                      onClick={async () => {
+                        if (!port) return;
+                        await fetch(API(port, "/api/setup/local-only"), {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ enabled: true }),
+                        });
+                        await refresh(port);
+                      }}
+                    >
+                      🔒 Local Only
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="clash-hub-right">
+                <div className="clash-url-card">
+                  <div className="clash-url-head">
+                    <span className="eyebrow">ACTIVE MCP ENDPOINT</span>
+                    <div className="clash-url-actions">
+                      <button
+                        type="button"
+                        className="secondary compact-btn"
+                        disabled={!status?.public_mcp_url && !status?.local_mcp_url}
+                        onClick={() => copy((!status?.local_only && status?.public_mcp_url) || status?.local_mcp_url || "")}
+                      >
+                        {copied && (copied === status?.public_mcp_url || copied === status?.local_mcp_url) ? "✓ Copied" : "Copy URL"}
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary compact-btn"
+                        disabled={testing}
+                        onClick={() => {
+                          setView("Control");
+                          testConnection();
+                        }}
+                      >
+                        {testing ? "Pinging…" : "⚡ Ping Test"}
+                      </button>
+                    </div>
+                  </div>
+                  <code className="clash-url-code">
+                    {(!status?.local_only && status?.public_mcp_url) || status?.local_mcp_url || "http://127.0.0.1:8765/mcp"}
+                  </code>
+                </div>
+                <div className="clash-QuickStats">
+                  <div className="clash-stat">
+                    <span>Tailscale</span>
+                    <strong className={status?.tailscale_backend?.toLowerCase() === "running" ? "ok" : "warn"}>
+                      {status?.tailscale_backend || "Offline"}
+                    </strong>
+                  </div>
+                  <div className="clash-stat">
+                    <span>SuperMCP</span>
+                    <strong className={status?.supermcp?.running ? "ok" : "muted"}>
+                      {status?.supermcp?.running ? `Port ${status?.supermcp?.port || 3006}` : "Standby"}
+                    </strong>
+                  </div>
+                  <div className="clash-stat">
+                    <span>Operations</span>
+                    <strong>{(usage?.operations ?? 0).toLocaleString()}</strong>
+                  </div>
+                  <div className="clash-stat">
+                    <span>Total Tokens</span>
+                    <strong>{(usage?.total_tokens ?? 0).toLocaleString()}</strong>
+                  </div>
+                </div>
+              </div>
+            </section>
             <section className="hero glass">
               <div className="hero-copy">
                 <span className="kicker">ONE-CLICK DEPLOYMENT</span>

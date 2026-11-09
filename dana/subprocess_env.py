@@ -1,44 +1,34 @@
-"""Clean environment for child processes spawned from PyInstaller/AppImage builds.
+"""Clean environment helper for child processes spawned by Dana.
 
-PyInstaller sets LD_LIBRARY_PATH to its extracted _MEI folder. Passing that to
-system binaries (curl, git, python3, node) causes OPENSSL version mismatches and
-\"unknown url type: https\" errors. Always scrub these vars for external commands.
+When Dana runs from a PyInstaller bundle (Linux AppImage/deb, macOS .app, Windows .exe),
+PyInstaller injects LD_LIBRARY_PATH / DYLD_LIBRARY_PATH / PYTHONHOME / PYTHONPATH pointing
+to its temporary extraction directory (_MEIxxxxxx). Passing those variables to system
+commands (git, curl, python3, node, npx, tailscale, etc.) breaks system shared libraries
+(e.g. OpenSSL conflicts). This helper restores the original environment safely across
+Linux, macOS, and Windows.
 """
 from __future__ import annotations
 
 import os
-from typing import Mapping
 
 
-_SCRUB_KEYS = (
-    "LD_LIBRARY_PATH",
-    "LD_PRELOAD",
-    "PYTHONHOME",
-    "PYTHONPATH",
-    "PYTHONNOUSERSITE",
-)
-
-
-def clean_subprocess_env(
-    base: Mapping[str, str] | None = None,
-    *,
-    extra: Mapping[str, str] | None = None,
-) -> dict[str, str]:
-    """Return an env dict safe for system subprocesses.
-
-    Removes PyInstaller / embedded-Python leakage. Optionally restores values
-    from DANA_HOST_* overrides (e.g. DANA_HOST_LD_LIBRARY_PATH).
-    """
-    src = dict(base if base is not None else os.environ)
-    env = {k: v for k, v in src.items() if k not in _SCRUB_KEYS}
-    for key in _SCRUB_KEYS:
-        host = os.environ.get(f"DANA_HOST_{key}")
-        if host is not None and host != "":
-            env[key] = host
+def clean_subprocess_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    env = dict(os.environ)
+    for key in (
+        "LD_LIBRARY_PATH",
+        "LD_PRELOAD",
+        "DYLD_LIBRARY_PATH",
+        "DYLD_FALLBACK_LIBRARY_PATH",
+        "PYTHONHOME",
+        "PYTHONPATH",
+    ):
+        orig_key = f"{key}_ORIG"
+        if orig_key in env:
+            env[key] = env[orig_key]
+        else:
+            env.pop(key, None)
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
     if extra:
-        env.update({k: str(v) for k, v in extra.items()})
+        env.update(extra)
     return env
-
-
-# Back-compat alias used in older patches / supermcp
-_clean_subprocess_env = clean_subprocess_env

@@ -49,7 +49,6 @@ def register_skills_tools(mcp: FastMCP) -> None:
         return skills.remove_skill(skill_id)
 
     @mcp.tool()
-    @mcp.tool()
     def sync_skill_pack(pack: str = "") -> dict[str, Any]:
         """Re-download and re-import one skill pack (or all installed packs if pack is empty)."""
         return skills.sync_skill_pack(pack)
