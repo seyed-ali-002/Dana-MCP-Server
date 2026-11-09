@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import logo from "../src-tauri/icons/icon.png";
 import WhipOverlay from "./WhipOverlay";
-import { playOpenWhipCrack } from "./whipAssets";
+import { playOpenWhipCrack, getWhipVolume, setWhipVolume, isWhipMuted, setWhipMuted } from "./whipAssets";
 import "./App.css";
 
 type Status = {
@@ -485,6 +485,8 @@ function App() {
   const [skillPath, setSkillPath] = useState("");
   const [whipLevel, setWhipLevel] = useState(0);
   const [whipArmed, setWhipArmed] = useState(false);
+  const [whipVol, setWhipVolState] = useState(() => Math.round(getWhipVolume() * 100));
+  const [whipMuted, setWhipMutedState] = useState(() => isWhipMuted());
   const [whipMsg, setWhipMsg] = useState("");
   const [toastMsg, setToastMsg] = useState<{ title: string; body: string } | null>(null);
   const [healInterval, setHealInterval] = useState<number | null>(null);
@@ -2803,7 +2805,41 @@ function App() {
           </div>
         </div>
       )}
-      <button
+      <div className="whip-dock">
+        <div className="whip-audio-pill glass" title="Whip crack sound volume">
+          <button
+            type="button"
+            className="whip-mute-btn"
+            aria-label={whipMuted ? "Unmute whip sound" : "Mute whip sound"}
+            onClick={() => {
+              const next = !whipMuted;
+              setWhipMuted(next);
+              setWhipMutedState(next);
+              if (!next && whipVol === 0) {
+                setWhipVolume(0.85);
+                setWhipVolState(85);
+              }
+            }}
+          >
+            {whipMuted || whipVol === 0 ? "🔇" : whipVol < 45 ? "🔉" : "🔊"}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={whipMuted ? 0 : whipVol}
+            aria-label="Whip sound volume"
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setWhipVolState(v);
+              setWhipMutedState(v === 0);
+              setWhipMuted(v === 0);
+              setWhipVolume(v / 100);
+            }}
+          />
+          <span className="whip-vol-label">{whipMuted ? "Mute" : `${whipVol}%`}</span>
+        </div>
+        <button
         type="button"
         className={"whip-fab" + (whipArmed ? " armed" : "") + (whipLevel > 0 ? " boosted" : "")}
         title={whipArmed ? "Whip active — move mouse fast to crack (click to disarm)" : "Activate OpenWhip cursor & sound"}
@@ -2833,7 +2869,8 @@ function App() {
           <circle cx="11" cy="53" r="3.5" fill="currentColor" />
         </svg>
         {whipLevel > 0 ? <span className="whip-level-badge">{whipLevel}</span> : null}
-      </button>
+        </button>
+      </div>
       {skillPreview && (
         <div className="skill-preview-backdrop" onClick={() => setSkillPreview(null)}>
           <div className="skill-preview-modal" onClick={(e) => e.stopPropagation()}>
