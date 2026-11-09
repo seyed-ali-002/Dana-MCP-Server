@@ -12,12 +12,13 @@
   "app": {
     "windows": [
       {
-        "title": "Dana",
+        "title": "Dana · MCP Control Center",
         "width": 1180,
         "height": 760,
-        "minWidth": 900,
-        "minHeight": 600,
-        "resizable": true
+        "minWidth": 980,
+        "minHeight": 680,
+        "resizable": true,
+        "decorations": true
       }
     ],
     "security": {
@@ -26,6 +27,9 @@
   },
   "bundle": {
     "active": true,
+    "resources": {
+      "resources/*": ""
+    },
     "targets": "all",
     "icon": [
       "icons/32x32.png",
