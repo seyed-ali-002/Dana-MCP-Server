@@ -1,0 +1,23 @@
+name: Apply UI 1.8 FLClash structure
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "packaging/hotfix_ui_structure_1_8.py"
+      - "ui/src/flclash.css"
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - run: python3 packaging/hotfix_ui_structure_1_8.py
+      - name: Commit
+        run: |
+          if git diff --quiet; then echo none; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(ui): FLClash nav structure, settings hub, logo (1.8.0)"
+          git push
