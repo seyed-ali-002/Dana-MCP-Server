@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "packaging/hotfix_ui_structure_1_8.py"
+      - "packaging/hotfix_ui_mode_settings_1_8.py"
       - "ui/src/flclash.css"
 jobs:
   apply:
@@ -12,12 +13,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
-      - run: python3 packaging/hotfix_ui_structure_1_8.py
+      - run: |
+          python3 packaging/hotfix_ui_structure_1_8.py || true
+          python3 packaging/hotfix_ui_mode_settings_1_8.py || true
       - name: Commit
         run: |
           if git diff --quiet; then echo none; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "feat(ui): FLClash nav structure, settings hub, logo (1.8.0)"
+          git commit -m "feat(ui): connection mode dropdown + Settings hub (1.8.0)"
           git push
