@@ -1142,7 +1142,13 @@ def status() -> SetupStatus:
     else:
         # Light public check — failures mean degraded, not offline.
         try:
-            public_verified = verify_public_endpoint(funnel_host, timeout=3.0) if funnel_host else False
+            public_verified = False
+            if funnel_host:
+                for _attempt in range(3):
+                    public_verified = verify_public_endpoint(funnel_host, timeout=4.0)
+                    if public_verified:
+                        break
+                    time.sleep(0.6 * (_attempt + 1))
         except Exception:
             public_verified = False
         if public_verified:
@@ -1205,44 +1211,62 @@ def test_connections() -> dict[str, object]:
             "clientInfo": {"name": "Dana Control Center", "version": "1.0"},
         },
     }).encode("utf-8")
+    transient_keys = (
+        "timed out", "timeout", "temporarily", "connection reset", "connection aborted",
+        "10053", "10054", "broken pipe", "network is unreachable", "name resolution",
+        "eof occurred", "remote end closed",
+    )
     for name, url, host in candidates:
-        try:
-            request = urllib.request.Request(
-                url,
-                data=initialize,
-                method="POST",
-                headers={
-                    "Accept": "application/json, text/event-stream",
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {token}",
-                    "Host": host,
-                },
-            )
-            with ssl_urlopen(request, timeout=12) as response:
-                raw = response.read(65536).decode("utf-8", "replace")
-                content_type = response.headers.get("content-type", "")
-                handshake_ok = response.status == 200 and (
-                    "application/json" in content_type or "text/event-stream" in content_type
+        last_fail: dict[str, object] | None = None
+        for attempt in range(3):
+            try:
+                request = urllib.request.Request(
+                    url,
+                    data=initialize,
+                    method="POST",
+                    headers={
+                        "Accept": "application/json, text/event-stream",
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {token}",
+                        "Host": host,
+                    },
                 )
-                checks.append({
+                with ssl_urlopen(request, timeout=12) as response:
+                    raw = response.read(65536).decode("utf-8", "replace")
+                    content_type = response.headers.get("content-type", "")
+                    handshake_ok = response.status == 200 and (
+                        "application/json" in content_type or "text/event-stream" in content_type
+                    )
+                    checks.append({
+                        "name": name,
+                        "url": url,
+                        "ok": handshake_ok,
+                        "status": response.status,
+                        "content_type": content_type,
+                        "handshake": "initialize" if handshake_ok else "failed",
+                        "response_preview": raw[:240],
+                        "attempts": attempt + 1,
+                    })
+                    break
+            except Exception as exc:
+                status_code = getattr(exc, "code", None)
+                last_fail = {
                     "name": name,
                     "url": url,
-                    "ok": handshake_ok,
-                    "status": response.status,
-                    "content_type": content_type,
-                    "handshake": "initialize" if handshake_ok else "failed",
-                    "response_preview": raw[:240],
-                })
-        except Exception as exc:
-            status_code = getattr(exc, "code", None)
-            checks.append({
-                "name": name,
-                "url": url,
-                "ok": False,
-                "status": status_code,
-                "handshake": "failed",
-                "error": str(exc)[:180],
-            })
+                    "ok": False,
+                    "status": status_code,
+                    "handshake": "failed",
+                    "error": str(exc)[:180],
+                    "attempts": attempt + 1,
+                }
+                msg = str(exc).lower()
+                if not any(k in msg for k in transient_keys) or attempt >= 2:
+                    checks.append(last_fail)
+                    break
+                time.sleep(0.7 * (attempt + 1))
+        else:
+            if last_fail is not None and not any(c.get("name") == name for c in checks):
+                checks.append(last_fail)
     ok = bool(checks) and all(bool(item["ok"]) for item in checks)
     _setup_log("MCP initialize handshake passed." if ok else "MCP initialize handshake failed.", "success" if ok else "error")
     return {"ok": ok, "checks": checks, "tested_at": datetime.now(timezone.utc).isoformat()}
@@ -1460,10 +1484,14 @@ def verify_public_endpoint(host: str, timeout: float = 8.0) -> bool:
             except Exception:
                 return False
 
-    for path in ordered_paths:
-        url = f"https://{host}{path}"
-        if _try(url):
-            return True
+    attempts = max(1, int(os.environ.get("DANA_PUBLIC_PROBE_RETRIES", "3") or "3"))
+    for attempt in range(attempts):
+        for path in ordered_paths:
+            url = f"https://{host}{path}"
+            if _try(url):
+                return True
+        if attempt + 1 < attempts:
+            time.sleep(0.5 * (attempt + 1))
     return False
 
 
