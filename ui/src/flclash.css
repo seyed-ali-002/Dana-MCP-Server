@@ -1,0 +1,292 @@
+/* =============================================================================
+   FLClash-inspired Dana shell (v1.8)
+   ============================================================================= */
+:root, .shell.theme-dark, .shell[data-theme="dark"] {
+  --bg: #0f1115;
+  --chrome: #14171d;
+  --card: #1a1e26;
+  --card-2: #222733;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.1);
+  --text: #e8eaed;
+  --muted: #8b93a7;
+  --ok: #3dd68c;
+  --warn: #f5a524;
+  --err: #f31260;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --gap: 14px;
+  --font: "Segoe UI", "Inter", system-ui, -apple-system, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+}
+
+.shell.theme-light, .shell[data-theme="light"] {
+  --bg: #f3f4f8;
+  --chrome: #ebecef;
+  --card: #ffffff;
+  --card-2: #f7f8fb;
+  --border: rgba(15, 17, 21, 0.08);
+  --border-strong: rgba(15, 17, 21, 0.12);
+  --text: #1b1f2a;
+  --muted: #667085;
+  --shadow: 0 8px 24px rgba(20, 24, 40, 0.08);
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14.5px;
+  line-height: 1.45;
+}
+
+.sidebar {
+  background: var(--chrome);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 14px 10px;
+  gap: 8px;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--card);
+  box-shadow: var(--shadow);
+  display: grid;
+  place-items: center;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.brand strong {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+}
+
+.brand span { display: none; }
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nav-item:hover {
+  background: var(--card);
+  color: var(--text);
+}
+
+.nav-item.active {
+  background: color-mix(in srgb, var(--accent) 22%, var(--card));
+  color: var(--text);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.nav-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+}
+
+.sidebar-footer {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.content, .main, main {
+  padding: 20px 24px 28px;
+  overflow: auto;
+  background: var(--bg);
+}
+
+.page-title, .content h1, .hero h1 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+
+.card, .glass, .clash-hub, .clash-url-card, .connections-panel, .logs-panel,
+.endpoint-card, .metric-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: none;
+  padding: 16px 18px;
+}
+
+button, .btn {
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--card-2);
+  color: var(--text);
+  padding: 8px 14px;
+  min-height: 36px;
+  cursor: pointer;
+}
+
+button.primary, .btn-primary, .activate-btn {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+input, textarea, select.dana-select {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--card-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-height: 38px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dana-select-wrap { position: relative; display: block; }
+select.dana-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 36px;
+  cursor: pointer;
+}
+.dana-select-caret {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--muted);
+}
+
+.mode-field { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.mode-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.settings-shell {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 16px;
+  min-height: calc(100vh - 48px);
+}
+.settings-rail {
+  background: var(--chrome);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: fit-content;
+  position: sticky;
+  top: 12px;
+}
+.settings-rail-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 4px 10px 12px;
+}
+.settings-rail-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13.5px;
+  width: 100%;
+  text-align: left;
+}
+.settings-rail-item.active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--card));
+  color: var(--text);
+}
+.settings-back {
+  margin-top: 12px;
+  width: 100%;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.settings-main { display: flex; flex-direction: column; gap: 14px; }
+
+.clash-hub {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.1fr) minmax(280px, 1fr);
+  gap: 16px;
+  padding: 20px;
+}
+
+@media (max-width: 1100px) {
+  .shell { grid-template-columns: 72px minmax(0, 1fr); }
+  .clash-hub, .settings-shell { grid-template-columns: 1fr; }
+}
+
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+  border-radius: 999px;
+}
