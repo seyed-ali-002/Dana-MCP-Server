@@ -1731,7 +1731,7 @@ function App() {
                         <p className="endpoint-empty">No endpoint published yet.</p>
                       )}
                       <div className="endpoint-full">
-                        <code title={url || "">{url || "Unavailable"}</code>
+                        <code title={url || ""}>{url || "Unavailable"}</code>
                       </div>
                       <div className="endpoint-actions">
                         <button className="secondary" type="button" disabled={!url} onClick={() => copy(url || "")}>
