@@ -1469,39 +1469,44 @@ function App() {
                   <p className="clash-hub-sub">
                     {status?.hint || (ready ? "Your AI clients can now execute tools on this machine." : "One-click activation for Tailscale, Funnel & local MCP server.")}
                   </p>
-                  <div className="clash-mode-segmented" role="group" aria-label="Routing mode">
-                    <button
-                      type="button"
-                      className={"seg-btn" + (!status?.local_only ? " active" : "")}
-                      disabled={busy}
-                      onClick={async () => {
-                        if (!port) return;
-                        await fetch(API(port, "/api/setup/local-only"), {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ enabled: false }),
-                        });
-                        await refresh(port);
-                      }}
-                    >
-                      🌐 Public Tunnel (Funnel)
-                    </button>
-                    <button
-                      type="button"
-                      className={"seg-btn" + (status?.local_only ? " active" : "")}
-                      disabled={busy}
-                      onClick={async () => {
-                        if (!port) return;
-                        await fetch(API(port, "/api/setup/local-only"), {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ enabled: true }),
-                        });
-                        await refresh(port);
-                      }}
-                    >
-                      🔒 Local Only
-                    </button>
+                  <div className="mode-field">
+                    <label className="mode-label" htmlFor="endpoint-mode">Connection mode</label>
+                    <div className="dana-select-wrap">
+                      <select
+                        id="endpoint-mode"
+                        className="dana-select"
+                        disabled={busy || !port}
+                        value={endpointMode}
+                        onChange={async (e) => {
+                          const mode = e.target.value as "all" | "local" | "public" | "supermcp";
+                          setEndpointMode(mode);
+                          if (!port) return;
+                          if (mode === "local") {
+                            await fetch(API(port, "/api/setup/local-only"), {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ enabled: true }),
+                            });
+                          } else {
+                            await fetch(API(port, "/api/setup/local-only"), {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ enabled: false }),
+                            });
+                          }
+                          if (mode === "supermcp" || mode === "all") {
+                            try { await fetch(API(port, "/api/setup/supermcp/start"), { method: "POST" }); } catch {}
+                          }
+                          await refresh(port);
+                        }}
+                      >
+                        <option value="all">All · Local + Public + SuperMCP</option>
+                        <option value="local">Local only</option>
+                        <option value="public">Public endpoint (Funnel)</option>
+                        <option value="supermcp">SuperMCP Assistant only</option>
+                      </select>
+                      <span className="dana-select-caret" aria-hidden="true">▾</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1909,7 +1914,29 @@ function App() {
     )}
 
 
-    {port && (view === "Settings" && settingsTab === "Config") && (
+    
+        {port && view === "Settings" && (
+          <div className="settings-shell">
+            <aside className="settings-rail" aria-label="Settings sections">
+              <div className="settings-rail-title">Settings</div>
+              {settingsItems.map((x) => (
+                <button
+                  key={x.id}
+                  type="button"
+                  className={"settings-rail-item" + (settingsTab === x.id ? " active" : "")}
+                  onClick={() => setSettingsTab(x.id)}
+                >
+                  <span className="nav-icon"><NavIcon name={x.icon} /></span>
+                  <span>{x.label}</span>
+                </button>
+              ))}
+              <button type="button" className="settings-back" onClick={() => setView("Dashboard")}>
+                ← Back to Dashboard
+              </button>
+            </aside>
+            <div className="settings-main">
+        
+        {port && (view === "Settings" && settingsTab === "Config") && (
       <div className="control-view config-view">
         <section className="connections-panel glass">
           <div className="logs-head">
@@ -2595,7 +2622,10 @@ function App() {
         </section>
       )}
 
-      {port && view === "Logs" && (
+                  </div>
+          </div>
+        )}
+        {port && view === "Logs" && (
           <div className="logs-stack">
             <section className="logs-panel glass">
               <div className="logs-head">
