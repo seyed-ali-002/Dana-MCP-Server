@@ -375,7 +375,7 @@ def register_optimization_tools(mcp: FastMCP) -> None:
                 "estimated_reduction_percent": round(max(0, 100 * (full_tokens - visible_tokens) / full_tokens), 2) if full_tokens else 0,
             },
             "categories": dict(sorted(categories.items())),
-            "progressive_discovery": os.getenv("DANA_PROGRESSIVE_TOOLS", "1").strip().lower() not in {"0", "false", "no", "off"},
+            "progressive_discovery": os.getenv("DANA_PROGRESSIVE_TOOLS", "0").strip().lower() in {"1", "true", "yes", "on"},
             "visible_tools": visible_names,
             "cacheable_tools": sorted(_CACHE_TTLS),
         }

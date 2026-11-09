@@ -32,6 +32,8 @@ _PROCESS: subprocess.Popen[str] | None = None
 def _data_dir() -> Path:
     if os.name == "nt":
         base = Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming"))
+    elif os.uname().sysname.lower() == "darwin":
+        base = Path.home() / "Library" / "Application Support"
     else:
         base = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
     path = base / "dana" / "supermcp"
@@ -51,6 +53,50 @@ def _log_file() -> Path:
     return _data_dir() / "proxy.log"
 
 
+def _manifest_file() -> Path:
+    return _data_dir() / "dana-tools.json"
+
+
+def generate_full_tool_manifest() -> Path:
+    """Export every registered Dana tool into the SuperMCP data dir."""
+    target = _manifest_file()
+    try:
+        from .server import mcp
+        from .tools.tool_catalog import enrich
+
+        manager = getattr(mcp, "_tool_manager", None)
+        raw_tools: list = []
+        if manager is not None:
+            bucket = getattr(manager, "_tools", None)
+            if isinstance(bucket, dict):
+                raw_tools = sorted(bucket.values(), key=lambda tool: getattr(tool, "name", ""))
+            elif hasattr(manager, "list_tools"):
+                raw_tools = sorted(manager.list_tools(), key=lambda tool: getattr(tool, "name", ""))
+
+        items: list = []
+        for tool in raw_tools:
+            try:
+                items.append(enrich(tool))
+            except Exception:
+                items.append({
+                    "name": getattr(tool, "name", "unknown"),
+                    "canonical_name": getattr(tool, "name", "unknown"),
+                    "category": "general",
+                    "description": (getattr(tool, "description", "") or "").strip(),
+                    "input_schema": getattr(tool, "parameters", {}) or {},
+                })
+        payload = {
+            "count": len(items),
+            "categories": sorted({str(x.get("category") or "general") for x in items}),
+            "tools": items,
+        }
+        target.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except Exception:
+        pass
+    return target
+
+
+
 def _port() -> int:
     raw = os.environ.get("DANA_SUPERMCP_PORT", str(_DEFAULT_PORT))
     try:
@@ -66,7 +112,7 @@ def _enabled_by_default() -> bool:
 
 
 def _node_bin() -> str | None:
-    return shutil.which("node")
+    return shutil.which("node") or shutil.which("node.exe")
 
 
 def _npx_bin() -> str | None:
@@ -120,6 +166,13 @@ def write_config(*, tool_manifest: Path | None = None) -> Path:
         server["headers"] = {"Authorization": f"Bearer {token}"}
     if tool_manifest and tool_manifest.is_file():
         server["toolManifest"] = str(tool_manifest)
+    else:
+        try:
+            generated = generate_full_tool_manifest()
+            if generated.is_file():
+                server["toolManifest"] = str(generated)
+        except Exception:
+            pass
     cached = _data_dir() / "dana-tools.json"
     if "toolManifest" not in server and cached.is_file():
         server["toolManifest"] = str(cached)
