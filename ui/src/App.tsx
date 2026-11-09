@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import logo from "../src-tauri/icons/icon.png";
+import logo from "./assets/dana-logo.svg";
 import WhipOverlay from "./WhipOverlay";
 import { playOpenWhipCrack, getWhipVolume, setWhipVolume, isWhipMuted, setWhipMuted } from "./whipAssets";
 import "./App.css";
+import "./flclash.css";
 
 type Status = {
   tailscale_installed: boolean;
@@ -459,7 +460,9 @@ function App() {
   const [status, setStatus] = useState<Status | null>(null);
   const autoHealRef = useRef(false);
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState("Setup");
+  const [view, setView] = useState("Dashboard");
+  const [settingsTab, setSettingsTab] = useState<"Config" | "Skills" | "Repair" | "Usage" | "Help">("Config");
+  const [endpointMode, setEndpointMode] = useState<"all" | "local" | "public" | "supermcp">("all");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("Starting Dana setup service…");
   const [logs, setLogs] = useState<SetupLog[]>([]);
@@ -694,7 +697,7 @@ function App() {
   }, [port]);
 
   useEffect(() => {
-    if (port && (view === "Control" || view === "Config" || view === "Repair")) loadConfig(port);
+    if (port && (view === "Network" || (view === "Settings" && settingsTab === "Config") || (view === "Settings" && settingsTab === "Repair"))) loadConfig(port);
   }, [port, view]);
 
   useEffect(() => {
@@ -1113,18 +1116,22 @@ function App() {
   }
 
   const navItems: {
-    id: "Setup" | "Control" | "Config" | "Skills" | "Repair" | "Logs" | "Usage" | "Help";
+    id: "Dashboard" | "Network" | "Logs" | "Settings";
     label: string;
     icon: string;
   }[] = [
-    { id: "Setup", label: "Home", icon: "setup" },
-    { id: "Control", label: "Network", icon: "control" },
-    { id: "Config", label: "Config", icon: "config" },
+    { id: "Dashboard", label: "Dashboard", icon: "setup" },
+    { id: "Network", label: "Network", icon: "control" },
+    { id: "Logs", label: "Logs", icon: "logs" },
+    { id: "Settings", label: "Settings", icon: "config" },
+  ];
+
+  const settingsItems: { id: "Config" | "Skills" | "Repair" | "Usage" | "Help"; label: string; icon: string }[] = [
+    { id: "Config", label: "Configuration", icon: "config" },
     { id: "Skills", label: "Skills", icon: "skills" },
     { id: "Repair", label: "Repair", icon: "repair" },
-    { id: "Logs", label: "Logs", icon: "logs" },
     { id: "Usage", label: "Usage", icon: "usage" },
-    { id: "Help", label: "Help", icon: "help" },
+    { id: "Help", label: "Guide", icon: "help" },
   ];
 
   function NavIcon({ name }: { name: string }) {
@@ -1429,7 +1436,7 @@ function App() {
           </section>
         )}
 
-        {port && view === "Setup" && (
+        {port && view === "Dashboard" && (
           <>
             <section className={"clash-hub glass " + (ready ? (status?.local_only ? "is-local" : "is-online") : busy ? "is-busy" : "is-offline")}>
               <div className="clash-hub-left">
@@ -1516,7 +1523,7 @@ function App() {
                         className="secondary compact-btn"
                         disabled={testing}
                         onClick={() => {
-                          setView("Control");
+                          setView("Network");
                           testConnection();
                         }}
                       >
@@ -1677,7 +1684,7 @@ function App() {
           </>
         )}
 
-        {port && view === "Control" && (
+        {port && view === "Network" && (
           <div className="control-view">
             <div className="grid">
               <section className="card glass">
@@ -1902,7 +1909,7 @@ function App() {
     )}
 
 
-    {port && view === "Config" && (
+    {port && (view === "Settings" && settingsTab === "Config") && (
       <div className="control-view config-view">
         <section className="connections-panel glass">
           <div className="logs-head">
@@ -1989,7 +1996,7 @@ function App() {
       </div>
     )}
 
-    {port && view === "Repair" && (
+    {port && (view === "Settings" && settingsTab === "Repair") && (
       <div className="control-view repair-view">
         <section className="card glass repair-hero">
           <div className="card-head">
@@ -2086,7 +2093,7 @@ function App() {
       </div>
     )}
 
-        {port && view === "Help" && (
+        {port && (view === "Settings" && settingsTab === "Help") && (
       <div className="control-view help-view">
         <section className="connections-panel glass help-toc">
           <span className="eyebrow">CONTENTS</span>
@@ -2175,7 +2182,7 @@ function App() {
       </div>
     )}
 
-{port && view === "Usage" && (
+{port && (view === "Settings" && settingsTab === "Usage") && (
         <div className="usage-view">
           <section className="card glass usage-hero">
             <div className="card-head">
@@ -2360,7 +2367,7 @@ function App() {
         </div>
       )}
 
-      {port && view === "Skills" && (
+      {port && (view === "Settings" && settingsTab === "Skills") && (
         <section className="skills-page">
           <header className="skills-page-head">
             <div>
