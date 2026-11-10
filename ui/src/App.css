@@ -3237,3 +3237,130 @@ textarea.field:focus,
     flex-wrap: wrap;
   }
 }
+
+
+/* --- FLClash UI/UX Pro Max Visual Polish & Overflow Fixes ----------------- */
+.flclash-bento {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.fl-card {
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.fl-row-1,
+.fl-row-2,
+.fl-row-3,
+.fl-row-4 {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
+.fl-status-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.fl-status-left {
+  flex: 1;
+  min-width: 240px;
+}
+
+.fl-host-ip {
+  word-break: break-all;
+  overflow-wrap: break-word;
+}
+
+.fl-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fl-custom-dropdown {
+  position: relative;
+  z-index: 50;
+}
+
+.fl-dropdown-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: 290px;
+  max-width: 90vw;
+  z-index: 100;
+}
+
+.fl-activity-box {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fl-compact-logs {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.log-collapse summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.log-message {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.fl-settings-shell {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.fl-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+}
+
+@media (max-width: 900px) {
+  .fl-row-1,
+  .fl-row-2,
+  .fl-row-3,
+  .fl-row-4 {
+    grid-template-columns: 1fr !important;
+  }
+  .fl-settings-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
