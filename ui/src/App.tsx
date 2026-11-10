@@ -1330,7 +1330,7 @@ function App() {
         <header className="topbar">
           <div>
             <div className="eyebrow">LOCAL CONTROL PLANE</div>
-            <h1>{view}</h1>
+            <h1>{view === "Setup" ? "Dashboard" : view === "Control" ? "Proxies & Endpoints" : view === "Logs" ? "Live Requests" : isSettingsWorkspace ? "Settings & Toolkit" : view}</h1>
           </div>
           <div className="top-actions">
             <div
@@ -1596,6 +1596,21 @@ function App() {
             >
               {whipMuted ? "🔇 Muted" : `🔊 Volume ${whipVol}%`}
             </button>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              style={{ width: 130 }}
+              value={whipMuted ? 0 : whipVol}
+              aria-label="Whip sound volume"
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setWhipVolState(v);
+                setWhipMutedState(v === 0);
+                setWhipMuted(v === 0);
+                setWhipVolume(v / 100);
+              }}
+            />
             <button type="button" className="primary compact-btn" onClick={() => playOpenWhipCrack(playWhipCrack)}>
               Test Whip Sound
             </button>
@@ -2115,8 +2130,9 @@ function App() {
     )}
 
 
-    {port && view === "Config" && (
+    {port && view === "Config" && (settingsTab === "auth" || settingsTab === "env") && (
       <div className="control-view config-view">
+        {settingsTab === "auth" && (
         <section className="connections-panel glass">
           <div className="logs-head">
             <div>
@@ -2150,7 +2166,9 @@ function App() {
             )}
           </div>
         </section>
+        )}
 
+        {settingsTab === "env" && (
         <section className="connections-panel glass">
           <div className="logs-head">
             <div>
@@ -2199,6 +2217,7 @@ function App() {
             ))}
           </div>
         </section>
+        )}
       </div>
     )}
 

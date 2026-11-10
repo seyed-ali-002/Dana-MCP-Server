@@ -3364,3 +3364,66 @@ textarea.field:focus,
     align-items: flex-start;
   }
 }
+
+
+/* === Visual Audit Fixes: Dropdown Clipping, Card Alignment & Overlap Prevention === */
+.flclash-bento {
+  overflow: visible !important;
+  padding-bottom: 56px;
+}
+
+.fl-card {
+  overflow: visible !important;
+  border-radius: 20px !important;
+  padding: 20px 22px !important;
+}
+
+.fl-metric-card {
+  overflow: hidden !important;
+  padding-bottom: 48px !important;
+}
+
+.fl-mode-bar {
+  overflow: visible !important;
+  z-index: 35;
+  padding: 14px 20px !important;
+}
+
+.fl-toggle-card {
+  padding: 14px 20px !important;
+}
+
+.fl-dropdown-menu {
+  z-index: 120 !important;
+}
+
+.fl-host-ip {
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.fl-status-card {
+  flex-wrap: nowrap !important;
+}
+
+@media (max-width: 680px) {
+  .fl-status-card {
+    flex-wrap: wrap !important;
+  }
+}
+
+.content-aligned {
+  padding-bottom: 84px !important;
+}
+
+.unsigned-note {
+  font-size: 11.5px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
