@@ -144,7 +144,7 @@ async function apiFetch(url: string, init: RequestInit = {}, timeoutMs = 12000):
 }
 
 const APP_VERSION =
-  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "2.0.4";
+  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "2.0.6";
 
 const bytes = (n: number) => {
   if (!n) return "—";
