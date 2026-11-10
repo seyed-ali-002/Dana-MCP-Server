@@ -1,0 +1,155 @@
+/* === Post-2.0.0 layout & missing view polish ============================== */
+.content-aligned {
+  max-width: 1240px;
+  width: 100%;
+  margin: 0 auto;
+  gap: 18px;
+  padding: 20px 24px 32px;
+}
+.control-view,
+.config-view,
+.repair-view,
+.help-view,
+.skills-view,
+.usage-view,
+.logs-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+.control-view .grid {
+  gap: 16px;
+}
+.control-view .card,
+.config-view .card,
+.repair-view .card {
+  padding: 16px 18px;
+}
+.control-view .card-actions,
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.fl-activity-box,
+.fl-groups-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--surface, var(--card));
+  border: 1px solid var(--border);
+}
+.fl-activity-box .fl-box-head,
+.fl-groups-box .fl-box-head {
+  margin-bottom: 4px;
+}
+.help-view .help-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  list-style: none;
+  border-radius: 12px;
+  background: var(--bg-2, var(--surface-2));
+  border: 1px solid var(--border);
+}
+.help-view .help-toc a,
+.help-view .help-toc button {
+  font-size: 12.5px;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface, var(--card));
+}
+.usage-hero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.usage-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.token-pie {
+  width: 140px;
+  height: 140px;
+  margin: 8px auto;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) 0 var(--pie-pct, 35%), var(--surface-2) 0);
+  border: 1px solid var(--border);
+}
+select.field,
+.field select,
+.fl-dropdown-trigger,
+input.field,
+textarea.field {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--surface-2, var(--bg-2));
+  color: var(--text);
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 10px;
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+select.field:focus,
+input.field:focus,
+textarea.field:focus,
+.fl-dropdown-trigger:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.nav-item {
+  min-height: 42px;
+}
+.nav-item .nav-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.sidebar {
+  gap: 10px;
+  padding: 16px 12px;
+}
+.main-stack,
+.content > .stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.logs-split {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.logs-split .log-panel {
+  min-height: 180px;
+}
+@media (max-width: 980px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
