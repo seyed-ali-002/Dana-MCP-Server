@@ -1,0 +1,36 @@
+name: Apply v2.0.1 fixes
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - packaging/apply_v201_fixes.py
+      - packaging/connection_mode_override.py
+      - packaging/css_post_2_0_polish.css
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Apply packaging fixes
+        run: python3 packaging/apply_v201_fixes.py
+      - name: Commit if changed
+        run: |
+          git config user.name "dana-bot"
+          git config user.email "dana-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "fix(auto): apply post-2.0.1 connection-mode + UI polish"
+            git push
+          fi
