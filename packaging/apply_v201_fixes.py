@@ -11,96 +11,14 @@ ROOT = Path(__file__).resolve().parents[1]
 def patch_setup() -> None:
     path = ROOT / "dana" / "setup.py"
     t = path.read_text(encoding="utf-8")
-    if "Could not persist connection mode" in t and "env_vals = _read_env()" in t:
-        print("setup.py: already patched")
-        return
+    override = ROOT / "packaging" / "connection_mode_override.py"
+    if override.exists() and "Could not persist connection mode" not in t:
+        path.write_text(t.rstrip() + "\n" + override.read_text(encoding="utf-8"), encoding="utf-8")
+        print("setup.py: appended connection mode override")
+        t = path.read_text(encoding="utf-8")
+    elif "Could not persist connection mode" in t:
+        print("setup.py: connection mode already fixed")
 
-    pattern = re.compile(
-        r"def get_connection_mode\(\)[\s\S]*?"
-        r'return \{\n        "ok": True,\n        "connection_mode": m,\n'
-        r'        "message": f"Connection mode switched to \{m\.upper\(\)\}\.",\n'
-        r'        "status": status\(\)\.to_dict\(\),\n    \}'
-    )
-    replacement = '''def get_connection_mode() -> str:
-    global _CONNECTION_MODE
-    try:
-        env_vals = _read_env()
-    except Exception:
-        env_vals = {}
-    saved = str(
-        env_vals.get("DANA_CONNECTION_MODE")
-        or os.environ.get("DANA_CONNECTION_MODE")
-        or _CONNECTION_MODE
-        or "all"
-    ).strip().lower()
-    if saved in {"all", "local", "public", "supermcp"}:
-        _CONNECTION_MODE = saved
-        return saved
-    return "all"
-
-
-def set_connection_mode(mode: str = "all") -> dict[str, object]:
-    """Switch Dana connection mode: all | local | public | supermcp."""
-    global _CONNECTION_MODE
-    m = (mode or "all").strip().lower()
-    if m not in {"all", "local", "public", "supermcp"}:
-        m = "all"
-    _CONNECTION_MODE = m
-    os.environ["DANA_CONNECTION_MODE"] = m
-    try:
-        env = _read_env()
-        env["DANA_CONNECTION_MODE"] = m
-        _write_env(env)
-    except Exception as exc:
-        _setup_log(f"Could not persist connection mode: {exc}", "warning")
-    try:
-        from . import supermcp
-        if m == "local":
-            set_local_only(True)
-            try:
-                supermcp.stop()
-            except Exception:
-                pass
-            _setup_log("Connection mode set to Local Only (MCP :8765).", "info")
-        elif m == "public":
-            set_local_only(False)
-            try:
-                supermcp.stop()
-            except Exception:
-                pass
-            _setup_log("Connection mode set to Public Funnel Only (MCP + HTTPS Funnel).", "info")
-        elif m == "supermcp":
-            set_local_only(True)
-            try:
-                supermcp.start()
-            except Exception as sm_exc:
-                _setup_log(f"SuperMCP start warning: {sm_exc}", "warning")
-            _setup_log("Connection mode set to SuperMCP Assistant Only (MCP + SSE :3006).", "info")
-        else:
-            set_local_only(False)
-            try:
-                supermcp.start()
-            except Exception as sm_exc:
-                _setup_log(f"SuperMCP start warning: {sm_exc}", "warning")
-            _setup_log("Connection mode set to All Services (Local + Public Funnel + SuperMCP).", "success")
-    except Exception as exc:
-        _setup_log(f"Connection mode switch warning: {exc}", "warning")
-    st = status().to_dict()
-    st["connection_mode"] = m
-    return {
-        "ok": True,
-        "connection_mode": m,
-        "message": f"Connection mode switched to {m.upper()}.",
-        "status": st,
-    }'''
-    t2, n = pattern.subn(replacement, t, count=1)
-    if n == 0:
-        print("setup.py: pattern not found")
-    else:
-        path.write_text(t2, encoding="utf-8")
-        print("setup.py: connection mode fixed")
-
-    t = path.read_text(encoding="utf-8")
     if 'connection_mode: str = "all"' not in t:
         t = t.replace(
             "    health: dict | None = None\n",
@@ -109,6 +27,26 @@ def set_connection_mode(mode: str = "all") -> dict[str, object]:
         )
         path.write_text(t, encoding="utf-8")
         print("setup.py: added connection_mode field")
+        t = path.read_text(encoding="utf-8")
+
+    old_ret = """    return SetupStatus(
+        installed, backend, hostname, active, funnel_host, running,
+        public_url or local_url, local_url, public_url, token, action, message,
+        connectivity, public_verified, hint, local_only, bool(_USER_STOPPED),
+        _sm,
+        health_snap,
+    )"""
+    new_ret = """    return SetupStatus(
+        installed, backend, hostname, active, funnel_host, running,
+        public_url or local_url, local_url, public_url, token, action, message,
+        connectivity, public_verified, hint, local_only, bool(_USER_STOPPED),
+        _sm,
+        health_snap,
+        get_connection_mode(),
+    )"""
+    if old_ret in t:
+        path.write_text(t.replace(old_ret, new_ret, 1), encoding="utf-8")
+        print("setup.py: status return includes connection_mode")
 
 
 def patch_app_version() -> None:
@@ -127,9 +65,24 @@ def patch_app_version() -> None:
         print("App.tsx: version already ok")
 
 
+def patch_css() -> None:
+    frag = ROOT / "packaging" / "css_post_2_0_polish.css"
+    css_path = ROOT / "ui" / "src" / "App.css"
+    if not frag.exists():
+        print("css fragment missing")
+        return
+    body = css_path.read_text(encoding="utf-8")
+    if "Post-2.0.0 layout & missing view polish" in body:
+        print("css: already polished")
+        return
+    css_path.write_text(body.rstrip() + "\n" + frag.read_text(encoding="utf-8"), encoding="utf-8")
+    print("css: polish appended")
+
+
 def main() -> None:
     patch_setup()
     patch_app_version()
+    patch_css()
     print("done")
 
 
