@@ -122,7 +122,7 @@ type ToolEvent = {
 
 const API = (p: number, path: string) => "http://127.0.0.1:" + p + path;
 const APP_VERSION =
-  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "0.1.1";
+  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "2.0.1";
 
 const bytes = (n: number) => {
   if (!n) return "—";
