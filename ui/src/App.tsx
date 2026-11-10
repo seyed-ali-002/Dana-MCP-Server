@@ -121,8 +121,30 @@ type ToolEvent = {
 };
 
 const API = (p: number, path: string) => "http://127.0.0.1:" + p + path;
+
+/** fetch with timeout + clearer network errors (WebKit "TypeError: Load failed"). */
+async function apiFetch(url: string, init: RequestInit = {}, timeoutMs = 12000): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = window.setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, { ...init, signal: ctrl.signal, cache: init.cache ?? "no-store" });
+    return r;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Load failed") || msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("aborted") || msg.includes("AbortError")) {
+      throw new Error(
+        "Cannot reach the Dana setup service (" + msg + "). " +
+        "The local control API may have stopped — click Refresh or restart Dana."
+      );
+    }
+    throw e instanceof Error ? e : new Error(String(e));
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 const APP_VERSION =
-  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "2.0.1";
+  typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "2.0.4";
 
 const bytes = (n: number) => {
   if (!n) return "—";
@@ -564,7 +586,21 @@ function App() {
     if (!p) return null;
     try {
       if (!quiet) setError("");
-      const r = await fetch(API(p, "/api/setup/status"), { cache: "no-store" });
+      let r: Response;
+      try {
+        r = await apiFetch(API(p, "/api/setup/status"), { cache: "no-store" }, 10000);
+      } catch (netErr) {
+        try {
+          const fresh = await resolveSetupPort();
+          if (fresh && fresh !== p) {
+            setPort(fresh);
+            p = fresh;
+          }
+          r = await apiFetch(API(p, "/api/setup/status"), { cache: "no-store" }, 10000);
+        } catch {
+          throw netErr;
+        }
+      }
       const x = await r.json();
       if (!r.ok) throw Error(x.message || x.error);
       setStatus(x);
@@ -803,7 +839,22 @@ function App() {
     let authUrl = "";
     let actionRequired = "";
     try {
-      const r = await fetch(API(port, path), { method: "POST" });
+      let activePort = port;
+      let r: Response;
+      try {
+        r = await apiFetch(API(activePort, path), { method: "POST" }, 60000);
+      } catch (netErr) {
+        try {
+          const fresh = await resolveSetupPort();
+          if (fresh) {
+            setPort(fresh);
+            activePort = fresh;
+          }
+          r = await apiFetch(API(activePort, path), { method: "POST" }, 60000);
+        } catch {
+          throw netErr;
+        }
+      }
       const x = await r.json();
       pending = !!x.pending;
       authUrl = typeof x.auth_url === "string" ? x.auth_url : "";
@@ -1258,7 +1309,7 @@ function App() {
                 : status?.connectivity === "offline"
                   ? "Offline"
                   : port
-                    ? "Setup required"
+                    ? (status ? "Setup required" : "API offline — refresh")
                     : "Connecting…"}
           </div>
           <div className="sidebar-version-row">
@@ -1312,7 +1363,7 @@ function App() {
                 : status?.connectivity === "offline"
                   ? "Offline"
                   : port
-                    ? "Configuration in progress"
+                    ? (status ? "Setup in progress" : "Reconnecting control API…")
                     : "Starting service…"}
           </div>
           <div className="theme-controls" role="group" aria-label="Theme">

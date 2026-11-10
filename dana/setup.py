@@ -1141,26 +1141,36 @@ def status() -> SetupStatus:
             "https://login.tailscale.com/admin/acls"
         )
     else:
-        # Light public check — failures mean degraded, not offline.
+        # Fast public check with short TTL cache so /status never blocks the UI.
+        public_verified = False
         try:
-            public_verified = False
             if funnel_host:
-                for _attempt in range(3):
-                    public_verified = verify_public_endpoint(funnel_host, timeout=4.0)
-                    if public_verified:
-                        break
-                    time.sleep(0.6 * (_attempt + 1))
+                now = time.monotonic()
+                cache_host = str(_PUBLIC_VERIFY_CACHE.get("host") or "")
+                cache_ts = float(_PUBLIC_VERIFY_CACHE.get("ts") or 0.0)
+                if cache_host == funnel_host and (now - cache_ts) < _PUBLIC_VERIFY_TTL:
+                    public_verified = bool(_PUBLIC_VERIFY_CACHE.get("ok"))
+                else:
+                    public_verified = verify_public_endpoint(funnel_host, timeout=2.0)
+                    _PUBLIC_VERIFY_CACHE.update(host=funnel_host, ok=public_verified, ts=now)
         except Exception:
             public_verified = False
         if public_verified:
             connectivity = "connected"
             hint = "Local and public MCP endpoints look healthy."
         else:
-            connectivity = "degraded"
-            hint = (
-                "Funnel is published but the public URL is not responding yet. "
-                "Wait a few seconds or click Repair connection."
-            )
+            if running and active:
+                connectivity = "connected"
+                hint = (
+                    "Funnel is active. Public probe timed out — local MCP is usable; "
+                    "retry Repair if public clients fail."
+                )
+            else:
+                connectivity = "degraded"
+                hint = (
+                    "Funnel is published but the public URL is not responding yet. "
+                    "Wait a few seconds or click Repair connection."
+                )
 
     try:
         from . import supermcp as _supermcp_mod
@@ -2752,6 +2762,8 @@ def sync_skill_pack(pack: str = "") -> dict[str, object]:
 
 
 _CONNECTION_MODE = "all"
+_PUBLIC_VERIFY_CACHE: dict[str, object] = {"host": "", "ok": False, "ts": 0.0}
+_PUBLIC_VERIFY_TTL = 30.0
 
 
 def get_connection_mode() -> str:
