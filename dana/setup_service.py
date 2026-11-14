@@ -144,6 +144,20 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send({"ok": False, "message": str(exc)}, 400)
             return
+        if path == "/api/setup/connectors":
+            try:
+                from dana import supermcp as _sm
+                self._send(_sm.list_connectors())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if path == "/api/setup/tools/catalog":
+            try:
+                from dana import supermcp as _sm
+                self._send(_sm.list_tools_catalog())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
         self._send({"error": "not_found"}, 404)
 
     def do_POST(self) -> None:
@@ -282,6 +296,47 @@ class Handler(BaseHTTPRequestHandler):
                 raw = self.rfile.read(length) if length else b"{}"
                 payload = json.loads(raw.decode("utf-8") or "{}")
                 self._send(setup.import_skill_file(str(payload.get("path") or "")))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/connectors/upsert":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                name = str(payload.get("name") or "").strip()
+                config = payload.get("config") if isinstance(payload.get("config"), dict) else payload
+                if isinstance(config, dict) and "name" in config and config is payload:
+                    config = {k: v for k, v in config.items() if k != "name"}
+                from dana import supermcp as _sm
+                self._send(_sm.upsert_connector(name, config if isinstance(config, dict) else {}))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/connectors/remove":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                from dana import supermcp as _sm
+                self._send(_sm.remove_connector(str(payload.get("name") or "").strip()))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/connectors/import":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8") or "{}")
+                from dana import supermcp as _sm
+                self._send(_sm.import_mcp_servers(payload if isinstance(payload, dict) else {}))
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
+        if request_path == "/api/setup/supermcp/refresh":
+            try:
+                from dana import supermcp as _sm
+                self._send(_sm.refresh_tools_and_proxy())
             except Exception as exc:
                 self._send({"ok": False, "message": str(exc)}, 400)
             return
