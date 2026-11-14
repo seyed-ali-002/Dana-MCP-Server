@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 const logo = "/dana-logo.svg";
 import WhipOverlay from "./WhipOverlay";
+import ConnectorsPage from "./ConnectorsPage";
 import { playOpenWhipCrack, getWhipVolume, setWhipVolume, isWhipMuted, setWhipMuted } from "./whipAssets";
 import "./App.css";
 
@@ -1195,13 +1196,14 @@ function App() {
   }
 
   const navItems: {
-    id: "Setup" | "Control" | "Skills" | "Logs" | "Usage" | "Config" | "Repair" | "Help";
+    id: "Setup" | "Control" | "Skills" | "Connectors" | "Logs" | "Usage" | "Config" | "Repair" | "Help";
     label: string;
     icon: string;
   }[] = [
     { id: "Setup", label: "Dashboard", icon: "setup" },
     { id: "Control", label: "Proxies & Endpoints", icon: "control" },
     { id: "Skills", label: "Skills & Agents", icon: "skills" },
+    { id: "Connectors", label: "Connectors & Tools", icon: "connectors" },
     { id: "Logs", label: "Live Requests", icon: "logs" },
     { id: "Usage", label: "Traffic & Usage", icon: "usage" },
     { id: "Config", label: "Settings & Tools", icon: "config" },
@@ -1250,7 +1252,17 @@ function App() {
           <path d="M9 14h6M9 17h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
         </svg>
       );
-    if (name === "help")
+        if (name === "connectors")
+      return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
+          <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
+          <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
+        </svg>
+      );
+if (name === "help")
       return (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" />
@@ -2818,6 +2830,10 @@ function App() {
             </button>
           </div>
         </section>
+      )}
+
+      {port && view === "Connectors" && (
+        <ConnectorsPage port={port} setMessage={setMessage} setError={setError} />
       )}
 
       {port && view === "Logs" && (
