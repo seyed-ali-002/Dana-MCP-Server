@@ -1,9 +1,11 @@
 name: Restore Connectors UI
+
 on:
   workflow_dispatch:
   push:
     paths:
-      - .github/workflows/restore-connectors-ui.yml
+      - ".github/workflows/restore-connectors-ui.yml"
+
 jobs:
   restore:
     runs-on: ubuntu-latest
@@ -13,72 +15,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Restore App.css from last good commit
         run: |
           git show 1bd82f70a72fb64c7d800b1f462191bfbbe4eb45:ui/src/App.css > ui/src/App.css
           if ! grep -q 'connectors.css' ui/src/App.css; then
             printf '\n@import "./connectors.css";\n' >> ui/src/App.css
           fi
-      - name: Wire Connectors into App.tsx if missing
-        run: |
-          python3 << 'PY'
-          from pathlib import Path
-          p = Path("ui/src/App.tsx")
-          t = p.read_text(encoding="utf-8")
-          changed = False
-          if 'ConnectorsPage' not in t:
-              needle = 'import WhipOverlay from "./WhipOverlay";'
-              if needle in t:
-                  t = t.replace(needle, needle + '\nimport ConnectorsPage from "./ConnectorsPage";', 1)
-                  changed = True
-          if 'Connectors & Tools' not in t:
-              old = '{ id: "Skills", label: "Skills & Agents", icon: "skills" },'
-              new = old + '\n    { id: "Connectors", label: "Connectors & Tools", icon: "connectors" },'
-              if old in t:
-                  t = t.replace(old, new, 1)
-                  changed = True
-              ot = 'id: "Setup" | "Control" | "Skills" | "Logs"'
-              nt = 'id: "Setup" | "Control" | "Skills" | "Connectors" | "Logs"'
-              if ot in t:
-                  t = t.replace(ot, nt, 1)
-                  changed = True
-          if 'name === "connectors"' not in t:
-              idx = t.find('if (name === "help")')
-              if idx > 0:
-                  icon = '''    if (name === "connectors")
-      return (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-          <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
-          <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
-          <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
-          <rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.7" />
-        </svg>
-      );
-'''
-                  t = t[:idx] + icon + t[idx:]
-                  changed = True
-          if 'view === "Connectors"' not in t:
-              marker = '{port && view === "Logs"'
-              idx = t.find(marker)
-              if idx > 0:
-                  line_start = t.rfind('\n', 0, idx) + 1
-                  insert = '''      {port && view === "Connectors" && (
-        <ConnectorsPage port={port} setMessage={setMessage} setError={setError} />
-      )}
+          wc -c ui/src/App.css
 
-'''
-                  t = t[:line_start] + insert + t[line_start:]
-                  changed = True
-          if changed:
-              p.write_text(t, encoding="utf-8")
-              print("App.tsx updated")
-          else:
-              print("App.tsx already wired")
-          PY
+      - name: Wire ConnectorsPage into App.tsx
+        run: python3 packaging/wire_connectors_ui.py
+
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add ui/src/App.css ui/src/App.tsx
-          git diff --cached --quiet && echo "No changes" || (git commit -m "chore(ui): restore App.css + wire ConnectorsPage" && git push)
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "chore(ui): restore App.css + wire ConnectorsPage"
+            git push
+          fi
