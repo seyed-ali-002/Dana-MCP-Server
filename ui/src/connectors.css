@@ -1,0 +1,41 @@
+/* Dana Connectors & Tools page */
+/* Connectors & Tools */
+.connectors-page .connectors-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.connectors-page .connectors-table th,
+.connectors-page .connectors-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  vertical-align: top;
+}
+.connectors-page .mono { font-family: var(--mono, ui-monospace, monospace); }
+.connectors-page .tiny { font-size: 11px; opacity: 0.85; }
+.connectors-page .tiny-btn { padding: 4px 10px; font-size: 12px; }
+.connectors-page .guide-list { margin: 8px 0 0; padding-left: 18px; line-height: 1.55; }
+.connectors-page .guide-block code { font-size: 12px; }
+.connectors-page .form-grid {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.connectors-page .form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.connectors-page textarea.code-block {
+  width: 100%;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: color-mix(in srgb, #000 35%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  color: inherit;
+}
