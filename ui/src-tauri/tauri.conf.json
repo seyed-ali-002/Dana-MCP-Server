@@ -15,8 +15,8 @@
         "title": "Dana \u00b7 MCP Control Center",
         "width": 1180,
         "height": 760,
-        "minWidth": 980,
-        "minHeight": 680,
+        "minWidth": 720,
+        "minHeight": 520,
         "resizable": true,
         "decorations": true
       }
