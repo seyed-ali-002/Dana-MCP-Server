@@ -5,6 +5,25 @@ Format: keep user-visible and API-relevant entries. Internal refactors optional.
 
 ## [Unreleased]
 
+## [2.0.15] — 2026-11-22
+
+### Changed
+- Synchronized version metadata across `pyproject.toml`, `ui/package.json`,
+  `ui/src-tauri/tauri.conf.json`, and `dana/__init__.py`.
+- `dana_capabilities` now reflects **actual** progressive discovery behavior:
+  `tools/list` is filtered to the visible set when `DANA_PROGRESSIVE_TOOLS=1`
+  (`dana/server.py::_apply_progressive_tool_visibility`). The 90% token-savings
+  figure is now real client behavior, not only a metric.
+
+### Fixed
+- `requirements.txt` no longer forces optional extras (`playwright`,
+  `pyautogui`). Install them via
+  `pip install "dana-mcp-server[desktop|browser|full]"` (NFR-006).
+- `.env.example` now documents `DANA_CONTEXT_MODE` and
+  `DANA_STRIP_OUTPUT_SCHEMA`, and clarifies `DANA_PROGRESSIVE_TOOLS`.
+- SRS/Roadmap/CHANGELOG aligned with product version (previously SRS pinned
+  2.0.7 while metadata was 2.0.14).
+
 ### Documentation
 - Mandatory documentation policy (`17-documentation-policy.md`)
 - Connectors / SuperMCP / Godot proxy guide (`16-connectors-supermcp-godot.md`)

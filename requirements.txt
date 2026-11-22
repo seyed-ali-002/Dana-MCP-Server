@@ -10,5 +10,9 @@ python-bidi>=0.4,<1
 rich>=13,<15
 tiktoken>=0.9,<1
 pypdf>=5,<7
-pyautogui>=0.9.54,<1
-playwright>=1.45,<2
+
+# Optional extras are declared in pyproject.toml and must NOT be installed
+# by this default requirements file. Install them explicitly when needed:
+#   pip install "dana-mcp-server[desktop]"   # pyautogui
+#   pip install "dana-mcp-server[browser]"   # playwright (+ playwright install chromium)
+#   pip install "dana-mcp-server[full]"

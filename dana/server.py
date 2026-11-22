@@ -202,6 +202,42 @@ try:
     strip_tool_output_schemas(mcp)
 except Exception:
     pass
+
+def _apply_progressive_tool_visibility(server: Any) -> int:
+    """Honor DANA_PROGRESSIVE_TOOLS by filtering tools/list to the visible set.
+
+    Registration stays complete (dana_call_tool / dana_batch_call can still
+    resolve and execute any internal tool); only the advertised surface that a
+    client sees via tools/list is filtered. This makes the token-savings figure
+    in dana_capabilities a real client behavior rather than an estimate.
+    """
+    flag = (os.getenv("DANA_PROGRESSIVE_TOOLS", "1") or "1").strip().lower()
+    if flag in {"0", "false", "no", "off"}:
+        return 0
+    try:
+        from .tools.optimization import _visible_names
+
+        visible = _visible_names(server)
+    except Exception:
+        return 0
+    manager = getattr(server, "_tool_manager", None)
+    if manager is None:
+        return 0
+    original_list = getattr(manager, "list_tools", None)
+    if original_list is None:
+        return 0
+
+    def _filtered_list(*args: Any, **kwargs: Any) -> list[Any]:
+        tools = original_list(*args, **kwargs)
+        return [tool for tool in tools if getattr(tool, "name", None) in visible]
+
+    manager.list_tools = _filtered_list  # type: ignore[assignment]
+    return 1
+
+try:
+    _apply_progressive_tool_visibility(mcp)
+except Exception:
+    pass
 try:
     from .file_logging import install_stdio_safe_logging
     install_stdio_safe_logging()

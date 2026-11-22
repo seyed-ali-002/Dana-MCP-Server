@@ -16,7 +16,7 @@
 
 | نوع تسک | فایل‌های اضافه |
 |---------|----------------|
-| MCP / tools / schema | `02-mcp-auth-network.md`, `dana/mcp_result_format.py`, `dana/server.py` |
+| MCP / tools / schema | `02-mcp-auth-network.md`, `dana/mcp_result_fix.py`, `dana/server.py`, `dana/tools/optimization.py` |
 | Funnel / install / network | `04-setup-deployment.md`, `dana/setup.py`, `dana/installer.py`, `dana/tailscale.py` |
 | UI دسکتاپ | `05-desktop-ui-testing.md`, `ui/src/App.tsx`, `dana/setup_service.py` |
 | امنیت path/shell | `dana/security/path_policy.py`, `dana/tools/agent.py` |
