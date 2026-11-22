@@ -22,6 +22,8 @@ copy_pair "10-ai-implementation-guide.md" "AI_IMPLEMENTATION_GUIDE.md"
 copy_pair "11-ai-guardrails.md" "AI_GUARDRAILS.md"
 copy_pair "12-ai-context-pack.md" "AI_CONTEXT_PACK.md"
 copy_pair "13-smoke-test-matrix.md" "SMOKE_TEST_MATRIX.md"
+copy_pair "16-connectors-supermcp-godot.md" "CONNECTORS_SUPERMCP_GODOT.md"
+copy_pair "17-documentation-policy.md" "DOCUMENTATION_POLICY.md"
 
 cat > "$DST/README.md" << 'EOF'
 # Dana docs (mirrors)
@@ -36,8 +38,13 @@ Canonical numbered documents live under `project_description_md/`.
 | [AI_GUARDRAILS.md](AI_GUARDRAILS.md) | `11-ai-guardrails.md` |
 | [AI_CONTEXT_PACK.md](AI_CONTEXT_PACK.md) | `12-ai-context-pack.md` |
 | [SMOKE_TEST_MATRIX.md](SMOKE_TEST_MATRIX.md) | `13-smoke-test-matrix.md` |
+| [CONNECTORS_SUPERMCP_GODOT.md](CONNECTORS_SUPERMCP_GODOT.md) | `16-connectors-supermcp-godot.md` |
+| [DOCUMENTATION_POLICY.md](DOCUMENTATION_POLICY.md) | `17-documentation-policy.md` |
+| [adr/](adr/) | Architecture Decision Records |
 
-Also see [AGENTS.md](../AGENTS.md).
+Also see [AGENTS.md](../AGENTS.md), [CONTRIBUTING.md](../CONTRIBUTING.md), [CHANGELOG.md](../CHANGELOG.md).
+
+**Documentation after every behavioral change is mandatory** — see DOCUMENTATION_POLICY.md.
 
 ```bash
 bash scripts/sync_living_docs.sh

@@ -1,7 +1,7 @@
 # 12 — AI Context Pack (ترتیب بارگذاری زمینه)
 
 > **هدف:** اگر مدل فقط چند فایل می‌تواند بخواند، **همین ترتیب** را رعایت کند.  
-> **نسخه سند:** 1.0.0 — 2026-11-08
+> **نسخه سند:** 1.1.0 — 2026-11-22
 
 ---
 
@@ -22,6 +22,8 @@
 | امنیت path/shell | `dana/security/path_policy.py`, `dana/tools/agent.py` |
 | بیلد / release | `06-versioning-release.md`, `packaging/`, `.github/workflows/gui-build.yml` |
 | معماری کلی | `00-project-overview.md`, `01-architecture.md` |
+| Connectors / SuperMCP / Godot | `16-connectors-supermcp-godot.md`, `dana/connectors_registry.py`, `dana/supermcp.py`, `dana/tools/godot_proxy.py`, `ui/src/ConnectorsPage.tsx` |
+| سیاست مستندسازی | `17-documentation-policy.md`, `CHANGELOG.md` |
 
 ## سطح C — کاربرنهایی
 
@@ -41,6 +43,7 @@
 You are working on Dana MCP Server. Follow project_description_md/11-ai-guardrails.md
 and 10-ai-implementation-guide.md. Map work to SRS IDs in 09-srs.md and roadmap 08.
 Prefer minimal diffs. Never commit secrets. Scrub subprocess env. Keep MCP stdout clean.
+After every behavioral change, update docs per 17-documentation-policy.md (mandatory).
 ```
 
 ---
@@ -50,3 +53,4 @@ Prefer minimal diffs. Never commit secrets. Scrub subprocess env. Keep MCP stdou
 | نسخه | تاریخ | شرح |
 |------|------|------|
 | 1.0.0 | 2026-11-08 | بستهٔ ترتیب زمینه برای مدل‌ها |
+| 1.1.0 | 2026-11-22 | Connectors/Godot + documentation policy |

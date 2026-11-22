@@ -1,8 +1,8 @@
 # 10 — AI Implementation Guide
 
 > **وضعیت:** زنده (Living Document)  
-> **نسخه سند:** 1.0.0  
-> **تاریخ:** 2026-11-08  
+> **نسخه سند:** 1.1.0  
+> **تاریخ:** 2026-11-22  
 > **مخاطب:** مدل‌های هوش مصنوعی و توسعه‌دهندگانی که با agent کار می‌کنند  
 > **مراجع اجباری قبل از کد:** `09-srs.md` · `08-development-roadmap.md` · `11-ai-guardrails.md` · این فایل
 
@@ -81,6 +81,19 @@
 | Zero computer | `dana/tools/zero_computer.py` |
 | Documents | `dana/tools/documents.py`, `dana/tools/formatting.py` |
 | Reporting | `dana/reporting.py`, `dana/terminal_ui.py` |
+
+
+
+### 3.4b Connectors، SuperMCP، Godot
+
+| موضوع | فایل |
+|--------|------|
+| User connectors registry | `dana/connectors_registry.py` |
+| SuperMCP merge/start | `dana/supermcp.py` |
+| Setup API connectors routes | `dana/setup_service.py` |
+| Godot tool proxy | `dana/tools/godot_proxy.py` |
+| UI Connectors tab | `ui/src/ConnectorsPage.tsx`, `ui/src/connectors.css` |
+| Doc | `16-connectors-supermcp-godot.md`, `docs/adr/001-connectors-via-supermcp.md` |
 
 ### 3.5 Desktop UI
 
@@ -226,3 +239,7 @@ bash scripts/sync_living_docs.sh
 | نسخه | تاریخ | شرح |
 |------|------|------|
 | 1.0.0 | 2026-11-08 | ایجاد راهنمای پیاده‌سازی AI با نگاشت فایل و چک‌لیست |
+
+## Documentation gate (mandatory)
+
+Before claiming Done: follow `17-documentation-policy.md`. Update SRS/Roadmap/CHANGELOG as required and run `bash scripts/sync_living_docs.sh`.

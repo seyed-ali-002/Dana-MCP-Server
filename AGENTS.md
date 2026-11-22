@@ -11,6 +11,8 @@ This repository is **Dana MCP Server** (self-hosted MCP + Desktop Control Center
 5. `project_description_md/09-srs.md` — requirement IDs and status
 6. `project_description_md/08-development-roadmap.md` — what to build next
 7. `project_description_md/13-smoke-test-matrix.md` — before you claim done
+8. `project_description_md/17-documentation-policy.md` — docs required every stage
+9. `project_description_md/16-connectors-supermcp-godot.md` — when touching connectors/Godot
 
 Mirrors under `docs/`: `AI_CONTEXT_PACK.md`, `AI_GUARDRAILS.md`, `AI_IMPLEMENTATION_GUIDE.md`, `SRS.md`, `DEVELOPMENT_ROADMAP.md`, `SMOKE_TEST_MATRIX.md`.
 
@@ -32,13 +34,22 @@ Mirrors under `docs/`: `AI_CONTEXT_PACK.md`, `AI_GUARDRAILS.md`, `AI_IMPLEMENTAT
 - Keep a **single** desktop instance; tray Quit must end the process.
 - No personal hardcoded machine paths in product code.
 
-## After behavioral changes
+## After every change stage (mandatory docs)
 
-Update `09-srs.md` and, if needed, `08-development-roadmap.md`. Run:
+**Documentation is mandatory after each implementation/edit that changes behavior.**
+See `project_description_md/17-documentation-policy.md`.
+
+Minimum:
+
+1. Update the relevant living doc (`09-srs.md`, `08-development-roadmap.md`, connectors doc, README, …).
+2. Add a `CHANGELOG.md` entry for user-visible changes.
+3. Run:
 
 ```bash
 bash scripts/sync_living_docs.sh
 ```
+
+Work is not Done without the matching doc update (or an explicit «no SRS/doc change» note).
 
 ## Versioning
 

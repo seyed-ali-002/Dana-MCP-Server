@@ -200,3 +200,9 @@ dana doctor --show-url
 
 - Living SRS & roadmap: `project_description_md/09-srs.md`, `08-development-roadmap.md`
 - AI agents: `AGENTS.md`, `project_description_md/10-ai-implementation-guide.md`
+
+## مستندات
+
+- فهرست: [`project_description_md/README.md`](project_description_md/README.md)
+- **سیاست مستندسازی اجباری:** [`project_description_md/17-documentation-policy.md`](project_description_md/17-documentation-policy.md)
+- تغییرات: [`CHANGELOG.md`](CHANGELOG.md)

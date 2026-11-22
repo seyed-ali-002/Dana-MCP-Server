@@ -67,7 +67,7 @@
 | TECH-04 | Single-instance واقعی از tray و لانچر | متوسط |
 | TECH-05 | لاگ ابزارها با جزئیات collapsible یکدست | متوسط |
 | TECH-06 | نوتیفیکیشن دسکتاپ + صدا (قابل خاموش‌کردن) | متوسط |
-| TECH-07 | UI responsive هنگام resize | پایین |
+| TECH-07 | UI responsive هنگام resize | پایین — **partial done** (`7006122` width/scroll) |
 | TECH-08 | یکدست‌سازی استایل کنترل‌ها (dropdown تم، skills) | پایین |
 
 ---
@@ -174,6 +174,7 @@
 | 1.0.0 | 2026-11-08 | ایجاد اولیه بر اساس وضعیت v1.6.17 و پیشنهادهای محصول |
 | 1.1.0 | 2026-11-08 | R17-* marked done with v1.7.0 health/port/stateless/session work |
 | 1.2.0 | 2026-11-22 | baseline product version → 2.0.7; FR-016/FR-060/NFR-002 closed in code |
+| 1.3.0 | 2026-11-22 | TECH-07 partial (issue #1); docs policy + connectors guide |
 
 ---
 

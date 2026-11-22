@@ -109,17 +109,21 @@ Commitها باید focused باشند.
 
 Patch برای bug fix، minor برای feature و major برای breaking change.
 
-## 10. Documentation discipline
+## 10. Documentation discipline (**اجباری**)
 
-وقتی behavior تغییر می‌کند، حداقل یکی از موارد زیر باید بررسی شود:
+مستندسازی پس از **هر** مرحلهٔ تغییر/پیاده‌سازی/ویرایش رفتاری **اجباری** است.
+مرجع کامل: [`17-documentation-policy.md`](17-documentation-policy.md).
 
-- README
-- Persian README
-- English README
-- architecture docs
-- deployment docs
-- release docs
-- environment/config docs
+وقتی behavior تغییر می‌کند، حداقل موارد مرتبط باید در **همان PR** به‌روز شوند:
+
+- `CHANGELOG.md` برای تغییر کاربر-قابل‌مشاهده
+- `09-srs.md` برای الزام/وضعیت
+- `08-development-roadmap.md` برای milestone
+- README / README_FA / README_EN در صورت جریان کاربر
+- architecture / deployment / connectors docs در صورت نیاز
+- `bash scripts/sync_living_docs.sh` پس از ویرایش اسناد زنده
+
+بدون مستند مرتبط، Definition of Done برقرار نیست.
 
 ## 11. Secrets
 
@@ -175,7 +179,7 @@ AI client
 - implementation انجام شده
 - tests مناسب سبز هستند
 - build لازم موفق است
-- docs به‌روز است
+- docs به‌روز است (**الزام** — ر.ک. `17-documentation-policy.md`)
 - secrets وارد repository نشده‌اند
 - git diff بررسی شده
 - commit واضح است

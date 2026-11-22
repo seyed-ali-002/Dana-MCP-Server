@@ -303,3 +303,11 @@ The desktop packages ship a **lean** sidecar: MCP core, documents, desktop contr
 
 - Living SRS & roadmap: `project_description_md/09-srs.md`, `08-development-roadmap.md`
 - AI agents: `AGENTS.md`, `project_description_md/10-ai-implementation-guide.md`
+
+## Documentation
+
+- Project docs index: [`project_description_md/README.md`](project_description_md/README.md)
+- **Mandatory docs policy:** [`project_description_md/17-documentation-policy.md`](project_description_md/17-documentation-policy.md)
+- Changelog: [`CHANGELOG.md`](CHANGELOG.md)
+- Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- Agents: [`AGENTS.md`](AGENTS.md)

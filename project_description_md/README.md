@@ -34,6 +34,11 @@
 | `10-ai-implementation-guide.md` | راهنمای پیاده‌سازی برای AI (نقشه فایل، چک‌لیست) |
 | `11-ai-guardrails.md` | خطوط قرمز و ضدالگوها برای انسان/AI |
 | `12-ai-context-pack.md` | ترتیب بارگذاری زمینه برای مدل‌ها |
+| `13-smoke-test-matrix.md` | ماتریس تست دود |
+| `14-ui-design-flclash.md` | مشخصات UI FLClash-inspired |
+| `15-post-2.0-fix-notes.md` | یادداشت رفع پس از 2.0 |
+| `16-connectors-supermcp-godot.md` | کانکتورها، SuperMCP، Godot proxy |
+| `17-documentation-policy.md` | **سیاست مستندسازی اجباری** |
 
 ## اصل مهم امنیتی
 
@@ -47,8 +52,6 @@ URL توکن‌دار Dana یک credential محسوب می‌شود. توکن ن
 
 | سند | نقش |
 |-----|------|
-| `08-development-roadmap.md` | اولویت‌بندی و معیار پذیرش فیچرهای آینده |
-| `09-srs.md` | الزامات رسمی کارکردی/غیرکارکردی و وضعیت پیاده‌سازی |
 
 **قانون:** هر تغییر رفتاری کاربرنهایی یا API عمومی → به‌روزرسانی SRS. هر milestone نسخه‌ای → به‌روزرسانی Roadmap و در صورت نیاز SRS.
 

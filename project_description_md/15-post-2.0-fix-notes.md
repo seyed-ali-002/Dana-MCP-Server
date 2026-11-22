@@ -18,3 +18,9 @@
 ```bash
 python3 packaging/apply_v201_fixes.py
 ```
+
+## 2026-11-22 — UI width / scroll (GitHub issue #1)
+
+- Conflicting `.content` / `.content-aligned` max-width rules + `overflow-x: hidden` clipped the main pane.
+- Fix: fill grid track, allow overflow scroll, reflow shell under 980px, Tauri `minWidth`/`minHeight` → 720×520.
+- Commit: `7006122`
