@@ -3,7 +3,6 @@ set -euo pipefail
 # Prefer the real frozen binary if it works; otherwise fall back to python -m.
 ROOT_CANDIDATES=(
   "${DANA_ROOT:-}"
-  "/mnt/1CEC9AE6EC9ABA0A/Ali/MCP_Server/Dana"
   "$(dirname "$0")/../.."
   "/usr/lib/Dana"
 )
