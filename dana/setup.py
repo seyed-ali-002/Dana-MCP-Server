@@ -746,8 +746,7 @@ def _privileged_run(command: list[str], timeout: float = 60) -> subprocess.Compl
         try:
             helper.write_text(script, encoding="utf-8")
             helper.chmod(0o700)
-            env = os.environ.copy()
-            env["SUDO_ASKPASS"] = str(helper)
+            env = clean_subprocess_env({"SUDO_ASKPASS": str(helper)})
             _setup_log("Administrator authentication required (graphical password prompt).")
             result = subprocess.run(
                 ["sudo", "-A", *resolved],
@@ -2539,8 +2538,7 @@ def _start_dana_impl() -> dict[str, object]:
     python = Path(os.environ["DANA_PYTHON"]) if os.environ.get("DANA_PYTHON") else Path(__import__("sys").executable)
     command = [str(python), "-m", "dana.main"]
     _setup_log("Dana server process launched; waiting for the local MCP port.")
-    child_env = os.environ.copy()
-    child_env.update({
+    child_env = clean_subprocess_env({
         "DANA_AUTH_TOKEN": token,
         "DANA_DEPLOYMENT_MODE": "local",
         "DANA_HOST": "127.0.0.1",

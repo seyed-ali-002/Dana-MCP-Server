@@ -103,7 +103,6 @@ fn start_setup_service(app: AppHandle) -> Result<u16, String> {
     if let Ok(env_root) = std::env::var("DANA_ROOT") {
         python_roots.push(std::path::PathBuf::from(env_root));
     }
-    python_roots.push(std::path::PathBuf::from("/mnt/1CEC9AE6EC9ABA0A/Ali/MCP_Server/Dana"));
     python_roots.push(std::path::PathBuf::from("/usr/lib/Dana"));
 
     for root in python_roots {

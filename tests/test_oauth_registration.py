@@ -4,11 +4,11 @@ from dana.http import app
 
 
 def test_oauth_metadata_advertises_dynamic_client_registration(monkeypatch):
-    monkeypatch.setattr("dana.http.settings.public_host", "mcp.example.com")
+    monkeypatch.setattr("dana.http.settings.public_host", "mcp.dana-test.org")
     with TestClient(app) as client:
         metadata = client.get("/.well-known/oauth-authorization-server")
         assert metadata.status_code == 200
-        assert metadata.json()["registration_endpoint"] == "https://mcp.example.com/register"
+        assert metadata.json()["registration_endpoint"] == "https://mcp.dana-test.org/register"
 
 
 def test_dynamic_client_registration_and_authorize_flow():

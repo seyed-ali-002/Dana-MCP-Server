@@ -16,6 +16,7 @@ CATEGORY_KEYWORDS = {
     "security": ("security", "secret", "allowed_path", "access_policy"),
     "design": ("ui_", "sashimi", "persian", "design_"),
     "runtime": ("dana_", "task_", "schedule", "token_"),
+    "godot": ("godot_", "godot"),
 }
 
 # Search aliases normalize the inconsistent historical naming without breaking
@@ -26,6 +27,7 @@ ALIASES = {
     "pdf": ("create_pdf", "extract_pdf_text", "extract_pdfs_text"),
     "project analysis": ("analyze_project", "dana_map_repository", "architecture_summary"),
     "code quality": ("check_code_quality", "static_analysis", "lint_or_format"),
+    "godot": ("godot_health_check", "godot_project_info", "godot_list_scenes", "godot_call"),
 }
 
 

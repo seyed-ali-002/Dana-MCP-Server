@@ -7,7 +7,7 @@ from dana.http import app
 
 
 def test_connector_requires_auth(monkeypatch):
-    monkeypatch.setattr("dana.http.settings.public_host", "example.ts.net")
+    monkeypatch.setattr("dana.http.settings.public_host", "dana-test.tailnet-test.ts.net")
     monkeypatch.setattr("dana.http.settings.public_port", 443)
     with TestClient(app) as client:
         assert client.get("/connector").status_code == 401
@@ -17,7 +17,7 @@ def test_connector_requires_auth(monkeypatch):
         assert response.status_code == 200
         data = response.json()
         assert data["title"] == "Chatbot Connection Link"
-        assert data["url"] == f"https://example.ts.net/{settings.auth_token}/mcp"
+        assert data["url"] == f"https://dana-test.tailnet-test.ts.net/{settings.auth_token}/mcp"
         assert settings.auth_token in data["url"]
         assert "Bearer" in data["authentication"]
         mcp_response = client.get(
@@ -73,7 +73,7 @@ def test_oauth_token_uses_long_lived_static_credential():
 
 def test_server_mode_connector_uses_canonical_https_url(monkeypatch):
     monkeypatch.setattr("dana.http.settings.deployment_mode", "server")
-    monkeypatch.setattr("dana.http.settings.public_host", "mcp.example.com")
+    monkeypatch.setattr("dana.http.settings.public_host", "mcp.dana-test.org")
     monkeypatch.setattr("dana.http.settings.public_port", 0)
     try:
         with TestClient(app) as client:
@@ -81,7 +81,7 @@ def test_server_mode_connector_uses_canonical_https_url(monkeypatch):
                 "/connector", headers={"Authorization": f"Bearer {settings.auth_token}"}
             )
             assert response.status_code == 200
-            assert response.json()["url"] == "https://mcp.example.com/mcp"
+            assert response.json()["url"] == "https://mcp.dana-test.org/mcp"
     finally:
         monkeypatch.setattr("dana.http.settings.deployment_mode", "local")
 
@@ -100,7 +100,7 @@ def test_server_mode_mcp_uses_canonical_path(monkeypatch):
 
 def test_server_mode_connector_uses_single_canonical_url(monkeypatch):
     monkeypatch.setattr("dana.http.settings.deployment_mode", "server")
-    monkeypatch.setattr("dana.http.settings.public_host", "mcp.example.com")
+    monkeypatch.setattr("dana.http.settings.public_host", "mcp.dana-test.org")
     try:
         with TestClient(app) as client:
             response = client.get(
@@ -108,7 +108,7 @@ def test_server_mode_connector_uses_single_canonical_url(monkeypatch):
             )
             assert (
                 response.json()["url"]
-                == "https://mcp.example.com/mcp"
+                == "https://mcp.dana-test.org/mcp"
             )
     finally:
         monkeypatch.setattr("dana.http.settings.deployment_mode", "local")

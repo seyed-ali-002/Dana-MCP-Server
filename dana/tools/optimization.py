@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 
 from .context_engine import _hash, optimize_result
 from .performance_engine import semantic_get, semantic_put
@@ -335,7 +336,7 @@ def register_optimization_tools(mcp: FastMCP) -> None:
                 )
                 _store_cache(name, args, result)
                 return {"name": name, "ok": True, "cached": False, "result": result}
-            except (ValueError, RuntimeError, OSError) as exc:
+            except (ValueError, RuntimeError, OSError, ToolError) as exc:
                 return {"name": name, "ok": False, "error": str(exc)}
 
         if parallel:
@@ -505,7 +506,7 @@ def register_optimization_tools(mcp: FastMCP) -> None:
                 )
                 conn.commit(); conn.close()
                 return {"id": item.get("id", i), "name": name, "ok": True, "result": value, "duration_ms": round(duration, 2)}
-            except (ValueError, RuntimeError, OSError) as exc:
+            except (ValueError, RuntimeError, OSError, ToolError) as exc:
                 return {"id": item.get("id", i), "name": name, "ok": False, "error": str(exc)}
 
         for layer in layers:

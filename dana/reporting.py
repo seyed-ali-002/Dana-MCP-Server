@@ -6,7 +6,7 @@ import os
 import tempfile
 import threading
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +57,34 @@ def _fmt_duration(seconds: float) -> str:
     return f"{seconds}s"
 
 
+def _union_active_seconds(events: list[dict]) -> float:
+    """Wall-clock active time via interval union (parallel tools counted once)."""
+    intervals: list[tuple[float, float]] = []
+    for e in events:
+        try:
+            end = float(e.get("time") or 0)
+            dur = max(0.0, float(e.get("duration") or 0)) / 1000.0
+            start = float(e.get("started") or (end - dur))
+            if end > start:
+                intervals.append((start, end))
+        except (TypeError, ValueError):
+            continue
+    if not intervals:
+        return 0.0
+    intervals.sort(key=lambda x: x[0])
+    merged_start, merged_end = intervals[0]
+    total = 0.0
+    for start, end in intervals[1:]:
+        if start <= merged_end:
+            if end > merged_end:
+                merged_end = end
+        else:
+            total += merged_end - merged_start
+            merged_start, merged_end = start, end
+    total += merged_end - merged_start
+    return max(0.0, total)
+
+
 def _load() -> dict:
     data = {}
     for candidate in (REPORT_JSON, LEGACY_REPORT_JSON):
@@ -87,12 +115,23 @@ def update_report(tool: str, worker: str, number: int, input_tokens: int, output
         data["input"] += inp
         data["output"] += out
         data["operations"] += 1
-        data["active_seconds"] += max(0.0, float(duration_ms)) / 1000.0
         if exact:
             data["exact_tokens"] += inp + out
         else:
             data["estimated_tokens"] += inp + out
-        event = {"time": now, "started": now - max(0.0, float(duration_ms)) / 1000.0, "worker": worker, "number": number, "tool": tool, "input": inp, "output": out, "duration": duration_ms, "success": success, "exact": exact, "source": source}
+        event = {
+            "time": now,
+            "started": now - max(0.0, float(duration_ms)) / 1000.0,
+            "worker": worker,
+            "number": number,
+            "tool": tool,
+            "input": inp,
+            "output": out,
+            "duration": duration_ms,
+            "success": success,
+            "exact": exact,
+            "source": source,
+        }
         if isinstance(detail, dict):
             for key in ("args", "result", "error", "line"):
                 val = detail.get(key)
@@ -100,6 +139,9 @@ def update_report(tool: str, worker: str, number: int, input_tokens: int, output
                     event[key] = str(val)[:2000]
         data["events"].append(event)
         data["events"] = data["events"][-MAX_EVENTS:]
+        # Recompute wall-clock active time from interval union so parallel tools
+        # are not double-counted (FR-060 / usage accuracy).
+        data["active_seconds"] = _union_active_seconds(data["events"])
         _atomic_write(REPORT_JSON, json.dumps(data, ensure_ascii=False, separators=(",", ":")))
         try:
             _atomic_write(REPORT_HTML, _render(data))
@@ -110,14 +152,14 @@ def update_report(tool: str, worker: str, number: int, input_tokens: int, output
 def _render(data: dict) -> str:
     events = list(data.get("events") or [])
     tools = Counter(str(e.get("tool") or "?") for e in events)
-    workers = Counter(str(e.get("worker") or "?") for e in events)
     started = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(float(data.get("start") or time.time())))
     updated = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(float(data.get("last") or time.time()))) if data.get("last") else "—"
     total = int(data.get("input") or 0) + int(data.get("output") or 0)
     ops = max(1, int(data.get("operations") or 0))
     success_rate = 100.0 * sum(1 for e in events if e.get("success")) / max(1, len(events))
-    elapsed = float(data.get("active_seconds") or 0)
-    avg_duration = sum(float(e.get("duration") or 0) for e in events) / max(1, len(events))
+    # Prefer recomputed union; fall back to stored value for legacy reports.
+    elapsed = _union_active_seconds(events) if events else float(data.get("active_seconds") or 0)
+    active_label = _fmt_duration(elapsed)
     tool_rows = "".join(f"<tr><td>{html.escape(str(n))}</td><td>{c}</td></tr>" for n, c in tools.most_common(20))
     rows = []
     for e in reversed(events[-40:]):
@@ -134,15 +176,15 @@ def _render(data: dict) -> str:
             f"<td>{html.escape(str(e.get('source') or ''))}</td>"
             "</tr>"
         )
-    chart = [{"input": int(e.get("input") or 0), "output": int(e.get("output") or 0)} for e in events[-60:]]
-    chart_json = json.dumps(chart)
     return f"""<!DOCTYPE html><html><head><meta charset='utf-8'><title>Dana Usage</title>
-<style>body{{font-family:system-ui;background:#0b1220;color:#e8eef7;margin:0;padding:24px}} .grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}} .card,.panel{{background:#121a2b;border:1px solid #243148;border-radius:12px;padding:14px}} .label{{color:#8fa3bf;font-size:12px}} .value{{font-size:22px;font-weight:700}} table{{width:100%;border-collapse:collapse}} td,th{{padding:6px;border-bottom:1px solid #243148;text-align:left;font-size:12px}} .scroll{{max-height:320px;overflow:auto}}</style></head><body>
+<style>body{{font-family:system-ui;background:#0b1220;color:#e8eef7;margin:0;padding:24px}} .grid{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}} .card,.panel{{background:#121a2b;border:1px solid #243148;border-radius:12px;padding:14px}} .label{{color:#8fa3bf;font-size:12px}} .value{{font-size:22px;font-weight:700}} table{{width:100%;border-collapse:collapse}} td,th{{padding:6px;border-bottom:1px solid #243148;text-align:left;font-size:12px}} .scroll{{max-height:320px;overflow:auto}}</style></head><body>
 <main><h1>Dana Usage Report</h1><div class='label'>Started: {started} · Last: {updated}</div>
 <div class='grid'>
 <div class='card'><div class='label'>Total tokens</div><div class='value'>{total:,}</div></div>
 <div class='card'><div class='label'>Operations</div><div class='value'>{ops}</div></div>
 <div class='card'><div class='label'>Success</div><div class='value'>{success_rate:.1f}%</div></div>
+<div class='card'><div class='label'>Active usage time</div><div class='value'>{active_label}</div></div>
 </div>
+<section class='panel'><h2>Top tools</h2><div class='scroll'><table><tr><th>Tool</th><th>Count</th></tr>{tool_rows}</table></div></section>
 <section class='panel'><h2>Recent</h2><div class='scroll'><table><tr><th>Time</th><th>Worker</th><th>Tool</th><th>In</th><th>Out</th><th>Total</th><th>ms</th><th>Status</th><th>Source</th></tr>{''.join(rows)}</table></div></section>
 </main></body></html>"""

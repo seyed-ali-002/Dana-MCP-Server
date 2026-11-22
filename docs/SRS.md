@@ -3,8 +3,8 @@
 > **عنوان محصول:** Dana MCP Server  
 > **وضعیت سند:** زنده (Living Document) — باید با هر تغییر رفتاری مهم به‌روز شود  
 > **نسخه سند:** 1.0.0  
-> **تاریخ به‌روزرسانی:** 2026-11-08  
-> **نسخه محصول مبنا:** 1.7.0  
+> **تاریخ به‌روزرسانی:** 2026-11-22  
+> **نسخه محصول مبنا:** 2.0.7  
 > **مخزن:** https://github.com/seyed-ali-002/Dana-MCP-Server
 
 ---
@@ -124,7 +124,7 @@ Dana **سرویس ابری میزبانی‌شده توسط فروشنده نی�
 | FR-013 | ابزارها از طریق registry ثبت و قابل فراخوانی باشند | Must | Implemented |
 | FR-014 | فراخوانی موازی/دسته‌ای (`dana_parallel_call` و مشابه) بدون deadlock در event loop کار کند | Must | Implemented |
 | FR-015 | در صورت وجود `outputSchema`، پاسخ structured مطابق قرارداد باشد؛ در غیر این صورت متن/دیکشنری بدون اجبار schema | Must | Partial |
-| FR-016 | خطای ابزار به‌صورت failure مشخص به کلاینت برگردد نه success با متن خطا | Must | Partial |
+| FR-016 | خطای ابزار به‌صورت failure مشخص به کلاینت برگردد نه success با متن خطا | Must | Implemented |
 | FR-017 | اگر پورت پیش‌فرض اشغال بود، پورت جایگزین انتخاب شود | Should | Implemented |
 | FR-018 | session MCP پس از قطع کوتاه قابل بازیابی باشد | Must | Partial |
 
@@ -192,7 +192,7 @@ Dana **سرویس ابری میزبانی‌شده توسط فروشنده نی�
 
 | ID | الزام | اولویت | وضعیت |
 |----|--------|--------|--------|
-| FR-060 | گزارش استفاده از ابزارها و توکن (ترمینال و UI) | Should | Partial |
+| FR-060 | گزارش استفاده از ابزارها و توکن (ترمینال و UI)؛ active time با اجتماع بازه‌ها (parallel-safe) | Should | Implemented |
 | FR-061 | export گزارش | Could | Planned |
 
 ---
@@ -300,6 +300,7 @@ Dana **سرویس ابری میزبانی‌شده توسط فروشنده نی�
 |----------|------|------|
 | 1.0.0 | 2026-11-08 | نگارش اولیه SRS جامع بر اساس کد و مستندات موجود و roadmap v1.7–2.0 |
 | 1.1.0 | 2026-11-08 | v1.7.0: health layers, port failover, stateless HTTP default, friendly errors |
+| 1.2.0 | 2026-11-22 | baseline → 2.0.7; FR-016 Implemented; FR-060 active-time interval-union; NFR-002 enforced on setup Popen |
 
 ---
 

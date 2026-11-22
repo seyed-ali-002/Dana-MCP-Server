@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 import json
 import logging
@@ -269,7 +270,7 @@ async def _logged_call_tool(name: str, arguments: dict[str, Any], context: Any =
     output_tokens = 0
     try:
         async def operation() -> Any:
-            return await _original_call_tool(name, arguments, context=context, convert_result=True)
+            return await _original_call_tool(name, arguments, context=context, convert_result=convert_result)
 
         if name in _ORCHESTRATION_TOOLS:
             result = await operation()
@@ -277,13 +278,18 @@ async def _logged_call_tool(name: str, arguments: dict[str, Any], context: Any =
         else:
             worker_number, worker_name, result = await WORKER_POOL.run(operation)
 
-        if not hasattr(result, "content"):
-            result = _maybe_context_compact(_json_safe(result) if not hasattr(result, "model_dump") else result)
-        try:
-            from .mcp_result_fix import ensure_structured
-            result = ensure_structured(result, _json_safe)
-        except Exception:
-            pass
+        # convert_result=False is the in-process contract (raw Python value) used by
+        # dana_call_tool / dana_batch_call / dana_plan_execute. Only the MCP protocol
+        # path (FastMCP passes convert_result=True) is normalized to a structured
+        # CallToolResult (FR-015).
+        if convert_result:
+            if not hasattr(result, "content"):
+                result = _maybe_context_compact(_json_safe(result) if not hasattr(result, "model_dump") else result)
+            try:
+                from .mcp_result_fix import ensure_structured
+                result = ensure_structured(result, _json_safe)
+            except Exception:
+                pass
 
         usage = _reported_usage(result)
         if usage is not None:
@@ -296,6 +302,11 @@ async def _logged_call_tool(name: str, arguments: dict[str, Any], context: Any =
     except Exception as exc:
         success = False
         output_tokens = 0
+        if not convert_result:
+            # In-process callers need a real exception so they can report a per-call
+            # failure (ok=False) instead of an error payload cached as success (FR-016).
+            result = f"{type(exc).__name__}: {exc}"
+            raise
         try:
             from .mcp_result_fix import error_result
             result = error_result(f"{type(exc).__name__}: {exc}", detail=str(exc))
@@ -435,6 +446,41 @@ def _reported_usage(value: Any) -> tuple[int, int] | None:
                 return max(0, inp), max(0, out)
     return None
 
+def _make_threaded(fn: Any) -> Any:
+    @functools.wraps(fn)
+    async def runner(*args: Any, **kwargs: Any) -> Any:
+        return await asyncio.to_thread(fn, *args, **kwargs)
+
+    return runner
+
+
+def _offload_sync_tools(server: Any) -> int:
+    """Run blocking (sync) tool functions in worker threads (FR-014).
+
+    mcp's Tool.run calls a sync function directly on the event-loop thread, so a
+    blocking tool such as run_process froze every other in-flight call and the
+    worker slots effectively ran one after another. Offloading the function
+    itself keeps the loop free without a nested asyncio.run() (guardrail §2).
+    """
+    tools = getattr(getattr(server, "_tool_manager", None), "_tools", None)
+    if not isinstance(tools, dict):
+        return 0
+    offloaded = 0
+    for tool in list(tools.values()):
+        if getattr(tool, "is_async", True):
+            continue
+        try:
+            tool.fn = _make_threaded(tool.fn)
+            tool.is_async = True
+            offloaded += 1
+        except Exception:
+            logging.getLogger("dana.server").warning(
+                "Could not offload sync tool %s to a worker thread", getattr(tool, "name", "?")
+            )
+    return offloaded
+
+
+_offload_sync_tools(mcp)
 mcp._tool_manager.call_tool = _logged_call_tool
 for _worker_number_value in range(1, settings.normalized_workers() + 1):
     worker_ready(_worker_name(_worker_number_value), _worker_number_value)
