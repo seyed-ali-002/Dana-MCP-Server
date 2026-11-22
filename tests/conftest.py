@@ -11,8 +11,13 @@ rejection in ``dana.public_host``) is intentionally left untouched.
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
+
+# Import-time settings (dana.http / dana.config) require a token. Use a fake one so a
+# clean checkout / CI without .env can even collect the tests. Never a real secret.
+os.environ.setdefault("DANA_AUTH_TOKEN", "test-token-not-a-secret-0123456789abcdef")
 
 
 @pytest.fixture(autouse=True)

@@ -617,7 +617,8 @@ def _tailscale_hostname_from_status() -> str | None:
                 command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=10,
                 env=clean_subprocess_env()
             )
-        except subprocess.TimeoutExpired:
+        except (subprocess.TimeoutExpired, OSError):
+            # OSError covers a missing/non-executable tailscale binary (FileNotFoundError).
             continue
         raw = result.stdout or result.stderr
         if not raw:

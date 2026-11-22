@@ -35,13 +35,19 @@ def test_stable_package_urls(monkeypatch):
 
 def test_funnel_configuration_uses_current_cli_shape(monkeypatch):
     calls = []
+    # Never let a test write the real .env / persistent config or mutate global settings.
+    monkeypatch.setattr(setup, "write_env", lambda *a, **k: "test-token")
+    monkeypatch.setattr(setup, "set_local_public_host", lambda *a, **k: None)
+    monkeypatch.setattr(setup.settings, "auth_token", setup.settings.auth_token)
+    monkeypatch.setitem(setup.os.environ, "DANA_AUTH_TOKEN", setup.os.environ.get("DANA_AUTH_TOKEN", ""))
+    monkeypatch.setattr(setup, "_tailscale_binary", lambda _name="tailscale": "/usr/bin/tailscale")
     monkeypatch.setattr(setup, "_ensure_tailscale_ready", lambda: None)
-    monkeypatch.setattr(setup, "configure_tailscale_local", lambda token, port, funnel_port: calls.append((token, port, funnel_port)) or "dana.example.ts.net")
+    monkeypatch.setattr(setup, "configure_tailscale_local", lambda token, port, funnel_port: calls.append((token, port, funnel_port)) or "dana-test.tailnet-test.ts.net")
     monkeypatch.setattr(setup, "verify_public_endpoint", lambda host: True)
     monkeypatch.setattr(setup, "_dana_running", lambda: True)
     # Not active on the pre-check, published after configuration.
-    states = iter([(False, ""), (True, "dana.example.ts.net")])
-    monkeypatch.setattr(setup, "_funnel_status", lambda: next(states, (True, "dana.example.ts.net")))
+    states = iter([(False, ""), (True, "dana-test.tailnet-test.ts.net")])
+    monkeypatch.setattr(setup, "_funnel_status", lambda: next(states, (True, "dana-test.tailnet-test.ts.net")))
     result = setup.enable_funnel(8765)
     assert result["ok"] is True
     assert len(calls) == 1
@@ -51,13 +57,14 @@ def test_funnel_configuration_uses_current_cli_shape(monkeypatch):
 def test_enable_funnel_skips_when_already_active(monkeypatch):
     """The guided flow must not re-run privileged Funnel config for an active route."""
     calls = []
-    monkeypatch.setattr(setup, "_funnel_status", lambda: (True, "dana.example.ts.net"))
+    monkeypatch.setattr(setup, "_tailscale_binary", lambda _name="tailscale": "/usr/bin/tailscale")
+    monkeypatch.setattr(setup, "_funnel_status", lambda: (True, "dana-test.tailnet-test.ts.net"))
     monkeypatch.setattr(setup, "_dana_running", lambda: True)
     monkeypatch.setattr(setup, "verify_public_endpoint", lambda host: True)
     monkeypatch.setattr(
         setup,
         "configure_tailscale_local",
-        lambda *args, **kwargs: calls.append(args) or "dana.example.ts.net",
+        lambda *args, **kwargs: calls.append(args) or "dana-test.tailnet-test.ts.net",
     )
     monkeypatch.setattr(
         setup,
@@ -67,7 +74,7 @@ def test_enable_funnel_skips_when_already_active(monkeypatch):
     result = setup.enable_funnel(8765)
     assert result["ok"] is True
     assert result["already_active"] is True
-    assert result["hostname"] == "dana.example.ts.net"
+    assert result["hostname"] == "dana-test.tailnet-test.ts.net"
     assert calls == []
 
 
@@ -93,7 +100,7 @@ def test_public_endpoint_accepts_authenticated_mcp_response(monkeypatch):
         def __enter__(self): return self
         def __exit__(self, *args): return False
     monkeypatch.setattr(setup.urllib.request, "urlopen", lambda *args, **kwargs: Response())
-    assert setup.verify_public_endpoint("dana.example.ts.net") is True
+    assert setup.verify_public_endpoint("dana-test.tailnet-test.ts.net") is True
 
 
 
