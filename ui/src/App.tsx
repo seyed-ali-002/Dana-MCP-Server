@@ -6,6 +6,7 @@ import WhipOverlay from "./WhipOverlay";
 import ConnectorsPage from "./ConnectorsPage";
 import { playOpenWhipCrack, getWhipVolume, setWhipVolume, isWhipMuted, setWhipMuted } from "./whipAssets";
 import "./App.css";
+import "./connectors.css";
 
 type Status = {
   tailscale_installed: boolean;

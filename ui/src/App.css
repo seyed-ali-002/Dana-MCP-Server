@@ -2037,7 +2037,7 @@ button.linkish {
   padding: 20px;
 }
 .skill-preview-modal {
-  background: var(--panel, var(--bg-elevated, #1a1d24));
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
   max-width: 720px;
@@ -2934,7 +2934,7 @@ html.whip-cursor-active * {
 /* ==========================================================================
    FLClash UI/UX Pro Max — Bento Grid, Custom Controls & Separated Settings
    ========================================================================== */
-:root,
+:root:not([data-theme="light"]),
 [data-theme="dark"] {
   --bg: #121316;
   --bg-2: #17191f;
@@ -3427,8 +3427,6 @@ textarea.field:focus,
   border: 1px solid var(--border);
   color: var(--muted);
 }
-
-@import "./connectors.css";
 
 /* === Issue #1 layout width / scroll fix ===
    Content was clipped to a fixed column; outside that strip nothing scrolled.

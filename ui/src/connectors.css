@@ -7,7 +7,7 @@
 }
 .connectors-page .connectors-table th,
 .connectors-page .connectors-table td {
-  text-align: left;
+  text-align: start;
   padding: 8px 10px;
   border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
   vertical-align: top;
@@ -15,7 +15,7 @@
 .connectors-page .mono { font-family: var(--mono, ui-monospace, monospace); }
 .connectors-page .tiny { font-size: 11px; opacity: 0.85; }
 .connectors-page .tiny-btn { padding: 4px 10px; font-size: 12px; }
-.connectors-page .guide-list { margin: 8px 0 0; padding-left: 18px; line-height: 1.55; }
+.connectors-page .guide-list { margin: 8px 0 0; padding-inline-start: 18px; line-height: 1.55; }
 .connectors-page .guide-block code { font-size: 12px; }
 .connectors-page .form-grid {
   display: grid;
