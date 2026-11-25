@@ -522,6 +522,7 @@ function App() {
   const [skillPreview, setSkillPreview] = useState<{ id: string; name?: string; content?: string; message?: string } | null>(null);
   const [packBusy, setPackBusy] = useState(false);
   const [skillFilter, setSkillFilter] = useState("");
+  const [skillCategory, setSkillCategory] = useState<string>("all");
   const [packStatus, setPackStatus] = useState<{ id: string; installed?: boolean; files?: number }[]>([]);
   const [zeroStatus, setZeroStatus] = useState<{ installed?: boolean; path?: string; message?: string } | null>(null);
   const [zeroBusy, setZeroBusy] = useState(false);
@@ -2405,7 +2406,7 @@ if (name === "help")
  <li><strong>Sync all packs</strong> re-downloads installed upstream packs.</li>
  <li><strong>Preview</strong> shows the full skill text before you rely on it.</li>
  <li>Agents can call <code>dana_skill_guidance</code> / <code>skill_context</code> to load enabled instructions.</li>
- <li>Optional desktop agent: Install Zero Use Computer from the same tab.</li>
+ <li>Optional desktop agent: Install computer-use-mcp from the same tab.</li>
  </ol>
  </section>
  <section id="help-whip" className="connections-panel glass help-block">
@@ -2626,11 +2627,11 @@ if (name === "help")
               {zeroStatus?.installed ? <span className="zero-badge">Installed</span> : <span className="zero-badge muted">Not installed</span>}
             </div>
             <p className="skills-lead">
-              {zeroStatus?.message || "Optional accessibility-based desktop agent (upstream binary)."}
+              {zeroStatus?.message || "Optional desktop agent (computer-use-mcp / Zero). Accessibility-tree control for agents. If install fails (404/rate-limit), download from GitHub releases into ~/.config/dana/bin."}
               {zeroStatus?.path ? ` · ${zeroStatus.path}` : ""}
             </p>
             <button
-              className="secondary"
+              className="primary"
               disabled={!port || zeroBusy}
               onClick={async () => {
                 if (!port) return;
@@ -2646,8 +2647,17 @@ if (name === "help")
                 }
               }}
             >
-              {zeroBusy ? "Installing…" : zeroStatus?.installed ? "Re-check / reinstall" : "Install Zero Use Computer"}
+              {zeroBusy ? "Installing…" : zeroStatus?.installed ? "Re-check / reinstall" : "Install computer-use-mcp"}
             </button>
+          <a
+            className="secondary"
+            href="https://github.com/mhrsdev/zero-use-computer/releases/latest"
+            target="_blank"
+            rel="noreferrer"
+            style={{ display: "inline-flex", alignItems: "center", textDecoration: "none" }}
+          >
+            GitHub releases
+          </a>
           </div>
           <div className="skills-pack-actions">
             {["agency-agents", "superpowers", "i-have-adhd", "ponytail"].map((pack) => (
@@ -2709,27 +2719,50 @@ if (name === "help")
               {packBusy ? "Working…" : "Sync all packs"}
             </button>
           </div>
-          <input
-            className="skill-filter"
-            value={skillFilter}
-            onChange={(e) => setSkillFilter(e.target.value)}
-            placeholder="Filter skills by name or tag…"
-          />
-          <div className="skills-grid">
-            {skills
-              .filter((s) => {
-                const q = skillFilter.trim().toLowerCase();
-                if (!q) return true;
-                return (
-                  s.name.toLowerCase().includes(q) ||
-                  s.id.toLowerCase().includes(q) ||
-                  (s.description || "").toLowerCase().includes(q)
-                );
-              })
-              .map((s) => (
+          <div className="skills-stats">
+          <span className="skills-stat-chip"><strong>{skills.length}</strong> total</span>
+          <span className="skills-stat-chip"><strong>{skills.filter((x) => x.enabled !== false).length}</strong> enabled</span>
+          <span className="skills-stat-chip"><strong>{packStatus.filter((p) => p.installed).length}</strong> packs installed</span>
+        </div>
+        <div className="skills-cats">
+          {["all", "godot", "design", "workflow", "bundled", "other"].map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              className={"skills-cat" + (skillCategory === cat ? " active" : "")}
+              onClick={() => setSkillCategory(cat)}
+            >
+              {cat === "all" ? "All" : cat.charAt(0).toUpperCase() + cat.slice(1)}
+            </button>
+          ))}
+        </div>
+        <input
+          className="skill-filter"
+          value={skillFilter}
+          onChange={(e) => setSkillFilter(e.target.value)}
+          placeholder="Filter skills by name or tag…"
+        />
+        <div className="skills-grid">
+          {skills
+            .filter((s) => {
+              const q = skillFilter.trim().toLowerCase();
+              const hay = `${s.name} ${s.id} ${s.description || ""} ${s.path || ""}`.toLowerCase();
+              if (skillCategory === "godot" && !/godot|gdscript|scene|shader|physics/.test(hay)) return false;
+              if (skillCategory === "design" && !/design|ui|frontend|sashimi|theme/.test(hay)) return false;
+              if (skillCategory === "workflow" && !/workflow|superpower|agency|plan|adhd|ponytail/.test(hay)) return false;
+              if (skillCategory === "bundled" && !/skill_packs|frontend-design|mcp-tool-quality|context-mode|zero-use/.test(hay)) return false;
+              if (skillCategory === "other" && /godot|gdscript|design|ui|frontend|workflow|superpower/.test(hay)) return false;
+              if (!q) return true;
+              return (
+                s.name.toLowerCase().includes(q) ||
+                s.id.toLowerCase().includes(q) ||
+                (s.description || "").toLowerCase().includes(q)
+              );
+            })
+            .map((s) => (
               <div className={"skill-card" + (s.enabled === false ? " skill-off" : "")} key={s.id}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
-                  <h3 style={{ margin: 0 }}>{s.name}</h3>
+                <div className="skill-card-top">
+                  <h3>{s.name}</h3>
                   <label className="skill-toggle" title={s.enabled === false ? "Enable" : "Disable"}>
                     <input
                       type="checkbox"

@@ -24,10 +24,10 @@ def _bin_dir() -> Path:
 
 
 def _resolve_binary() -> str | None:
-    which = shutil.which("zero") or shutil.which("zero-use-computer")
+    which = shutil.which("computer-use-mcp") or shutil.which("zero") or shutil.which("zero-use-computer")
     if which:
         return which
-    for name in ("zero", "zero-use-computer", "zero.exe", "zero-use-computer.exe"):
+    for name in ("computer-use-mcp", "computer-use-mcp.exe", "zero", "zero-use-computer", "zero.exe", "zero-use-computer.exe"):
         candidate = _bin_dir() / name
         if candidate.is_file():
             return str(candidate)
@@ -37,7 +37,7 @@ def _resolve_binary() -> str | None:
 def _platform_asset_hints() -> list[str]:
     system = platform.system().lower()
     machine = platform.machine().lower()
-    hints: list[str] = []
+    hints: list[str] = ["computer-use-mcp", "zero"]
     if system == "windows":
         hints += ["windows", "win", ".exe", "msvc"]
     elif system == "darwin":
@@ -62,7 +62,7 @@ def zero_status() -> dict[str, Any]:
         "installed": bool(binary),
         "path": binary or "",
         "bin_dir": str(_bin_dir()),
-        "message": "Zero Use Computer is available." if binary else "Not installed. Use install_zero_computer or download from GitHub releases.",
+        "message": "Zero Use Computer is available." if binary else "Not installed. Install computer-use-mcp from GitHub releases (Zero Use Computer), or use the Install button.",
     }
 
 
@@ -86,7 +86,12 @@ def install_zero_computer() -> dict[str, Any]:
     except Exception as exc:
         return {
             "ok": False,
-            "message": f"Could not query GitHub releases: {exc}. Open https://github.com/{REPO}/releases/latest",
+            "message": (
+                f"Could not query GitHub releases: {exc}. "
+                f"Open https://github.com/{REPO}/releases/latest and install computer-use-mcp "
+                f"into ~/.config/dana/bin manually if the API is rate-limited or assets moved."
+            ),
+            "releases_url": f"https://github.com/{REPO}/releases/latest",
         }
 
     assets = payload.get("assets") or []
@@ -96,7 +101,7 @@ def install_zero_computer() -> dict[str, Any]:
         name = str(asset.get("name") or "").lower()
         score = sum(1 for h in hints if h in name)
         # Prefer archives / binaries over source
-        if name.endswith((".tar.gz", ".tgz", ".zip", ".exe")) or "zero" in name:
+        if name.endswith((".tar.gz", ".tgz", ".zip", ".exe")) or "zero" in name or "computer-use" in name:
             score += 1
         if score:
             scored.append((score, asset))
@@ -136,7 +141,7 @@ def install_zero_computer() -> dict[str, Any]:
         with tarfile.open(download_path, "r:gz") as tar:
             tar.extractall(dest_dir)
         for candidate in dest_dir.rglob("*"):
-            if candidate.is_file() and candidate.name.lower() in {"zero", "zero-use-computer"}:
+            if candidate.is_file() and candidate.name.lower() in {"computer-use-mcp", "zero", "zero-use-computer"}:
                 binary_path = candidate
                 break
     elif lower.endswith(".zip"):
@@ -145,7 +150,7 @@ def install_zero_computer() -> dict[str, Any]:
         with zipfile.ZipFile(download_path, "r") as zf:
             zf.extractall(dest_dir)
         for candidate in dest_dir.rglob("*"):
-            if candidate.is_file() and candidate.name.lower() in {"zero", "zero-use-computer", "zero.exe"}:
+            if candidate.is_file() and candidate.name.lower() in {"computer-use-mcp", "computer-use-mcp.exe", "zero", "zero-use-computer", "zero.exe"}:
                 binary_path = candidate
                 break
     else:
@@ -158,7 +163,7 @@ def install_zero_computer() -> dict[str, Any]:
             "path": str(download_path),
         }
 
-    final = dest_dir / ("zero.exe" if os.name == "nt" else "zero")
+    final = dest_dir / ("computer-use-mcp.exe" if os.name == "nt" else "computer-use-mcp")
     if binary_path.resolve() != final.resolve():
         try:
             if final.exists():
