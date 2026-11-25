@@ -185,6 +185,28 @@ def install_zero_computer() -> dict[str, Any]:
     }
 
 
+def desktop_control_bridge_status() -> dict[str, Any]:
+    """Unified view: Zero binary + native Dana desktop agent readiness."""
+    z = zero_status()
+    try:
+        from dana.tools.desktop_agent import desktop_input_status
+        d = desktop_input_status()
+    except Exception as exc:
+        d = {"ok": False, "error": str(exc)}
+    preferred = "desktop_agent" if d.get("ready") else ("zero" if z.get("installed") else "none")
+    return {
+        "ok": bool(d.get("ready") or z.get("installed")),
+        "preferred": preferred,
+        "zero": z,
+        "desktop_input": d,
+        "guidance": (
+            "Use desktop_observe → desktop_act / desktop_open_app with verify. "
+            "If Wayland input not ready, call desktop_install_input or Repair → Desktop input. "
+            "Optional: install Zero (computer-use-mcp) as an alternate agent binary."
+        ),
+    }
+
+
 def register_zero_computer_tools(mcp: FastMCP) -> None:
     @mcp.tool()
     def zero_computer(command: str = "status", args: str = "") -> dict[str, Any]:
@@ -194,7 +216,7 @@ def register_zero_computer_tools(mcp: FastMCP) -> None:
             return {
                 "ok": False,
                 "installed": False,
-                "message": "Zero Use Computer is not installed. Call install_zero_computer or use desktop_control.",
+                "message": "Zero Use Computer is not installed. Prefer Dana desktop_* tools (desktop_setup_input / desktop_act). Or install_zero_computer_tool for the optional computer-use-mcp binary.",
             }
         cmd = [binary]
         if command and command != "status":
@@ -223,3 +245,8 @@ def register_zero_computer_tools(mcp: FastMCP) -> None:
     def zero_computer_status() -> dict[str, Any]:
         """Report whether Zero Use Computer is installed and where."""
         return zero_status()
+
+    @mcp.tool()
+    def desktop_control_bridge() -> dict[str, Any]:
+        """Status of native desktop_agent + optional Zero binary; which path agents should prefer."""
+        return desktop_control_bridge_status()

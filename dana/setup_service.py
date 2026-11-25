@@ -144,6 +144,12 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._send({"ok": False, "message": str(exc)}, 400)
             return
+        if path == "/api/setup/desktop/status":
+            try:
+                self._send(setup.desktop_input_status())
+            except Exception as exc:
+                self._send({"ok": False, "message": str(exc)}, 400)
+            return
         if path == "/api/setup/connectors":
             try:
                 from dana import supermcp as _sm
@@ -176,6 +182,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/setup/supermcp/start": setup.start_supermcp,
             "/api/setup/supermcp/stop": setup.stop_supermcp,
             "/api/setup/zero/install": setup.install_zero_computer,
+            "/api/setup/desktop/install": setup.install_desktop_input,
         }.get(request_path)
         if request_path == "/api/setup/download/pause":
             self._send(setup.pause_download()); return

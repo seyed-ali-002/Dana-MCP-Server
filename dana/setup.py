@@ -2723,6 +2723,18 @@ def install_zero_computer() -> dict[str, object]:
     _setup_log(str(result.get("message", "Zero install")), "success" if result.get("ok") else "error")
     return result
 
+def desktop_input_status() -> dict[str, object]:
+    from .tools.desktop_agent import desktop_input_status as _status
+    return _status()
+
+
+def install_desktop_input() -> dict[str, object]:
+    """UI/API: elevate uinput rules and start ydotoold."""
+    from .tools.desktop_agent import install_wayland_input_elevated
+    return install_wayland_input_elevated()
+
+
+
 def set_skill_enabled(skill_id: str, enabled: bool = True) -> dict[str, object]:
     from . import skills_registry
     return skills_registry.set_skill_enabled(skill_id, enabled)

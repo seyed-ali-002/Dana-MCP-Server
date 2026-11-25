@@ -356,6 +356,72 @@ def observe() -> dict[str, Any]:
     }
 
 
+def desktop_input_status() -> dict[str, Any]:
+    """Combined readiness for Repair UI / API."""
+    base = setup_wayland_input(start_daemon=False)
+    uinput = Path("/dev/uinput")
+    session = os.getenv("XDG_SESSION_TYPE", "").strip().lower() or "unknown"
+    return {
+        "ok": bool(base.get("ready")),
+        "ready": bool(base.get("ready")),
+        "session": session,
+        "wayland": session == "wayland" or bool(os.getenv("WAYLAND_DISPLAY")),
+        "ydotool": shutil.which("ydotool") or "",
+        "ydotoold": shutil.which("ydotoold") or "",
+        "uinput_exists": uinput.exists(),
+        "uinput_writable": uinput.exists() and os.access(uinput, os.W_OK),
+        "socket": base.get("YDOTOOL_SOCKET") or "",
+        "install_script": base.get("install_script") or "",
+        "message": base.get("message") or "",
+        "zero_fallback": "Use install_zero_computer + zero_computer tools, or native desktop_* tools after setup.",
+    }
+
+
+def install_wayland_input_elevated() -> dict[str, Any]:
+    """Run the generated install script with pkexec/sudo when possible; always refresh daemon."""
+    prepared = setup_wayland_input(start_daemon=True)
+    script = Path(str(prepared.get("install_script") or ""))
+    if not script.is_file():
+        return {"ok": False, "message": "Install script missing; call desktop_setup_input first.", **prepared}
+
+    elevated = {"ok": False, "method": None, "detail": ""}
+    if platform.system() == "Linux":
+        # Prefer pkexec (GUI password prompt), then sudo -n, then plain sudo
+        attempts: list[list[str]] = []
+        if shutil.which("pkexec"):
+            attempts.append(["pkexec", "bash", str(script)])
+        if shutil.which("sudo"):
+            attempts.append(["sudo", "-n", "bash", str(script)])
+            attempts.append(["sudo", "bash", str(script)])
+        last_err = ""
+        for cmd in attempts:
+            r = _run(cmd, timeout=90)
+            elevated = {"ok": bool(r.get("ok")), "method": " ".join(cmd[:2]), "detail": (r.get("stderr") or r.get("stdout") or "")[:2000], "returncode": r.get("returncode")}
+            if r.get("ok"):
+                break
+            last_err = elevated["detail"]
+        if not elevated.get("ok"):
+            elevated["message"] = (
+                "Could not elevate automatically. Run manually: sudo bash " + str(script)
+                + (f" ({last_err[:200]})" if last_err else "")
+            )
+    else:
+        elevated = {"ok": True, "method": "n/a", "message": "Non-Linux: no uinput rule needed."}
+
+    # Retry daemon after rules (may still need re-login for group)
+    refreshed = setup_wayland_input(start_daemon=True)
+    status = desktop_input_status()
+    return {
+        "ok": bool(status.get("ready") or elevated.get("ok")),
+        "elevated": elevated,
+        "status": status,
+        "refreshed": refreshed,
+        "message": status.get("message") if status.get("ready") else (
+            elevated.get("message") or status.get("message") or "Desktop input setup attempted."
+        ),
+    }
+
+
 def register_desktop_agent_tools(mcp) -> None:
     from mcp.server.fastmcp import FastMCP
     from dana.tools.mcp_quality import MUTATING, READ_ONLY, actionable_error
@@ -419,6 +485,16 @@ def register_desktop_agent_tools(mcp) -> None:
     def desktop_setup_input(start_daemon: bool = True) -> dict:
         """Prepare ydotool/uinput helpers and try to start ydotoold for Wayland input."""
         return setup_wayland_input(start_daemon=start_daemon)
+
+    @mcp.tool(annotations=MUTATING("Install Wayland input (elevated)"))
+    def desktop_install_input() -> dict:
+        """Install udev/uinput rules via pkexec/sudo and restart ydotoold when possible."""
+        return install_wayland_input_elevated()
+
+    @mcp.tool(annotations=READ_ONLY("Desktop input status"))
+    def desktop_input_status_tool() -> dict:
+        """Report ydotool/uinput readiness for Repair UI and agents."""
+        return desktop_input_status()
 
     @mcp.tool(annotations=MUTATING("Open application"))
     def desktop_open_app(name: str, wait_timeout_s: float = 8.0) -> dict:

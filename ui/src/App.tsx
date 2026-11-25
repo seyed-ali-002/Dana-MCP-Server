@@ -526,6 +526,16 @@ function App() {
   const [packStatus, setPackStatus] = useState<{ id: string; installed?: boolean; files?: number }[]>([]);
   const [zeroStatus, setZeroStatus] = useState<{ installed?: boolean; path?: string; message?: string } | null>(null);
   const [zeroBusy, setZeroBusy] = useState(false);
+  const [desktopInputStatus, setDesktopInputStatus] = useState<{
+    ready?: boolean;
+    message?: string;
+    session?: string;
+    ydotool?: string;
+    install_script?: string;
+    uinput_writable?: boolean;
+    socket?: string;
+  } | null>(null);
+  const [desktopInputBusy, setDesktopInputBusy] = useState(false);
   const [toolEvents, setToolEvents] = useState<ToolEvent[]>([]);
   const [errorLogs, setErrorLogs] = useState<SetupLog[]>([]);
   const [pendingInstall, setPendingInstall] = useState(false);
@@ -2292,7 +2302,80 @@ if (name === "help")
             </div>
           </section>
           <section className="card glass">
-            <div className="card-head"><span>STEP 3</span><strong>Reset soft state</strong></div>
+            <section className="card glass">
+                <div className="card-head">
+                  <span>STEP 2b</span>
+                  <strong>Desktop input (Wayland)</strong>
+                  <b className={desktopInputStatus?.ready ? "state success" : "state warning"}>
+                    {desktopInputStatus?.ready ? "READY" : "NEEDS SETUP"}
+                  </b>
+                </div>
+                <p className="logs-description">
+                  {desktopInputStatus?.message
+                    || "Install uinput udev rules and start ydotoold so mouse/keyboard automation works on Wayland."}
+                  {desktopInputStatus?.session ? ` · Session: ${desktopInputStatus.session}` : ""}
+                  {desktopInputStatus?.socket ? ` · Socket: ${desktopInputStatus.socket}` : ""}
+                </p>
+                <div className="card-actions">
+                  <button
+                    className="secondary"
+                    disabled={!port || desktopInputBusy}
+                    onClick={async () => {
+                      if (!port) return;
+                      setDesktopInputBusy(true);
+                      try {
+                        const r = await fetch(API(port, "/api/setup/desktop/status"));
+                        setDesktopInputStatus(await r.json());
+                      } catch (e) {
+                        setError(String(e));
+                      } finally {
+                        setDesktopInputBusy(false);
+                      }
+                    }}
+                  >
+                    Refresh status
+                  </button>
+                  <button
+                    className="primary"
+                    disabled={!port || desktopInputBusy}
+                    onClick={async () => {
+                      if (!port) return;
+                      setDesktopInputBusy(true);
+                      setMessage("Installing desktop input (may prompt for password)…");
+                      try {
+                        const r = await fetch(API(port, "/api/setup/desktop/install"), { method: "POST" });
+                        const j = await r.json();
+                        setDesktopInputStatus(j.status || j);
+                        setMessage(j.message || (j.ok ? "Desktop input installed" : "Install attempted"));
+                        if (!j.ok && j.elevated?.message) setError(String(j.elevated.message));
+                      } catch (e) {
+                        setError(String(e));
+                      } finally {
+                        setDesktopInputBusy(false);
+                      }
+                    }}
+                  >
+                    {desktopInputBusy ? "Working…" : "Install / fix ydotool"}
+                  </button>
+                  <button
+                    className="secondary"
+                    type="button"
+                    onClick={() => {
+                      const cmd = desktopInputStatus?.install_script
+                        ? `sudo bash ${desktopInputStatus.install_script}`
+                        : "sudo bash ~/.config/dana/desktop/install-wayland-input.sh";
+                      copy(cmd);
+                      setMessage("Copied manual install command");
+                    }}
+                  >
+                    Copy sudo command
+                  </button>
+                </div>
+                <p className="logs-description" style={{ marginTop: 8 }}>
+                  Agents: prefer <code>desktop_observe</code> → <code>desktop_act</code>. Optional Zero is on the Skills tab.
+                </p>
+              </section>
+              <div className="card-head"><span>STEP 3</span><strong>Reset soft state</strong></div>
             <p className="logs-description">Clear public host overrides without deleting your auth token.</p>
             <div className="card-actions">
               <button className="secondary" disabled={busy} onClick={() => run("/api/setup/reset-defaults")}>Reset public overrides</button>
@@ -2305,7 +2388,7 @@ if (name === "help")
           <div className="logs-head"><div><span className="eyebrow">TERMINAL</span><h2>Manual commands</h2></div></div>
           <p className="logs-description">Run on the Dana machine if the GUI cannot elevate or Funnel stays stuck.</p>
           <div className="cmd-list">
-            {["tailscale status", "tailscale funnel status", "sudo tailscale serve reset", "sudo tailscale funnel --bg 8765", "curl -sS -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8765/mcp"].map((cmd) => (
+            {["tailscale status", "tailscale funnel status", "sudo tailscale serve reset", "sudo tailscale funnel --bg 8765", "curl -sS -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8765/mcp", "sudo bash ~/.config/dana/desktop/install-wayland-input.sh", "ydotool help"].map((cmd) => (
               <div className="cmd-row" key={cmd}>
                 <code>{cmd}</code>
                 <button className="secondary" type="button" onClick={() => copy(cmd)}>{copied === cmd ? "Copied" : "Copy"}</button>

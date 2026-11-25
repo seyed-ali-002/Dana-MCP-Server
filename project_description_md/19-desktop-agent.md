@@ -22,3 +22,10 @@
 
 ## الگوی Agent پیشنهادی
 `observe → plan → desktop_act/open/focus → verify (+ screenshot) → retry`
+
+## UI Repair
+Settings → Repair → **Desktop input (Wayland)**: status + Install/fix ydotool (pkexec/sudo) + copy sudo command.
+API: , .
+
+## Zero bridge
+ reports preferred path ( vs ). Agents should prefer native  tools; Zero remains optional.
