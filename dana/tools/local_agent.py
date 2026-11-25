@@ -515,7 +515,11 @@ def register_local_agent_tools(mcp:FastMCP)->None:
                 return _run(["xdotool","getmouselocation","--shell"],5)
             return {"ok":True,"backend":_desktop_backend(),"note":"Pointer position is not queryable portably on Wayland."}
         backend=_desktop_backend()
-        if backend=="ydotool" and action in {"move","move_relative","click","scroll","type","key","hotkey"}:
+        if backend=="ydotool" and action in {"move","move_relative","click","double_click","right_click","scroll","type","key","hotkey"}:
+            if action=="double_click":
+                return _desktop_ydo("click",x,y,"left",2,0,"","")
+            if action=="right_click":
+                return _desktop_ydo("click",x,y,"right",1,0,"","")
             return _desktop_ydo(action,x,y,button,clicks,scroll,text,key)
         if backend=="xdotool":
             if action=="move": return _run(["xdotool","mousemove",str(max(0,x)),str(max(0,y))],5)

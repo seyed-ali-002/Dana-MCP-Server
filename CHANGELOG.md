@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Added
+- Desktop agent layer: setup_input, observe, open/focus/wait/verify, click_element, type_into, accessibility probe
+- Wayland uinput/ydotool install helper script under ~/.config/dana/desktop/
+
+## [Unreleased]
+
 ### Improved
 - MCP tool quality helpers (`mcp_quality`), restored `mcp_result_format`, annotations on agent_planning, list_directory limit/offset, search default limit 50
 

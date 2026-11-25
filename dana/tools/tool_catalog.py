@@ -17,6 +17,7 @@ CATEGORY_KEYWORDS = {
     "design": ("ui_", "sashimi", "persian", "design_"),
     "runtime": ("dana_", "task_", "schedule", "token_"),
     "godot": ("godot_", "godot"),
+    "desktop": ("desktop_", "ydotool", "screenshot", "wmctrl"),
 }
 
 # Search aliases normalize the inconsistent historical naming without breaking
