@@ -44,14 +44,36 @@ def canonical_name(name: str) -> str:
     return name
 
 
+def _annotation_dict(tool: Any) -> dict[str, Any] | None:
+    raw = getattr(tool, "annotations", None)
+    if raw is None:
+        return None
+    if hasattr(raw, "model_dump"):
+        try:
+            data = raw.model_dump(exclude_none=True)
+            return data or None
+        except Exception:
+            pass
+    out: dict[str, Any] = {}
+    for key in ("title", "readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"):
+        val = getattr(raw, key, None)
+        if val is not None:
+            out[key] = val
+    return out or None
+
+
 def enrich(tool: Any) -> dict[str, Any]:
-    return {
+    item = {
         "name": tool.name,
         "canonical_name": canonical_name(tool.name),
         "category": category_for(tool.name),
         "description": (tool.description or "").strip() or f"Dana {category_for(tool.name)} capability: {tool.name}.",
         "input_schema": tool.parameters,
     }
+    ann = _annotation_dict(tool)
+    if ann:
+        item["annotations"] = ann
+    return item
 
 
 def catalog(tools: list[Any]) -> dict[str, list[str]]:

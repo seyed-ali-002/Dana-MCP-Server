@@ -40,11 +40,11 @@ def register_runtime_orchestration_tools(mcp: FastMCP) -> None:
         return {"count": len(items), "categories": sorted({x["category"] for x in items}), "tools": items}
 
     @mcp.tool()
-    def dana_search_tools(query: str = "", category: str | None = None, cached_only: bool = False, limit: int = 200) -> dict[str, Any]:
+    def dana_search_tools(query: str = "", category: str | None = None, cached_only: bool = False, limit: int = 50) -> dict[str, Any]:
         """Search the complete tool catalog. Empty query returns the full catalog; results include a relevance score."""
         needle = query.strip().lower()
         wanted = category.strip().lower() if category else None
-        limit = max(1, min(limit, 200))
+        limit = max(1, min(int(limit or 50), 200))
         results = []
         for tool in _tools(mcp):
             item = enrich(tool)

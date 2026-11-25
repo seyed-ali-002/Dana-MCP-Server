@@ -1,3 +1,8 @@
+## [Unreleased]
+
+### Improved
+- MCP tool quality helpers (`mcp_quality`), restored `mcp_result_format`, annotations on agent_planning, list_directory limit/offset, search default limit 50
+
 # Changelog
 
 All notable changes to **Dana MCP Server** are documented here.

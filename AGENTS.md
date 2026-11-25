@@ -58,3 +58,5 @@ Follow `project_description_md/06-versioning-release.md` and current `pyproject.
 ## Scope control
 
 Do not add large third-party stacks or "fun" features as release blockers. Prefer minimal diffs tied to a requirement ID (`FR-*`, `TECH-*`, `R17-*`, …).
+
+When adding/changing MCP tools, follow `project_description_md/18-mcp-tool-quality.md`.
