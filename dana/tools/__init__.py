@@ -30,6 +30,7 @@ from .web_quality_debug_docs import register_web_quality_debug_docs_tools
 from .skills import register_skills_tools
 from .zero_computer import register_zero_computer_tools
 from .desktop_agent import register_desktop_agent_tools
+from .computer_use import register_computer_use_tools
 from .godot_proxy import register_godot_proxy_tools
 
 
@@ -68,3 +69,4 @@ def register_tools(mcp: FastMCP) -> None:
     register_local_agent_tools(mcp)
     register_godot_proxy_tools(mcp)
     register_desktop_agent_tools(mcp)
+    register_computer_use_tools(mcp)

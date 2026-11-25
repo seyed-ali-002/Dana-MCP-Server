@@ -62,3 +62,4 @@ URL توکن‌دار Dana یک credential محسوب می‌شود. توکن ن
 - دستورالعمل ریشه: [`AGENTS.md`](../AGENTS.md)
 - همگام‌سازی آینه‌ها: `bash scripts/sync_living_docs.sh`
 |  | Desktop agent / Wayland ydotool / high-level actions |
+| 20-computer-use.md | Computer Use agent loop (observe/act/verify) |

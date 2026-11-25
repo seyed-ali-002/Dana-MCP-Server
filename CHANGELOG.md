@@ -1,6 +1,11 @@
 ## [Unreleased]
 
 ### Added
+- Computer Use layer: computer_observe/act/wait/locate_text/agent_step/stop (Claude-style loop)
+
+## [Unreleased]
+
+### Added
 - Desktop agent layer: setup_input, observe, open/focus/wait/verify, click_element, type_into, accessibility probe
 - Wayland uinput/ydotool install helper script under ~/.config/dana/desktop/
 
